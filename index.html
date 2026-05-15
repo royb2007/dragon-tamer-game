@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🐉 Dragon Tamer</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d0d1a;
+      color: #e0d7ff;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { font-size: 2.5rem; margin-bottom: 6px; text-shadow: 0 0 20px #a855f7; }
+    #status { color: #a855f7; margin-bottom: 16px; font-size: 0.9rem; }
+
+    #hp-bar {
+      display: flex; justify-content: space-between;
+      width: 100%; max-width: 600px;
+      background: #1a1a2e; border-radius: 12px;
+      padding: 12px 20px; margin-bottom: 20px;
+      font-size: 1.1rem; font-weight: bold;
+    }
+    .player-hp { color: #4ade80; }
+    .enemy-hp  { color: #f87171; }
+
+    #hand {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      justify-content: center; margin-bottom: 20px;
+    }
+    .card {
+      background: linear-gradient(135deg, #1e1b4b, #312e81);
+      border: 2px solid #4338ca;
+      border-radius: 16px;
+      padding: 16px 14px;
+      width: 150px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover {
+      transform: translateY(-8px);
+      border-color: #a855f7;
+      box-shadow: 0 0 20px #a855f755;
+    }
+    .card .emoji  { font-size: 2.4rem; }
+    .card .name   { font-weight: bold; font-size: 1rem; margin: 6px 0 2px; }
+    .card .type   { font-size: 0.75rem; color: #a5b4fc; margin-bottom: 8px; }
+    .card .stats  { font-size: 0.8rem; color: #c4b5fd; line-height: 1.6; }
+
+    #log-box {
+      background: #0f0f1e;
+      border: 1px solid #312e81;
+      border-radius: 12px;
+      padding: 14px 18px;
+      width: 100%; max-width: 600px;
+      min-height: 130px;
+      font-size: 0.88rem;
+      line-height: 1.8;
+      color: #c4b5fd;
+    }
+    #log-box p { margin: 0; }
+
+    #restart-btn {
+      display: none;
+      margin-top: 18px;
+      padding: 12px 30px;
+      font-size: 1rem;
+      background: #7c3aed;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #restart-btn:hover { background: #6d28d9; }
+  </style>
+</head>
+<body>
+
+<h1>🐉 Dragon Tamer</h1>
+<div id="status">Connecting...</div>
+
+<div id="hp-bar">
+  <span class="player-hp">❤️ You: <span id="player-hp">30</span></span>
+  <span class="enemy-hp">💀 Enemy: <span id="enemy-hp">30</span></span>
+</div>
+
+<div id="hand"></div>
+
+<div id="log-box"><p>Waiting for server...</p></div>
+
+<button id="restart-btn" onclick="restart()">🔄 Play Again</button>
+
+<script>
+  // Auto-detect WebSocket URL for Replit
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const WS_URL   = `${protocol}://${location.host}`;
+
+  let ws;
+  let currentState = null;
+
+  function connect() {
+    document.getElementById("status").textContent = "Connecting...";
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+      document.getElementById("status").textContent = "✅ Connected";
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.state) {
+        currentState = data.state;
+        renderState(data.state);
+      }
+    };
+
+    ws.onclose = () => {
+      document.getElementById("status").textContent = "❌ Disconnected — refresh to reconnect";
+    };
+
+    ws.onerror = () => {
+      document.getElementById("status").textContent = "⚠️ Connection error";
+    };
+  }
+
+  function renderState(state) {
+    document.getElementById("player-hp").textContent = Math.max(0, state.player_hp);
+    document.getElementById("enemy-hp").textContent  = Math.max(0, state.enemy_hp);
+
+    // Render hand
+    const hand = document.getElementById("hand");
+    hand.innerHTML = "";
+    if (!state.game_over) {
+      state.player_hand.forEach((card, i) => {
+        const div = document.createElement("div");
+        div.className = "card";
+        div.innerHTML = `
+          <div class="emoji">${card.emoji}</div>
+          <div class="name">${card.name}</div>
+          <div class="type">${card.type}</div>
+          <div class="stats">
+            ⚔️ ATK ${card.attack} &nbsp; 🛡️ DEF ${card.defense}<br>
+            ❤️ HP ${card.hp}
+          </div>
+        `;
+        div.onclick = () => playCard(i);
+        hand.appendChild(div);
+      });
+    }
+
+    // Render log
+    const logBox = document.getElementById("log-box");
+    logBox.innerHTML = state.log.map(l => `<p>${l}</p>`).join("");
+
+    // Show restart button if game over
+    const btn = document.getElementById("restart-btn");
+    btn.style.display = state.game_over ? "inline-block" : "none";
+  }
+
+  function playCard(index) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: "play_card", card_index: index }));
+    }
+  }
+
+  function restart() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action: "restart" }));
+      document.getElementById("restart-btn").style.display = "none";
+    }
+  }
+
+  connect();
+</script>
+</body>
+</html>
