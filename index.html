@@ -362,6 +362,7 @@ body::before{
       <button class="btn btn-gold" onclick="createRoom()">New Room</button>
       <button class="btn btn-outline" onclick="joinRoom()">Join Room</button>
     </div>
+    <button class="btn btn-outline btn-full" onclick="spectateRoom()" style="border-color:rgba(195,155,211,.5);color:#C39BD3;">👁 Watch a Game</button>
 
     <div class="conn-status">
       <div class="conn-dot" id="connDot"></div>
@@ -468,7 +469,7 @@ body::before{
 // ══════════════════════════════════════════════════════
 // Auto-detect: localhost uses ws://, production uses wss://
 const WS_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'ws://localhost:8765'
+  ? 'ws://localhost:8000'
   : `wss://${window.location.hostname}`;
 
 // ══════════════════════════════════════════════════════
@@ -483,6 +484,8 @@ let selectedSuit  = 'Hearts';
 let selectedCardCids = [];
 let aiCount = 3;
 let phase = '';
+let isSpectator = false;
+let spectatorCount = 0;
 
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
@@ -544,6 +547,13 @@ function joinRoom() {
   const roomId = document.getElementById('roomCode').value.trim().toUpperCase();
   if (!roomId) { alert('Enter a room code to join'); return; }
   send({ type: 'join_room', name, room_id: roomId });
+}
+
+function spectateRoom() {
+  const name = getName();
+  const roomId = document.getElementById('roomCode').value.trim().toUpperCase();
+  if (!roomId) { alert('Enter a room code to spectate'); return; }
+  send({ type: 'spectate_room', name, room_id: roomId });
 }
 
 function startGame() {
@@ -612,6 +622,22 @@ function handleMessage(msg) {
       myRoomId = msg.room_id;
       applyState(msg.state);
       showGameScreen();
+      break;
+
+    case 'spectating':
+      isSpectator = true;
+      myRoomId = msg.room_id;
+      spectatorCount = msg.spectator_count || 0;
+      gameState = msg.state;
+      renderPlayers();
+      showGameScreen();
+      if (msg.state && msg.state.phase) setPhase(msg.state.phase, msg.state);
+      addLog(`👁 You are watching room ${msg.room_id} (${spectatorCount} watching)`, 'imp');
+      break;
+
+    case 'spectator_update':
+      spectatorCount = msg.spectator_count || 0;
+      updateSpectatorBadge();
       break;
 
     case 'game_started':
@@ -688,6 +714,7 @@ function setPhase(newPhase, data) {
   const mainBtn = document.getElementById('mainBtn');
 
   declSec.classList.add('hidden');
+  if (isSpectator) { mainBtn.disabled = true; mainBtn.textContent = '👁 Spectating'; return; }
   mainBtn.disabled = false;
 
   if (newPhase === 'leader_declare') {
@@ -743,6 +770,25 @@ function nameOf(pid) {
 function showGameScreen() {
   document.getElementById('lobbyScreen').classList.add('hidden');
   document.getElementById('gameScreen').classList.remove('hidden');
+  if (isSpectator) {
+    document.getElementById('actionBar') && (document.getElementById('actionBar').style.display = 'none');
+    document.querySelector('.action-bar').style.display = 'none';
+    document.querySelector('#handCards').parentElement.classList.add('hidden');
+    document.querySelector('#declareSection').classList.add('hidden');
+    const specBanner = document.createElement('div');
+    specBanner.id = 'specBanner';
+    specBanner.style.cssText = 'background:linear-gradient(90deg,rgba(74,26,107,.85),rgba(74,26,107,.4));padding:7px 14px;text-align:center;font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;color:#C39BD3;flex-shrink:0;';
+    specBanner.innerHTML = `👁 SPECTATING · Room ${myRoomId} · <span id="specCount">${spectatorCount}</span> watching`;
+    const phaseBannerEl = document.getElementById('phaseBanner');
+    phaseBannerEl.parentNode.insertBefore(specBanner, phaseBannerEl);
+  }
+}
+
+function updateSpectatorBadge() {
+  const el = document.getElementById('specCount');
+  if (el) el.textContent = spectatorCount;
+  const badge = document.getElementById('specWatchBadge');
+  if (badge) badge.textContent = `👁 ${spectatorCount}`;
 }
 
 function renderPlayers() {
@@ -751,6 +797,14 @@ function renderPlayers() {
   el.innerHTML = '';
   const order = gameState.order || Object.keys(gameState.players || {});
   const leadPid = gameState.lead_pid;
+
+  // Update section title with spectator count
+  const secTitle = el.closest('.section')?.querySelector('.section-title');
+  if (secTitle) {
+    secTitle.innerHTML = spectatorCount > 0
+      ? `⚔ Round Table &nbsp;<span style="font-size:9px;color:#C39BD3;background:rgba(74,26,107,.4);padding:1px 6px;border-radius:3px;letter-spacing:1px;">👁 ${spectatorCount} watching</span>`
+      : '⚔ Round Table';
+  }
 
   order.forEach((pid, idx) => {
     const p = gameState.players[pid];

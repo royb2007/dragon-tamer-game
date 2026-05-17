@@ -11,6 +11,8 @@ import logging
 import os
 import uuid
 from typing import Dict, Set
+from http.server import SimpleHTTPRequestHandler
+import threading
 
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -26,10 +28,15 @@ log = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════
 rooms  = RoomManager()
 
-# room_id → set of websockets
+# room_id → set of websockets (players + spectators)
 room_sockets: Dict[str, Set[WebSocketServerProtocol]] = {}
-# websocket → {pid, room_id, name}
+# websocket → {pid, room_id, name, is_spectator}
 socket_meta:  Dict[WebSocketServerProtocol, dict] = {}
+
+
+def _spectator_count(room_id: str) -> int:
+    return sum(1 for ws, m in socket_meta.items()
+               if m.get('room_id') == room_id and m.get('is_spectator'))
 
 
 def _get_room_sockets(room_id: str) -> Set[WebSocketServerProtocol]:
@@ -195,22 +202,53 @@ async def handle_get_state(ws, data):
     await send(ws, {'type': 'state', 'state': game.player_state(meta['pid'])})
 
 
+async def handle_spectate_room(ws, data):
+    room_id = data.get('room_id', '').upper()
+    name    = data.get('name', 'Spectator')
+
+    game = rooms.get_room(room_id)
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Room not found'})
+        return
+
+    room_sockets.setdefault(room_id, set()).add(ws)
+    socket_meta[ws] = {'pid': None, 'room_id': room_id,
+                        'name': name, 'is_spectator': True}
+
+    spec_count = _spectator_count(room_id)
+    await send(ws, {
+        'type': 'spectating',
+        'room_id': room_id,
+        'spectator_count': spec_count,
+        'state': game.public_state(),
+    })
+    await broadcast(room_id, {
+        'type': 'spectator_update',
+        'spectator_count': spec_count,
+    }, exclude=ws)
+    log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
+
+
 async def handle_list_rooms(ws, data):
-    await send(ws, {'type': 'rooms', 'rooms': rooms.list_rooms()})
+    room_list = rooms.list_rooms()
+    for r in room_list:
+        r['spectator_count'] = _spectator_count(r['room_id'])
+    await send(ws, {'type': 'rooms', 'rooms': room_list})
 
 
 # ══════════════════════════════════════════════════════
 # MAIN HANDLER
 # ══════════════════════════════════════════════════════
 HANDLERS = {
-    'create_room':  handle_create_room,
-    'join_room':    handle_join_room,
-    'start_game':   handle_start_game,
-    'declare':      handle_declare,
-    'pick_cards':   handle_pick_cards,
-    'reveal':       handle_reveal,
-    'get_state':    handle_get_state,
-    'list_rooms':   handle_list_rooms,
+    'create_room':   handle_create_room,
+    'join_room':     handle_join_room,
+    'spectate_room': handle_spectate_room,
+    'start_game':    handle_start_game,
+    'declare':       handle_declare,
+    'pick_cards':    handle_pick_cards,
+    'reveal':        handle_reveal,
+    'get_state':     handle_get_state,
+    'list_rooms':    handle_list_rooms,
 }
 
 
@@ -239,15 +277,37 @@ async def connection_handler(ws: WebSocketServerProtocol):
             room_sockets[room_id].discard(ws)
             if not room_sockets[room_id]:
                 room_sockets.pop(room_id, None)
-        log.info(f"Disconnected: {meta.get('name', 'unknown')}")
+            elif meta.get('is_spectator'):
+                # Notify remaining sockets that spectator count changed
+                await broadcast(room_id, {
+                    'type': 'spectator_update',
+                    'spectator_count': _spectator_count(room_id),
+                })
+        log.info(f"Disconnected: {meta.get('name', 'unknown')} "
+                 f"({'spectator' if meta.get('is_spectator') else 'player'})")
+
+
+def _start_http_server(http_port: int):
+    """Serve index.html on a background thread."""
+    import socketserver
+    handler = SimpleHTTPRequestHandler
+    handler.log_message = lambda *a: None  # silence request logs
+    with socketserver.TCPServer(('0.0.0.0', http_port), handler) as httpd:
+        log.info(f"HTTP server serving on http://0.0.0.0:{http_port}")
+        httpd.serve_forever()
 
 
 async def main():
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 8000))
-    log.info(f'Environment PORT: {os.getenv("PORT", "not set — using 8000")}')
-    log.info(f"Dragon Tamer Server starting on ws://{host}:{port}")
-    async with websockets.serve(connection_handler, host, port):
+    ws_port   = int(os.getenv('WS_PORT', 8000))
+    http_port = int(os.getenv('HTTP_PORT', 5000))
+
+    # Start static file server on a background thread
+    t = threading.Thread(target=_start_http_server, args=(http_port,), daemon=True)
+    t.start()
+
+    log.info(f"Dragon Tamer Server starting on ws://{host}:{ws_port}")
+    async with websockets.serve(connection_handler, host, ws_port):
         await asyncio.Future()  # run forever
 
 
