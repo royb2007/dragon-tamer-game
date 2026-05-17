@@ -325,6 +325,43 @@ body::before{
 .modal p{font-size:14px;color:rgba(253,246,227,.7);
   margin-bottom:18px;line-height:1.7;}
 .modal .dragon-row{font-size:36px;margin:10px 0;}
+
+/* ══ ROOM BROWSER ══ */
+.browser-modal{
+  background:linear-gradient(160deg,#0f1f3d,#0A1628);
+  border:2px solid rgba(195,155,211,.5);border-radius:16px;
+  padding:20px;max-width:380px;width:100%;
+}
+.browser-modal h2{font-family:'Cinzel',serif;font-size:18px;
+  color:#C39BD3;margin-bottom:4px;letter-spacing:2px;}
+.browser-subtitle{font-size:11px;color:rgba(253,246,227,.4);
+  letter-spacing:1px;margin-bottom:14px;}
+.room-list{display:flex;flex-direction:column;gap:8px;
+  max-height:340px;overflow-y:auto;margin-bottom:14px;}
+.room-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(195,155,211,.25);
+  border-radius:10px;padding:12px 14px;cursor:pointer;
+  transition:all .2s;text-align:left;display:flex;
+  flex-direction:column;gap:5px;
+}
+.room-card:hover{background:rgba(195,155,211,.1);
+  border-color:rgba(195,155,211,.5);}
+.room-card-top{display:flex;align-items:center;justify-content:space-between;}
+.room-code{font-family:'Cinzel',serif;font-size:16px;
+  color:#C39BD3;letter-spacing:3px;font-weight:700;}
+.room-phase-badge{font-size:9px;font-family:'Cinzel',serif;
+  letter-spacing:1px;padding:2px 7px;border-radius:4px;
+  text-transform:uppercase;}
+.phase-waiting{background:rgba(184,134,11,.2);color:var(--gold-light);}
+.phase-playing{background:rgba(139,0,0,.3);color:#E87070;}
+.room-card-stats{display:flex;gap:10px;align-items:center;}
+.room-stat{font-size:11px;color:rgba(253,246,227,.5);
+  display:flex;align-items:center;gap:3px;}
+.room-stat span{color:rgba(253,246,227,.8);}
+.no-rooms{text-align:center;padding:28px 0;
+  color:rgba(253,246,227,.35);font-size:13px;}
+.browser-refresh{font-size:10px;color:rgba(253,246,227,.35);
+  text-align:center;margin-bottom:10px;letter-spacing:1px;}
 </style>
 </head>
 <body>
@@ -463,6 +500,17 @@ body::before{
   </div>
 </div>
 
+<!-- ══ ROOM BROWSER MODAL ══ -->
+<div class="overlay hidden" id="roomBrowserOverlay">
+  <div class="browser-modal">
+    <h2>👁 Live Games</h2>
+    <div class="browser-subtitle">CLICK A ROOM TO SPECTATE</div>
+    <div class="room-list" id="roomListEl"></div>
+    <div class="browser-refresh" id="refreshLabel">Refreshing every 5s…</div>
+    <button class="btn btn-outline btn-full" onclick="closeRoomBrowser()" style="border-color:rgba(195,155,211,.4);color:#C39BD3;">Close</button>
+  </div>
+</div>
+
 <script>
 // ══════════════════════════════════════════════════════
 //  CONFIG — change WS_URL after deploying
@@ -552,8 +600,85 @@ function joinRoom() {
 function spectateRoom() {
   const name = getName();
   const roomId = document.getElementById('roomCode').value.trim().toUpperCase();
-  if (!roomId) { alert('Enter a room code to spectate'); return; }
+  if (!roomId) {
+    openRoomBrowser();
+    return;
+  }
   send({ type: 'spectate_room', name, room_id: roomId });
+}
+
+// ══════════════════════════════════════════════════════
+//  ROOM BROWSER
+// ══════════════════════════════════════════════════════
+let _browserRefreshTimer = null;
+
+function openRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.remove('hidden');
+  fetchRooms();
+  _browserRefreshTimer = setInterval(fetchRooms, 5000);
+}
+
+function closeRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.add('hidden');
+  clearInterval(_browserRefreshTimer);
+  _browserRefreshTimer = null;
+}
+
+function fetchRooms() {
+  send({ type: 'list_rooms' });
+  const lbl = document.getElementById('refreshLabel');
+  if (lbl) lbl.textContent = 'Updated just now · refreshing every 5s';
+}
+
+function spectateFromBrowser(roomId) {
+  closeRoomBrowser();
+  document.getElementById('roomCode').value = roomId;
+  const name = getName();
+  send({ type: 'spectate_room', name, room_id: roomId });
+}
+
+const PHASE_LABELS = {
+  waiting: 'Lobby',
+  leader_declare: 'Declaring',
+  pick_cards: 'Picking',
+  reveal: 'Reveal',
+  end_round: 'End Round',
+  game_over: 'Game Over',
+};
+
+function renderRoomList(roomsData) {
+  const el = document.getElementById('roomListEl');
+  if (!el) return;
+
+  if (!roomsData || roomsData.length === 0) {
+    el.innerHTML = '<div class="no-rooms">🐉 No active games right now.<br>Create one and others can watch!</div>';
+    return;
+  }
+
+  el.innerHTML = '';
+  roomsData.forEach(room => {
+    const isWaiting = room.phase === 'waiting';
+    const phaseLabel = PHASE_LABELS[room.phase] || room.phase;
+    const phaseCls = isWaiting ? 'phase-waiting' : 'phase-playing';
+    const specStr = room.spectator_count > 0
+      ? `<div class="room-stat">👁 <span>${room.spectator_count}</span></div>`
+      : '';
+
+    const card = document.createElement('div');
+    card.className = 'room-card';
+    card.onclick = () => spectateFromBrowser(room.room_id);
+    card.innerHTML = `
+      <div class="room-card-top">
+        <div class="room-code">${room.room_id}</div>
+        <div class="room-phase-badge ${phaseCls}">${phaseLabel}</div>
+      </div>
+      <div class="room-card-stats">
+        <div class="room-stat">⚔ <span>${room.players}/${room.max_players}</span> players</div>
+        ${specStr}
+      </div>
+    `;
+    el.appendChild(card);
+  });
 }
 
 function startGame() {
@@ -696,6 +821,10 @@ function handleMessage(msg) {
 
     case 'game_over':
       showGameOver(msg);
+      break;
+
+    case 'rooms':
+      renderRoomList(msg.rooms);
       break;
 
     case 'error':
