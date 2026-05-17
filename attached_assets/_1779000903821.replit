@@ -1,0 +1,14 @@
+run = "python server.py"
+entrypoint = "server.py"
+modules = ["python-3.11"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "python server.py"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 8765
+externalPort = 80
