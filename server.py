@@ -10,9 +10,8 @@ import json
 import logging
 import os
 import uuid
+import http
 from typing import Dict, Set
-from http.server import SimpleHTTPRequestHandler
-import threading
 
 import websockets
 from websockets.server import WebSocketServerProtocol
@@ -287,27 +286,32 @@ async def connection_handler(ws: WebSocketServerProtocol):
                  f"({'spectator' if meta.get('is_spectator') else 'player'})")
 
 
-def _start_http_server(http_port: int):
-    """Serve index.html on a background thread."""
-    import socketserver
-    handler = SimpleHTTPRequestHandler
-    handler.log_message = lambda *a: None  # silence request logs
-    with socketserver.TCPServer(('0.0.0.0', http_port), handler) as httpd:
-        log.info(f"HTTP server serving on http://0.0.0.0:{http_port}")
-        httpd.serve_forever()
+async def _http_handler(path, request_headers):
+    """Serve index.html for plain HTTP requests; let WS upgrades through."""
+    if request_headers.get("Upgrade", "").lower() == "websocket":
+        return None  # hand off to websocket handler
+    try:
+        with open("index.html", "rb") as f:
+            body = f.read()
+        headers = [
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-cache"),
+        ]
+        return http.HTTPStatus.OK, headers, body
+    except FileNotFoundError:
+        return http.HTTPStatus.NOT_FOUND, [], b"Not found"
 
 
 async def main():
     host = os.getenv('HOST', '0.0.0.0')
-    ws_port   = int(os.getenv('WS_PORT', 8000))
-    http_port = int(os.getenv('HTTP_PORT', 5000))
+    port = int(os.getenv('PORT', 5000))
 
-    # Start static file server on a background thread
-    t = threading.Thread(target=_start_http_server, args=(http_port,), daemon=True)
-    t.start()
-
-    log.info(f"Dragon Tamer Server starting on ws://{host}:{ws_port}")
-    async with websockets.serve(connection_handler, host, ws_port):
+    log.info(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
+    async with websockets.serve(
+        connection_handler, host, port,
+        process_request=_http_handler
+    ):
         await asyncio.Future()  # run forever
 
 

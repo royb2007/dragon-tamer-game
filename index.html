@@ -517,8 +517,8 @@ body::before{
 // ══════════════════════════════════════════════════════
 // Auto-detect: localhost uses ws://, production uses wss://
 const WS_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  ? 'ws://localhost:8000'
-  : `wss://${window.location.hostname}`;
+  ? `ws://${window.location.hostname}:${window.location.port || 5000}`
+  : `wss://${window.location.host}`;
 
 // ══════════════════════════════════════════════════════
 //  STATE
