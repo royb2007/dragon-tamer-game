@@ -212,7 +212,9 @@ class PlayerState:
 
     @property
     def dragon_count(self) -> int:
-        return (sum(1 for c in self.hand if c.is_dragon) + len(self.sleeping))
+        # Only real suit dragons count (not jokers) + sleeping pairs
+        return (sum(1 for c in self.hand if c.is_dragon and not c.is_joker)
+                + len(self.sleeping))
 
     def apply_sleeping(self):
         sleeping_cids = {c.cid for pair in self.sleeping for c in pair}

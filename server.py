@@ -92,10 +92,10 @@ async def broadcast_events(room_id: str, events: list,
 # ══════════════════════════════════════════════════════
 async def handle_create_room(ws, data):
     room_id  = data.get('room_id') or str(uuid.uuid4())[:8].upper()
-    max_pl   = int(data.get('max_players', 10))
     pid      = data.get('pid') or str(uuid.uuid4())[:8]
     name     = data.get('name', 'Player')
-    ai_count = int(data.get('ai_count', 9))
+    ai_count = int(data.get('ai_count', 3))
+    max_pl   = 1 + ai_count   # 1 human + N AI opponents
 
     if rooms.get_room(room_id):
         await send(ws, {'type': 'error', 'msg': 'Room already exists'})

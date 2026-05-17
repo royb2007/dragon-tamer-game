@@ -208,6 +208,19 @@ body::before{
 .card.joker-time  .card-rank{color:#E8A020;}
 
 .card-center{font-size:24px;line-height:1;}
+.card.hearts .card-center,.card.diamonds .card-center{color:#7B1515;}
+.card.clubs  .card-center,.card.spades  .card-center{color:#FDF6E3;}
+.card.joker-space .card-center{color:#C39BD3;}
+.card.joker-time  .card-center{color:#E8A020;}
+
+.card-order{
+  position:absolute;top:3px;right:4px;
+  width:16px;height:16px;border-radius:50%;
+  background:var(--gold-bright);color:var(--navy);
+  font-size:10px;font-family:'Cinzel',serif;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
 .card-bot{font-size:14px;font-family:'Cinzel',serif;font-weight:700;
   transform:rotate(180deg);align-self:flex-end;}
 .card.hearts .card-bot,.card.diamonds .card-bot{color:#7B1515;}
@@ -389,9 +402,9 @@ body::before{
     <div class="ai-row">
       <label>AI Opponents</label>
       <div class="ai-count" id="aiCount">
-        <button class="ai-btn active" onclick="setAI(3)">3</button>
-        <button class="ai-btn" onclick="setAI(5)">5</button>
-        <button class="ai-btn" onclick="setAI(9)">9</button>
+        <button class="ai-btn active" onclick="setAI(3,this)">3</button>
+        <button class="ai-btn" onclick="setAI(5,this)">5</button>
+        <button class="ai-btn" onclick="setAI(9,this)">9</button>
       </div>
     </div>
 
@@ -432,7 +445,9 @@ body::before{
           <label>Steps</label>
           <div class="btn-group" id="stepsGroup">
             <button class="step-btn" onclick="setSteps(1)">1</button>
+            <button class="step-btn" onclick="setSteps(2)">2</button>
             <button class="step-btn active" onclick="setSteps(3)">3</button>
+            <button class="step-btn" onclick="setSteps(4)">4</button>
             <button class="step-btn" onclick="setSteps(5)">5</button>
           </div>
         </div>
@@ -484,7 +499,7 @@ body::before{
     <p>Room Code: <strong id="roomCodeDisplay" style="color:var(--gold-bright);font-family:Cinzel,serif;font-size:20px;letter-spacing:3px;"></strong><br>
     Share this code with friends or start now.</p>
     <div style="display:flex;gap:8px;">
-      <button class="btn btn-outline btn-full" onclick="copyRoomCode()">Copy Code</button>
+      <button class="btn btn-outline btn-full" onclick="copyRoomCode(this)">Copy Code</button>
       <button class="btn btn-gold btn-full" onclick="startGame()">Start Game</button>
     </div>
   </div>
@@ -574,10 +589,10 @@ function setConnStatus(ok, text) {
 // ══════════════════════════════════════════════════════
 //  LOBBY ACTIONS
 // ══════════════════════════════════════════════════════
-function setAI(n) {
+function setAI(n, btn) {
   aiCount = n;
   document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-  event.target.classList.add('active');
+  if (btn) btn.classList.add('active');
 }
 
 function getName() {
@@ -686,11 +701,9 @@ function startGame() {
   send({ type: 'start_game' });
 }
 
-function copyRoomCode() {
+function copyRoomCode(btn) {
   navigator.clipboard.writeText(myRoomId).then(() => {
-    const btn = event.target;
-    btn.textContent = 'Copied!';
-    setTimeout(() => btn.textContent = 'Copy Code', 1500);
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy Code', 1500); }
   });
 }
 
@@ -996,11 +1009,16 @@ function renderHand() {
     else if (card.is_portal)   badge = 'PORTAL';
     else if (card.orig_rank===8) badge = 'WIZARD';
 
+    const orderIdx = selectedCardCids.indexOf(card.cid);
+    const orderBadge = (isPick && orderIdx >= 0)
+      ? `<span class="card-order">${orderIdx + 1}</span>` : '';
+
     div.innerHTML = `
       <span class="card-rank">${rank}</span>
       <span class="card-center">${sym}</span>
       <span class="card-bot">${rank}</span>
       ${badge ? `<span class="card-badge">${badge}</span>` : ''}
+      ${orderBadge}
     `;
 
     if (isPick) {
