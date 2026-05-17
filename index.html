@@ -733,7 +733,7 @@ function mainAction() {
   } else if (phase === 'pick_cards') {
     if (selectedCardCids.length === 0) { addLog('Select your cards first!', 'warn'); return; }
     send({ type: 'pick_cards', card_cids: selectedCardCids });
-    selectedCardCids = [];
+    // Don't clear here — wait for server confirmation (cards_picked) before clearing
   } else if (phase === 'reveal') {
     send({ type: 'reveal' });
   }
@@ -779,6 +779,7 @@ function handleMessage(msg) {
       break;
 
     case 'game_started':
+      selectedCardCids = [];
       addLog('── Game started! ──', 'imp');
       break;
 
@@ -806,6 +807,12 @@ function handleMessage(msg) {
       break;
 
     case 'cards_picked':
+      if (msg.pid === myPid) {
+        selectedCardCids = [];
+        const btn = document.getElementById('mainBtn');
+        btn.disabled = true;
+        btn.textContent = 'Waiting for others...';
+      }
       addLog(`${nameOf(msg.pid)} is ready (${msg.count} cards)`);
       break;
 
@@ -842,6 +849,14 @@ function handleMessage(msg) {
 
     case 'error':
       addLog(`⚠ ${msg.msg}`, 'warn');
+      // If pick was rejected, re-enable card selection so player can try again
+      if (phase === 'pick_cards') {
+        const need = gameState?.declared_steps || 0;
+        const btn = document.getElementById('mainBtn');
+        btn.disabled = selectedCardCids.length < need;
+        btn.textContent = `CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+        renderHand();
+      }
       break;
   }
 }

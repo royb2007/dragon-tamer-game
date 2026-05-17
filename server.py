@@ -156,6 +156,8 @@ async def handle_start_game(ws, data):
     if not game:
         await send(ws, {'type': 'error', 'msg': 'Not in a room'})
         return
+    if game.phase != Phase.WAITING:
+        return  # silently ignore duplicate start_game calls
 
     events = game.start_game()
     await broadcast_events(meta['room_id'], events)

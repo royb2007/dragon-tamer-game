@@ -384,6 +384,8 @@ class DragonTamerGame:
 
     def start_game(self) -> List[dict]:
         """Returns list of events to broadcast."""
+        if self.phase != Phase.WAITING:
+            return [{'type': 'error', 'msg': 'Game already started'}]
         if len(self.players) < 2:
             return [{'type': 'error', 'msg': 'Need at least 2 players'}]
 
