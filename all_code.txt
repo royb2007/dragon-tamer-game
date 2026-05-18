@@ -1,0 +1,2301 @@
+"""
+Dragon Tamer — WebSocket Server
+Python 3.10+ | websockets 12+
+
+Run locally:  python server.py
+Deploy:       Railway / Render (see README)
+"""
+import asyncio
+import json
+import logging
+import os
+import uuid
+import http
+from typing import Dict, Set
+
+import websockets
+from websockets.server import WebSocketServerProtocol
+
+from game_engine import RoomManager, Phase
+
+logging.basicConfig(level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(message)s')
+log = logging.getLogger(__name__)
+
+# ══════════════════════════════════════════════════════
+# CONNECTION REGISTRY
+# ══════════════════════════════════════════════════════
+rooms  = RoomManager()
+
+# room_id → set of websockets (players + spectators)
+room_sockets: Dict[str, Set[WebSocketServerProtocol]] = {}
+# websocket → {pid, room_id, name, is_spectator}
+socket_meta:  Dict[WebSocketServerProtocol, dict] = {}
+
+
+def _spectator_count(room_id: str) -> int:
+    return sum(1 for ws, m in socket_meta.items()
+               if m.get('room_id') == room_id and m.get('is_spectator'))
+
+
+def _get_room_sockets(room_id: str) -> Set[WebSocketServerProtocol]:
+    return room_sockets.get(room_id, set())
+
+
+async def broadcast(room_id: str, message: dict,
+                    exclude: WebSocketServerProtocol = None):
+    """Send a message to every socket in a room."""
+    data = json.dumps(message)
+    targets = {ws for ws in _get_room_sockets(room_id) if ws is not exclude}
+    if targets:
+        await asyncio.gather(*[ws.send(data) for ws in targets],
+                              return_exceptions=True)
+
+
+async def send(ws: WebSocketServerProtocol, message: dict):
+    """Send a message to one socket."""
+    try:
+        await ws.send(json.dumps(message))
+    except Exception:
+        pass
+
+
+async def broadcast_events(room_id: str, events: list,
+                            private_ws: WebSocketServerProtocol = None):
+    """
+    Broadcast a list of engine events.
+    hand_update events are sent only to the relevant player.
+    """
+    game = rooms.get_room(room_id)
+    if not game:
+        return
+
+    # Build pid → ws map
+    pid_to_ws: Dict[str, WebSocketServerProtocol] = {}
+    for ws, meta in socket_meta.items():
+        if meta.get('room_id') == room_id:
+            pid_to_ws[meta['pid']] = ws
+
+    for event in events:
+        if event['type'] == 'hand_update':
+            # Send only to the relevant player
+            target_ws = pid_to_ws.get(event['pid'])
+            if target_ws:
+                await send(target_ws, event)
+        else:
+            # Broadcast to all
+            await broadcast(room_id, event)
+
+
+# ══════════════════════════════════════════════════════
+# MESSAGE HANDLERS
+# ══════════════════════════════════════════════════════
+async def handle_create_room(ws, data):
+    room_id  = data.get('room_id') or str(uuid.uuid4())[:8].upper()
+    pid      = data.get('pid') or str(uuid.uuid4())[:8]
+    name     = data.get('name', 'Player')
+    ai_count = int(data.get('ai_count', 3))
+    max_pl   = 1 + ai_count   # 1 human + N AI opponents
+
+    if rooms.get_room(room_id):
+        await send(ws, {'type': 'error', 'msg': 'Room already exists'})
+        return
+
+    game = rooms.create_room(room_id, max_pl)
+    game.add_player(pid, name)
+    game.fill_with_ai(['Aggressive','Balanced','Conservative','Hoarder',
+                        'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger'][:ai_count])
+
+    room_sockets[room_id] = {ws}
+    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
+
+    await send(ws, {
+        'type': 'room_created',
+        'room_id': room_id,
+        'pid': pid,
+        'state': game.player_state(pid),
+    })
+    log.info(f"Room {room_id} created by {name} ({pid})")
+
+
+async def handle_join_room(ws, data):
+    room_id = data.get('room_id', '').upper()
+    pid     = data.get('pid') or str(uuid.uuid4())[:8]
+    name    = data.get('name', 'Player')
+
+    game = rooms.get_room(room_id)
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Room not found'})
+        return
+
+    result = game.add_player(pid, name)
+    if not result['ok']:
+        await send(ws, {'type': 'error', 'msg': result['error']})
+        return
+
+    room_sockets.setdefault(room_id, set()).add(ws)
+    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
+
+    await send(ws, {
+        'type': 'room_joined',
+        'room_id': room_id,
+        'pid': pid,
+        'state': game.player_state(pid),
+    })
+    await broadcast(room_id, {
+        'type': 'player_joined',
+        'name': name,
+        'player_count': len(game.players),
+    }, exclude=ws)
+    log.info(f"{name} ({pid}) joined room {room_id}")
+
+
+async def handle_start_game(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Not in a room'})
+        return
+    if game.phase != Phase.WAITING:
+        return  # silently ignore duplicate start_game calls
+
+    events = game.start_game()
+    await broadcast_events(meta['room_id'], events)
+    log.info(f"Game started in room {meta['room_id']}")
+
+
+async def handle_declare(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+
+    steps   = int(data.get('steps', 3))
+    element = data.get('element', 'Hearts')
+    events  = game.player_declare(meta['pid'], steps, element)
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_pick_cards(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+
+    cids   = [int(c) for c in data.get('card_cids', [])]
+    events = game.player_pick_cards(meta['pid'], cids)
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_reveal(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+
+    events = game.reveal_step(meta['pid'])
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_get_state(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Not in a room'})
+        return
+    await send(ws, {'type': 'state', 'state': game.player_state(meta['pid'])})
+
+
+async def handle_spectate_room(ws, data):
+    room_id = data.get('room_id', '').upper()
+    name    = data.get('name', 'Spectator')
+
+    game = rooms.get_room(room_id)
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Room not found'})
+        return
+
+    room_sockets.setdefault(room_id, set()).add(ws)
+    socket_meta[ws] = {'pid': None, 'room_id': room_id,
+                        'name': name, 'is_spectator': True}
+
+    spec_count = _spectator_count(room_id)
+    await send(ws, {
+        'type': 'spectating',
+        'room_id': room_id,
+        'spectator_count': spec_count,
+        'state': game.public_state(),
+    })
+    await broadcast(room_id, {
+        'type': 'spectator_update',
+        'spectator_count': spec_count,
+    }, exclude=ws)
+    log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
+
+
+async def handle_list_rooms(ws, data):
+    room_list = rooms.list_rooms()
+    for r in room_list:
+        r['spectator_count'] = _spectator_count(r['room_id'])
+    await send(ws, {'type': 'rooms', 'rooms': room_list})
+
+
+# ══════════════════════════════════════════════════════
+# MAIN HANDLER
+# ══════════════════════════════════════════════════════
+HANDLERS = {
+    'create_room':   handle_create_room,
+    'join_room':     handle_join_room,
+    'spectate_room': handle_spectate_room,
+    'start_game':    handle_start_game,
+    'declare':       handle_declare,
+    'pick_cards':    handle_pick_cards,
+    'reveal':        handle_reveal,
+    'get_state':     handle_get_state,
+    'list_rooms':    handle_list_rooms,
+}
+
+
+async def connection_handler(ws: WebSocketServerProtocol):
+    log.info(f"New connection: {ws.remote_address}")
+    try:
+        async for raw in ws:
+            try:
+                data = json.loads(raw)
+                msg_type = data.get('type', '')
+                handler = HANDLERS.get(msg_type)
+                if handler:
+                    await handler(ws, data)
+                else:
+                    await send(ws, {'type': 'error', 'msg': f'Unknown type: {msg_type}'})
+            except json.JSONDecodeError:
+                await send(ws, {'type': 'error', 'msg': 'Invalid JSON'})
+            except Exception as e:
+                log.exception(f"Handler error: {e}")
+                await send(ws, {'type': 'error', 'msg': str(e)})
+    finally:
+        # Cleanup on disconnect
+        meta = socket_meta.pop(ws, {})
+        room_id = meta.get('room_id')
+        if room_id and room_id in room_sockets:
+            room_sockets[room_id].discard(ws)
+            if not room_sockets[room_id]:
+                room_sockets.pop(room_id, None)
+            elif meta.get('is_spectator'):
+                # Notify remaining sockets that spectator count changed
+                await broadcast(room_id, {
+                    'type': 'spectator_update',
+                    'spectator_count': _spectator_count(room_id),
+                })
+        log.info(f"Disconnected: {meta.get('name', 'unknown')} "
+                 f"({'spectator' if meta.get('is_spectator') else 'player'})")
+
+
+async def _http_handler(path, request_headers):
+    """Serve index.html for plain HTTP requests; let WS upgrades through."""
+    if request_headers.get("Upgrade", "").lower() == "websocket":
+        return None  # hand off to websocket handler
+    try:
+        with open("index.html", "rb") as f:
+            body = f.read()
+        headers = [
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("Content-Length", str(len(body))),
+            ("Cache-Control", "no-cache"),
+        ]
+        return http.HTTPStatus.OK, headers, body
+    except FileNotFoundError:
+        return http.HTTPStatus.NOT_FOUND, [], b"Not found"
+
+
+async def main():
+    host = os.getenv('HOST', '0.0.0.0')
+    port = int(os.getenv('PORT', 5000))
+
+    log.info(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
+    async with websockets.serve(
+        connection_handler, host, port,
+        process_request=_http_handler
+    ):
+        await asyncio.Future()  # run forever
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
+"""
+Dragon Tamer — Game Engine v1.0
+Complete multiplayer game logic (no UI, no networking)
+Built on top of the verified simulation engine.
+"""
+import random
+import json
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Any
+
+# ══════════════════════════════════════════════════════
+# CONSTANTS
+# ══════════════════════════════════════════════════════
+SUITS = ['Hearts', 'Clubs', 'Diamonds', 'Spades']
+SUIT_SYM = {'Hearts': '♥', 'Clubs': '♣', 'Diamonds': '♦', 'Spades': '♠'}
+SUIT_ELEMENT = {'Hearts': 'Fire', 'Clubs': 'Water', 'Diamonds': 'Air', 'Spades': 'Earth'}
+WIN_DRAGONS = 4
+
+
+class Phase(str, Enum):
+    WAITING       = "waiting"        # lobby, waiting for players
+    LEADER_DECLARE = "leader_declare" # leader picks steps + element
+    PICK_CARDS    = "pick_cards"     # everyone picks battle cards
+    REVEAL        = "reveal"         # reveal step by step
+    END_ROUND     = "end_round"      # cleanup + sleep dragons
+    GAME_OVER     = "game_over"      # someone won
+
+
+# ══════════════════════════════════════════════════════
+# CARD
+# ══════════════════════════════════════════════════════
+@dataclass
+class Card:
+    _next_id: int = field(default=0, init=False, repr=False, compare=False)
+
+    cid:       int
+    rank:      int          # effective base rank (14 = dragon)
+    orig_rank: int          # original rank (1=A, 2=Tamer, etc.)
+    suit:      Optional[str]
+    label:     str
+    is_joker:  bool = False
+    joker_type: Optional[str] = None  # 'space' | 'time'
+
+    @property
+    def is_dragon(self) -> bool:
+        return self.rank == 14
+
+    @property
+    def is_tamer(self) -> bool:
+        return self.orig_rank == 2 and not self.is_joker
+
+    @property
+    def is_princess(self) -> bool:
+        return self.orig_rank == 11
+
+    @property
+    def is_portal(self) -> bool:
+        return self.orig_rank == 9 and self.suit == 'Clubs'
+
+    def effective_rank(self, leading_suit: Optional[str]) -> int:
+        if self.is_joker or not self.suit or not leading_suit:
+            return self.rank
+        return min(self.rank + 1, 15) if self.suit == leading_suit else self.rank
+
+    def to_dict(self) -> dict:
+        return {
+            'cid': self.cid,
+            'rank': self.rank,
+            'orig_rank': self.orig_rank,
+            'suit': self.suit,
+            'label': self.label,
+            'is_joker': self.is_joker,
+            'joker_type': self.joker_type,
+            'is_dragon': self.is_dragon,
+            'is_tamer': self.is_tamer,
+            'is_princess': self.is_princess,
+            'is_portal': self.is_portal,
+        }
+
+
+_card_counter = 0
+
+def _new_card(rank, suit, is_joker=False, joker_type=None) -> Card:
+    global _card_counter
+    _card_counter += 1
+    labels = {1: 'A', 11: 'J', 12: 'Q', 13: 'K'}
+    if is_joker:
+        label = '🌌' if joker_type == 'space' else '⏳'
+        return Card(cid=_card_counter, rank=14, orig_rank=14,
+                    suit=None, label=label, is_joker=True, joker_type=joker_type)
+    sym = SUIT_SYM[suit]
+    label = (labels.get(rank, str(rank))) + sym
+    return Card(cid=_card_counter, rank=14 if rank == 1 else rank,
+                orig_rank=rank, suit=suit, label=label)
+
+
+def build_deck() -> List[Card]:
+    global _card_counter
+    _card_counter = 0
+    deck = []
+    for suit in SUITS:
+        for r in range(1, 14):
+            deck.append(_new_card(r, suit))
+    deck.append(_new_card(0, None, True, 'space'))
+    deck.append(_new_card(0, None, True, 'time'))
+    return deck
+
+
+# ══════════════════════════════════════════════════════
+# STEP RESOLUTION
+# ══════════════════════════════════════════════════════
+def _best_card(cards: List[Card], el: Optional[str]) -> Optional[Card]:
+    best = None
+    for c in cards:
+        if best is None or c.effective_rank(el) > best.effective_rank(el):
+            best = c
+    return best
+
+
+def resolve_step(entries: List[dict], el: Optional[str],
+                 lead_pid: str) -> dict:
+    """
+    entries: [{'pid': str, 'card': Card}, ...]
+    returns: {
+        'winner_pid': str | None,
+        'all_cards': [Card],
+        'joker_powers': ['space'|'time'],   # powers the winner can use
+        'love_right_pid': str | None,        # next leader from love power
+        'special_events': [str]              # log messages
+    }
+    """
+    result = {
+        'winner_pid': None,
+        'all_cards': [e['card'] for e in entries],
+        'joker_powers': [],
+        'love_right_pid': None,
+        'special_events': [],
+    }
+
+    valid = [e for e in entries if not e.get('forfeited', False)]
+    if not valid:
+        return result
+
+    has_dragon = any(e['card'].is_dragon for e in valid)
+    tamers     = [e for e in valid if e['card'].is_tamer]
+    princesses = [e for e in valid if e['card'].is_princess]
+    jokers     = [e for e in valid if e['card'].is_joker]
+
+    # Joker powers available (transferred to tamer if present)
+    result['joker_powers'] = [j['card'].joker_type for j in jokers
+                               if j['card'].joker_type]
+
+    # Love Power
+    if tamers and princesses:
+        if len(tamers) == 1:
+            result['love_right_pid'] = tamers[0]['pid']
+            result['special_events'].append(
+                f"💕 Love Power! {tamers[0]['pid']} earns next lead!")
+        else:
+            # princess owner chooses — default: tamer with most dragons
+            result['love_right_pid'] = tamers[0]['pid']
+            result['special_events'].append(
+                f"💕 Love Power → {tamers[0]['pid']}!")
+
+    # Tamer beats dragons
+    if has_dragon and len(tamers) == 1:
+        result['winner_pid'] = tamers[0]['pid']
+        result['special_events'].append(
+            f"⚔️ {tamers[0]['pid']}'s Tamer beats all dragons!")
+        return result
+
+    if has_dragon and len(tamers) > 1:
+        result['winner_pid'] = tamers[0]['pid']  # simplified duel
+        result['special_events'].append("⚔️ Tamer duel!")
+        return result
+
+    # Normal resolution
+    best = _best_card([e['card'] for e in valid], el)
+    top_e = best.effective_rank(el)
+    tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
+
+    if len(tied) == 1:
+        result['winner_pid'] = tied[0]['pid']
+    else:
+        result['winner_pid'] = lead_pid  # leader wins ties
+
+    # Space dragon
+    space_j = next((e for e in valid if e['card'].joker_type == 'space'), None)
+    if space_j and not tamers:
+        result['special_events'].append(
+            f"🌌 Space Dragon! {space_j['pid']} may change seat.")
+
+    return result
+
+
+# ══════════════════════════════════════════════════════
+# PLAYER STATE
+# ══════════════════════════════════════════════════════
+@dataclass
+class PlayerState:
+    pid:      str             # unique player id (socket id or username)
+    name:     str
+    hand:     List[Card] = field(default_factory=list)
+    battle:   List[Card] = field(default_factory=list)
+    accum:    List[Card] = field(default_factory=list)
+    sleeping: List[tuple] = field(default_factory=list)  # [(tamer, dragon), ...]
+    out:      bool = False
+    skip_next: bool = False
+    is_ai:    bool = False
+    ai_strategy: str = 'Balanced'
+
+    @property
+    def dragon_count(self) -> int:
+        # Only real suit dragons count (not jokers) + sleeping pairs
+        return (sum(1 for c in self.hand if c.is_dragon and not c.is_joker)
+                + len(self.sleeping))
+
+    def apply_sleeping(self):
+        sleeping_cids = {c.cid for pair in self.sleeping for c in pair}
+        dragons = {c.suit: c for c in self.hand
+                   if c.is_dragon and not c.is_joker and c.suit
+                   and c.cid not in sleeping_cids}
+        tamers  = {c.suit: c for c in self.hand
+                   if c.is_tamer and c.suit
+                   and c.cid not in sleeping_cids}
+        for suit in SUITS:
+            if suit in dragons and suit in tamers:
+                t, d = tamers[suit], dragons[suit]
+                if t in self.hand and d in self.hand:
+                    self.hand.remove(t)
+                    self.hand.remove(d)
+                    self.sleeping.append((t, d))
+
+    def public_dict(self) -> dict:
+        """Info visible to ALL players."""
+        return {
+            'pid': self.pid,
+            'name': self.name,
+            'dragon_count': self.dragon_count,
+            'hand_count': len(self.hand),
+            'battle_count': len(self.battle),
+            'sleeping_count': len(self.sleeping),
+            'out': self.out,
+            'is_ai': self.is_ai,
+        }
+
+    def private_dict(self) -> dict:
+        """Full info — sent ONLY to this player."""
+        return {
+            **self.public_dict(),
+            'hand': [c.to_dict() for c in self.hand],
+            'sleeping': [[t.to_dict(), d.to_dict()] for t, d in self.sleeping],
+        }
+
+
+# ══════════════════════════════════════════════════════
+# AI STRATEGIES
+# ══════════════════════════════════════════════════════
+def ai_pick_cards(player: PlayerState, n: int, el: str) -> List[Card]:
+    hand = player.hand
+    strat = player.ai_strategy
+    dragons_count = player.dragon_count
+    sorted_h = sorted(hand, key=lambda c: -c.effective_rank(el))
+    tamers   = [c for c in hand if c.is_tamer]
+    dragons  = [c for c in hand if c.is_dragon]
+    others   = sorted([c for c in hand if not c.is_dragon and not c.is_tamer],
+                      key=lambda c: c.effective_rank(el))
+
+    if strat == 'Aggressive':
+        return sorted_h[:n]
+
+    elif strat == 'Conservative':
+        if dragons_count >= 3:
+            return sorted_h[:n]
+        result = others[:n]
+        if len(result) < n: result += dragons[:n-len(result)]
+        if len(result) < n: result += tamers[:n-len(result)]
+        return result[:n]
+
+    elif strat in ('Diplomat', 'AntiDragon'):
+        precious = [c for c in hand if c.is_tamer or c.is_princess]
+        rest = others
+        result = rest[:n]
+        if len(result) < n: result += dragons[:n-len(result)]
+        if len(result) < n: result += precious[:n-len(result)]
+        return result[:n]
+
+    elif strat == 'Bluffer':
+        weak = sorted(others, key=lambda c: c.effective_rank(el))
+        result = weak[:n]
+        if len(result) < n: result += dragons[:n-len(result)]
+        return result[:n]
+
+    else:  # Balanced, Hoarder, Adaptive, Avenger
+        result = []
+        lo, hi = len(sorted_h)-1, 0
+        for i in range(min(n, len(sorted_h))):
+            result.append(sorted_h[hi] if i % 2 == 0 else sorted_h[lo])
+            if i % 2 == 0: hi += 1
+            else: lo -= 1
+        return result[:n]
+
+
+def ai_declare(player: PlayerState) -> tuple:
+    hand = player.hand
+    strat = player.ai_strategy
+    d = player.dragon_count
+    best_el = max(SUITS,
+        key=lambda s: sum(c.effective_rank(s) for c in hand if c.suit == s),
+        default='Hearts')
+
+    steps_map = {
+        'Aggressive': 4 if d == 0 else 5,
+        'Conservative': 4 if d >= 3 else (2 if d >= 2 else 1),
+        'Bluffer': 1 if d < 2 else 3,
+        'Diplomat': 2 if d < 3 else 4,
+    }
+    steps = steps_map.get(strat, 3)
+    return steps, best_el
+
+
+# ══════════════════════════════════════════════════════
+# GAME STATE MACHINE
+# ══════════════════════════════════════════════════════
+class DragonTamerGame:
+    """
+    Central game state. All game logic lives here.
+    The server calls methods and broadcasts the resulting events.
+    """
+
+    def __init__(self, room_id: str, max_players: int = 10):
+        self.room_id    = room_id
+        self.max_players = max_players
+        self.players:   Dict[str, PlayerState] = {}
+        self.order:     List[str] = []   # turn order (pid list)
+        self.phase:     Phase = Phase.WAITING
+        self.round:     int = 0
+        self.lead_idx:  int = 0          # index into self.order
+        self.love_right: Optional[str] = None
+
+        # Round-level state
+        self.declared_steps: int = 3
+        self.declared_el:    str = 'Hearts'
+        self.current_step:   int = 0
+        self.step_entries:   List[dict] = []  # {'pid', 'card'}
+        self.prev_step_cards:   List[Card] = []
+        self.prev_step_winner:  Optional[str] = None
+        self.event_log:      List[str] = []
+
+    # ─── LOBBY ───────────────────────────────────────
+
+    def add_player(self, pid: str, name: str, is_ai: bool = False,
+                   ai_strategy: str = 'Balanced') -> dict:
+        if pid in self.players:
+            return {'ok': False, 'error': 'already_joined'}
+        if len(self.players) >= self.max_players:
+            return {'ok': False, 'error': 'room_full'}
+        if self.phase != Phase.WAITING:
+            return {'ok': False, 'error': 'game_started'}
+        p = PlayerState(pid=pid, name=name, is_ai=is_ai, ai_strategy=ai_strategy)
+        self.players[pid] = p
+        self.order.append(pid)
+        return {'ok': True}
+
+    def remove_player(self, pid: str):
+        if pid in self.players and self.phase == Phase.WAITING:
+            del self.players[pid]
+            self.order.remove(pid)
+
+    def fill_with_ai(self, strategies=None):
+        """Fill remaining slots with AI players."""
+        all_strats = ['Aggressive','Balanced','Conservative','Hoarder',
+                      'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger']
+        i = 0
+        while len(self.players) < self.max_players:
+            strat = (strategies or all_strats)[i % len(strategies or all_strats)]
+            ai_id = f'AI_{i+1}'
+            ai_name = f'{strat[:4]}-{i+1}'
+            self.add_player(ai_id, ai_name, is_ai=True, ai_strategy=strat)
+            i += 1
+
+    # ─── GAME START ──────────────────────────────────
+
+    def start_game(self) -> List[dict]:
+        """Returns list of events to broadcast."""
+        if self.phase != Phase.WAITING:
+            return [{'type': 'error', 'msg': 'Game already started'}]
+        if len(self.players) < 2:
+            return [{'type': 'error', 'msg': 'Need at least 2 players'}]
+
+        deck = build_deck()
+        random.shuffle(deck)
+        n = len(self.order)
+
+        # ── Leader selection: deal 1 card face-up, highest rank wins first lead ──
+        leader_cards = {pid: deck[i] for i, pid in enumerate(self.order)}
+        best_pid = max(self.order, key=lambda pid: leader_cards[pid].rank)
+        self.lead_idx = self.order.index(best_pid)
+
+        # ── Deal remaining cards evenly (leader card is included in hand) ──
+        remaining = deck[n:]
+        per = len(remaining) // n
+        for i, pid in enumerate(self.order):
+            share = remaining[i * per:(i + 1) * per]
+            self.players[pid].hand = [leader_cards[pid]] + share
+
+        self.round = 1
+        self.phase = Phase.LEADER_DECLARE
+
+        events = [
+            {
+                'type': 'game_started',
+                'round': self.round,
+                'leader_cards': {pid: c.to_dict() for pid, c in leader_cards.items()},
+                'first_leader_pid': best_pid,
+            },
+            {'type': 'phase_change', 'phase': Phase.LEADER_DECLARE,
+             'leader_pid': self._lead_pid(), 'round': self.round},
+        ]
+        events += self._send_hands()
+
+        # If leader is AI, auto-declare
+        if self.players[self._lead_pid()].is_ai:
+            events += self._ai_declare()
+
+        return events
+
+    # ─── LEADER DECLARE ──────────────────────────────
+
+    def player_declare(self, pid: str, steps: int, element: str) -> List[dict]:
+        if self.phase != Phase.LEADER_DECLARE:
+            return [{'type': 'error', 'msg': 'Not in declare phase'}]
+        if pid != self._lead_pid():
+            return [{'type': 'error', 'msg': 'Not your turn to declare'}]
+        if element not in SUITS:
+            return [{'type': 'error', 'msg': 'Invalid element'}]
+        steps = max(1, min(5, steps))
+
+        self.declared_steps = steps
+        self.declared_el    = element
+        self._log(f"👑 {self.players[pid].name} declares: {steps} steps · "
+                  f"{SUIT_ELEMENT[element]} {SUIT_SYM[element]}")
+
+        self.phase = Phase.PICK_CARDS
+        self.current_step = 0
+
+        events = [{
+            'type': 'declaration',
+            'pid': pid,
+            'steps': steps,
+            'element': element,
+            'element_name': SUIT_ELEMENT[element],
+        }, {
+            'type': 'phase_change',
+            'phase': Phase.PICK_CARDS,
+            'steps_needed': steps,
+        }]
+
+        # AI players auto-pick
+        events += self._ai_pick_all()
+        return events
+
+    # ─── PICK CARDS ──────────────────────────────────
+
+    def player_pick_cards(self, pid: str, card_cids: List[int]) -> List[dict]:
+        if self.phase != Phase.PICK_CARDS:
+            return [{'type': 'error', 'msg': 'Not in pick phase'}]
+        p = self.players.get(pid)
+        if not p or p.out:
+            return [{'type': 'error', 'msg': 'Invalid player'}]
+
+        n = min(self.declared_steps, len(p.hand))
+        if len(card_cids) != n:
+            return [{'type': 'error',
+                     'msg': f'Must pick exactly {n} cards, got {len(card_cids)}'}]
+
+        hand_cids = {c.cid: c for c in p.hand}
+        for cid in card_cids:
+            if cid not in hand_cids:
+                return [{'type': 'error', 'msg': f'Card {cid} not in hand'}]
+
+        # Move to battle
+        chosen = [hand_cids[cid] for cid in card_cids]
+        p.battle = chosen
+        p.hand   = [c for c in p.hand if c.cid not in set(card_cids)]
+
+        events = [{'type': 'cards_picked', 'pid': pid, 'count': n}]
+
+        # Check if all human players have picked
+        if self._all_picked():
+            events += self._start_reveal()
+
+        return events
+
+    # ─── REVEAL ──────────────────────────────────────
+
+    def reveal_step(self, pid: str) -> List[dict]:
+        """Called by leader to advance to next reveal."""
+        if self.phase != Phase.REVEAL:
+            return [{'type': 'error', 'msg': 'Not in reveal phase'}]
+        # Only leader (or any human for simplicity) can trigger reveal
+        return self._do_reveal()
+
+    def _do_reveal(self) -> List[dict]:
+        si = self.current_step
+        active = [p for p in self.players.values() if not p.out]
+
+        entries = []
+        for p in active:
+            rev_idx = len(p.battle) - 1 - si
+            if rev_idx >= 0:
+                entries.append({'pid': p.pid, 'card': p.battle[rev_idx]})
+
+        if not entries:
+            return self._end_round()
+
+        result = resolve_step(entries, self.declared_el, self._lead_pid())
+
+        # Love power
+        if result['love_right_pid']:
+            self.love_right = result['love_right_pid']
+
+        # Distribute cards
+        winner_pid = result['winner_pid']
+        all_cards  = result['all_cards']
+
+        # Time dragon logic
+        time_j = next((e for e in entries if e['card'].joker_type == 'time'), None)
+        has_tamer = any(e['card'].is_tamer for e in entries)
+
+        time_owner_pid = None
+        if has_tamer and 'time' in result['joker_powers'] and winner_pid:
+            time_owner_pid = winner_pid
+        elif time_j and not has_tamer:
+            time_owner_pid = time_j['pid']
+
+        if time_owner_pid:
+            if self.prev_step_winner and self.prev_step_cards:
+                # back in time
+                pw = self.players[self.prev_step_winner]
+                for c in self.prev_step_cards:
+                    if c in pw.accum: pw.accum.remove(c)
+                self.players[time_owner_pid].accum += self.prev_step_cards
+                result['special_events'].append(
+                    f"⏳ {self.players[time_owner_pid].name} claims previous step!")
+            else:
+                self.players[time_owner_pid].skip_next = True
+                result['special_events'].append(
+                    f"⏳ {self.players[time_owner_pid].name} skips next round.")
+
+        if winner_pid:
+            self.players[winner_pid].accum += all_cards
+
+        for msg in result['special_events']:
+            self._log(msg)
+
+        if winner_pid:
+            self._log(f"Step {si+1}: {self.players[winner_pid].name} wins "
+                      f"({', '.join(c.label for c in all_cards[:3])}...)")
+
+        self.prev_step_cards  = all_cards
+        self.prev_step_winner = winner_pid
+        self.current_step += 1
+
+        events = [{
+            'type': 'step_revealed',
+            'step': si + 1,
+            'total_steps': self.declared_steps,
+            'entries': [{'pid': e['pid'], 'card': e['card'].to_dict()} for e in entries],
+            'winner_pid': winner_pid,
+            'special_events': result['special_events'],
+            'love_right_pid': result['love_right_pid'],
+        }]
+
+        if self.current_step >= self.declared_steps:
+            events += self._end_round()
+        else:
+            events.append({
+                'type': 'phase_change',
+                'phase': Phase.REVEAL,
+                'next_step': self.current_step + 1,
+            })
+
+        return events
+
+    # ─── END ROUND ───────────────────────────────────
+
+    def _end_round(self) -> List[dict]:
+        # Return cards
+        for p in self.players.values():
+            if p.out: continue
+            existing = {c.cid for c in p.hand}
+            # unplayed battle
+            for c in p.battle:
+                if c.cid not in existing:
+                    p.hand.append(c); existing.add(c.cid)
+            # accum
+            for c in p.accum:
+                if c.cid not in existing:
+                    p.hand.append(c); existing.add(c.cid)
+            p.battle = []
+            p.accum  = []
+
+        # Dragon sleep
+        for p in self.players.values():
+            if not p.out:
+                p.apply_sleeping()
+
+        # Elimination
+        eliminated = []
+        for p in self.players.values():
+            if not p.out and not p.hand and not p.sleeping:
+                p.out = True
+                eliminated.append(p.pid)
+                self._log(f"💀 {p.name} is eliminated!")
+
+        # Check victory
+        for p in self.players.values():
+            if not p.out and p.dragon_count >= WIN_DRAGONS:
+                self.phase = Phase.GAME_OVER
+                self._log(f"🏆 {p.name} wins with {p.dragon_count} dragons!")
+                return [{
+                    'type': 'game_over',
+                    'winner_pid': p.pid,
+                    'winner_name': p.name,
+                    'dragons': p.dragon_count,
+                    'round': self.round,
+                }, {'type': 'eliminated', 'pids': eliminated}]
+
+        # Next leader
+        active = [pid for pid in self.order if not self.players[pid].out]
+        if len(active) <= 1:
+            winner = self.players[active[0]] if active else None
+            self.phase = Phase.GAME_OVER
+            return [{'type': 'game_over',
+                     'winner_pid': winner.pid if winner else None,
+                     'winner_name': winner.name if winner else 'Nobody',
+                     'dragons': winner.dragon_count if winner else 0,
+                     'round': self.round}]
+
+        if self.love_right and not self.players[self.love_right].out:
+            self.lead_idx = self.order.index(self.love_right)
+        else:
+            # advance to next active
+            self.lead_idx = (self.lead_idx + 1) % len(self.order)
+            while self.players[self.order[self.lead_idx]].out:
+                self.lead_idx = (self.lead_idx + 1) % len(self.order)
+
+        self.love_right = None
+        self.round += 1
+        self.phase = Phase.LEADER_DECLARE
+        self.prev_step_cards  = []
+        self.prev_step_winner = None
+
+        events = [
+            {'type': 'eliminated', 'pids': eliminated},
+            {'type': 'round_end', 'round': self.round - 1},
+            {'type': 'phase_change',
+             'phase': Phase.LEADER_DECLARE,
+             'leader_pid': self._lead_pid(),
+             'round': self.round},
+        ]
+        events += self._send_hands()
+
+        if self.players[self._lead_pid()].is_ai:
+            events += self._ai_declare()
+
+        return events
+
+    # ─── HELPERS ─────────────────────────────────────
+
+    def _lead_pid(self) -> str:
+        return self.order[self.lead_idx % len(self.order)]
+
+    def _all_picked(self) -> bool:
+        active = [p for p in self.players.values() if not p.out]
+        return all(p.battle or p.is_ai for p in active)
+
+    def _start_reveal(self) -> List[dict]:
+        self.phase = Phase.REVEAL
+        self.current_step = 0
+        return [{'type': 'phase_change', 'phase': Phase.REVEAL,
+                 'step': 1, 'total_steps': self.declared_steps}]
+
+    def _send_hands(self) -> List[dict]:
+        return [{'type': 'hand_update', 'pid': pid,
+                 'hand': [c.to_dict() for c in p.hand],
+                 'sleeping': [[t.to_dict(), d.to_dict()] for t, d in p.sleeping],
+                 'dragon_count': p.dragon_count}
+                for pid, p in self.players.items()]
+
+    def _ai_declare(self) -> List[dict]:
+        lead = self.players[self._lead_pid()]
+        steps, el = ai_declare(lead)
+        return self.player_declare(lead.pid, steps, el)
+
+    def _ai_pick_all(self) -> List[dict]:
+        events = []
+        for p in self.players.values():
+            if p.is_ai and not p.out and not p.battle:
+                n = min(self.declared_steps, len(p.hand))
+                chosen = ai_pick_cards(p, n, self.declared_el)
+                cids = [c.cid for c in chosen]
+                events += self.player_pick_cards(p.pid, cids)
+        return events
+
+    def _log(self, msg: str):
+        self.event_log.append(msg)
+        if len(self.event_log) > 200:
+            self.event_log.pop(0)
+
+    def public_state(self) -> dict:
+        """State snapshot visible to all players."""
+        return {
+            'room_id': self.room_id,
+            'phase': self.phase,
+            'round': self.round,
+            'lead_pid': self._lead_pid() if self.order else None,
+            'declared_steps': self.declared_steps,
+            'declared_el': self.declared_el,
+            'declared_el_name': SUIT_ELEMENT.get(self.declared_el, ''),
+            'current_step': self.current_step,
+            'players': {pid: p.public_dict() for pid, p in self.players.items()},
+            'order': self.order,
+            'log': self.event_log[-20:],
+        }
+
+    def player_state(self, pid: str) -> dict:
+        """Full state for one specific player (includes private hand)."""
+        state = self.public_state()
+        if pid in self.players:
+            state['me'] = self.players[pid].private_dict()
+        return state
+
+
+# ══════════════════════════════════════════════════════
+# ROOM MANAGER
+# ══════════════════════════════════════════════════════
+class RoomManager:
+    """Manages multiple concurrent game rooms."""
+
+    def __init__(self):
+        self.rooms: Dict[str, DragonTamerGame] = {}
+
+    def create_room(self, room_id: str, max_players: int = 10) -> DragonTamerGame:
+        game = DragonTamerGame(room_id, max_players)
+        self.rooms[room_id] = game
+        return game
+
+    def get_room(self, room_id: str) -> Optional[DragonTamerGame]:
+        return self.rooms.get(room_id)
+
+    def delete_room(self, room_id: str):
+        self.rooms.pop(room_id, None)
+
+    def list_rooms(self) -> List[dict]:
+        return [{
+            'room_id': r.room_id,
+            'players': len(r.players),
+            'max_players': r.max_players,
+            'phase': r.phase,
+        } for r in self.rooms.values()]
+
+
+# ══════════════════════════════════════════════════════
+# QUICK TEST
+# ══════════════════════════════════════════════════════
+if __name__ == '__main__':
+    rm = RoomManager()
+    game = rm.create_room('test-room', max_players=4)
+
+    # Add 1 human + 3 AI
+    game.add_player('human1', 'Roy')
+    game.fill_with_ai()
+
+    print(f"Room: {game.room_id} | Players: {len(game.players)}")
+    events = game.start_game()
+    print(f"Start events: {[e['type'] for e in events]}")
+
+    # Simulate a few rounds
+    for _ in range(5):
+        if game.phase == Phase.LEADER_DECLARE:
+            if not game.players[game._lead_pid()].is_ai:
+                events = game.player_declare('human1', 3, 'Hearts')
+        elif game.phase == Phase.PICK_CARDS:
+            p = game.players['human1']
+            n = min(game.declared_steps, len(p.hand))
+            cids = [c.cid for c in p.hand[:n]]
+            events = game.player_pick_cards('human1', cids)
+        elif game.phase == Phase.REVEAL:
+            events = game.reveal_step('human1')
+        print(f"Phase: {game.phase} | Round: {game.round} | Events: {[e['type'] for e in events[:3]]}")
+        if game.phase == Phase.GAME_OVER:
+            print("GAME OVER")
+            break
+
+    print("\n✅ Engine test passed")
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🐉 Dragon Tamer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+:root {
+  --navy:       #0A1628;
+  --navy2:      #0f1f3d;
+  --gold:       #B8860B;
+  --gold-light: #DAA520;
+  --gold-bright:#FFD700;
+  --crimson:    #8B0000;
+  --crimson-l:  #C0392B;
+  --ivory:      #FDF6E3;
+  --purple:     #4A1A6B;
+  --green:      #1A6B3C;
+  --card-w:     68px;
+  --card-h:     96px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{
+  background:var(--navy);
+  color:var(--ivory);
+  font-family:'Crimson Text',serif;
+  display:flex;flex-direction:column;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse at 20% 20%,rgba(184,134,11,.09) 0%,transparent 55%),
+             radial-gradient(ellipse at 80% 85%,rgba(139,0,0,.07) 0%,transparent 55%);
+  pointer-events:none;z-index:0;
+}
+
+/* ══ SCREENS ══ */
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;z-index:1;overflow:hidden;}
+.screen.hidden{display:none!important;}
+
+/* ══ LOBBY ══ */
+#lobbyScreen{align-items:center;justify-content:center;padding:24px;gap:20px;}
+.logo-area{text-align:center;}
+.logo-area h1{font-family:'Cinzel',serif;font-size:clamp(28px,7vw,42px);
+  color:var(--gold-bright);text-shadow:0 0 30px rgba(255,215,0,.5);letter-spacing:4px;}
+.logo-area .subtitle{font-size:14px;color:rgba(253,246,227,.55);letter-spacing:2px;margin-top:4px;}
+.logo-dragon{font-size:52px;margin:8px 0;filter:drop-shadow(0 0 12px rgba(255,215,0,.4));}
+
+.lobby-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(184,134,11,.3);
+  border-radius:16px;padding:20px;width:100%;max-width:380px;
+  display:flex;flex-direction:column;gap:14px;
+}
+.field-label{font-family:'Cinzel',serif;font-size:10px;color:var(--gold);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
+.field-input{
+  width:100%;padding:11px 14px;border-radius:8px;border:1px solid rgba(184,134,11,.4);
+  background:rgba(255,255,255,.06);color:var(--ivory);
+  font-family:'Crimson Text',serif;font-size:16px;outline:none;
+  transition:border-color .2s;
+}
+.field-input:focus{border-color:var(--gold);}
+.field-input::placeholder{color:rgba(253,246,227,.3);}
+
+.room-actions{display:flex;gap:8px;}
+.btn{
+  flex:1;padding:13px;border:none;border-radius:10px;cursor:pointer;
+  font-family:'Cinzel',serif;font-size:13px;font-weight:700;
+  letter-spacing:1.5px;text-transform:uppercase;transition:all .2s;
+}
+.btn:active{transform:scale(.97);}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--navy);}
+.btn-outline{background:transparent;color:var(--gold-light);
+  border:1px solid rgba(184,134,11,.5);}
+.btn-outline:active{background:rgba(184,134,11,.1);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-full{flex:none;width:100%;}
+
+.ai-row{display:flex;align-items:center;gap:10px;}
+.ai-row label{font-size:13px;color:rgba(253,246,227,.65);flex:1;}
+.ai-slider-wrap{display:flex;align-items:center;gap:8px;flex:1;}
+.ai-slider{
+  flex:1;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:rgba(184,134,11,.3);outline:none;cursor:pointer;
+}
+.ai-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--gold);cursor:pointer;border:2px solid var(--navy);
+}
+.ai-slider::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;
+  background:var(--gold);cursor:pointer;border:2px solid var(--navy);
+}
+.ai-count-lbl{
+  font-family:'Cinzel',serif;font-size:14px;font-weight:700;
+  color:var(--gold-bright);min-width:22px;text-align:center;
+}
+
+.conn-status{
+  display:flex;align-items:center;gap:6px;font-size:12px;
+  color:rgba(253,246,227,.45);justify-content:center;
+}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:#555;flex-shrink:0;}
+.conn-dot.connected{background:#2ecc71;box-shadow:0 0 6px rgba(46,204,113,.6);}
+.conn-dot.error{background:var(--crimson-l);}
+
+/* ══ GAME SCREEN ══ */
+#gameScreen{overflow:hidden;}
+
+/* Top bar */
+.top-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 12px;border-bottom:1px solid rgba(184,134,11,.2);
+  background:rgba(10,22,40,.8);backdrop-filter:blur(4px);flex-shrink:0;
+}
+.top-bar .game-title{font-family:'Cinzel',serif;font-size:14px;
+  color:var(--gold);letter-spacing:2px;}
+.top-bar .round-badge{font-size:12px;color:rgba(253,246,227,.5);}
+
+/* Phase banner */
+.phase-bar{
+  padding:7px 14px;text-align:center;
+  font-family:'Cinzel',serif;font-size:13px;font-weight:700;letter-spacing:1px;
+  flex-shrink:0;
+}
+.phase-bar.declare{background:linear-gradient(90deg,rgba(26,107,60,.8),rgba(26,107,60,.4));}
+.phase-bar.pick   {background:linear-gradient(90deg,rgba(74,26,107,.8),rgba(74,26,107,.4));}
+.phase-bar.reveal {background:linear-gradient(90deg,rgba(139,0,0,.7),rgba(139,0,0,.3));}
+.phase-bar.end    {background:linear-gradient(90deg,rgba(184,134,11,.5),rgba(184,134,11,.2));}
+
+/* Scrollable body */
+.game-body{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;}
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-thumb{background:rgba(184,134,11,.3);border-radius:2px;}
+
+/* ══ PLAYERS TABLE ══ */
+.section{
+  background:rgba(255,255,255,.03);border:1px solid rgba(184,134,11,.18);
+  border-radius:12px;padding:10px;
+}
+.section-title{
+  font-family:'Cinzel',serif;font-size:10px;color:var(--gold);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;
+}
+
+.player-row{
+  display:flex;align-items:center;gap:7px;
+  padding:6px 8px;border-radius:8px;margin-bottom:4px;
+  background:rgba(255,255,255,.02);border:1px solid transparent;
+  transition:all .25s;
+}
+.player-row:last-child{margin-bottom:0;}
+.player-row.me{background:rgba(184,134,11,.1);border-color:rgba(184,134,11,.35);}
+.player-row.leader{border-color:var(--gold-bright);
+  box-shadow:0 0 8px rgba(255,215,0,.15);}
+.player-row.out{opacity:.35;}
+
+.seat-icon{width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-family:'Cinzel',serif;flex-shrink:0;
+  background:rgba(255,255,255,.08);}
+.seat-icon.leader-icon{background:var(--gold);color:var(--navy);}
+
+.player-info{flex:1;min-width:0;}
+.player-info .pname{
+  font-size:13px;font-weight:600;
+  display:flex;align-items:center;gap:5px;flex-wrap:wrap;
+}
+.you-tag,.ai-tag,.leader-tag{
+  font-size:9px;padding:1px 5px;border-radius:3px;
+  font-family:'Cinzel',serif;flex-shrink:0;
+}
+.you-tag{background:var(--gold);color:var(--navy);}
+.ai-tag{background:rgba(255,255,255,.12);color:rgba(253,246,227,.5);}
+.leader-tag{background:var(--gold-bright);color:var(--navy);}
+.player-info .pstrat{font-size:10px;color:rgba(253,246,227,.38);font-style:italic;}
+
+.dragon-pips{display:flex;gap:1px;min-width:52px;justify-content:flex-end;
+  flex-wrap:wrap;font-size:11px;}
+.card-chip{font-size:11px;color:rgba(253,246,227,.4);
+  background:rgba(255,255,255,.07);padding:1px 6px;border-radius:4px;flex-shrink:0;}
+
+/* ══ HAND ══ */
+.hand-scroll{display:flex;gap:6px;overflow-x:auto;padding:4px 2px;
+  scrollbar-width:thin;}
+.hand-scroll::-webkit-scrollbar{height:3px;}
+
+.card{
+  width:var(--card-w);height:var(--card-h);border-radius:7px;
+  border:1.5px solid rgba(184,134,11,.45);
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:space-between;padding:4px;
+  cursor:pointer;transition:all .18s;
+  position:relative;flex-shrink:0;user-select:none;
+}
+.card.selected{
+  border-color:var(--gold-bright)!important;
+  background:rgba(255,215,0,.18)!important;
+  transform:translateY(-5px);
+  box-shadow:0 5px 18px rgba(255,215,0,.45);
+}
+.card.hearts,.card.diamonds{background:linear-gradient(150deg,#FDF6E3,#f0e4c0);}
+.card.clubs,.card.spades  {background:linear-gradient(150deg,#1A1E2E,#252A3A);}
+.card.joker-space{background:linear-gradient(150deg,#1A0A2E,#2A1A4E);
+  border-color:#9B59B6;}
+.card.joker-time {background:linear-gradient(150deg,#1A0A0A,#2E1800);
+  border-color:#E8A020;}
+
+.card-rank{
+  font-family:'Cinzel',serif;font-size:14px;font-weight:700;
+  line-height:1;align-self:flex-start;
+}
+.card.hearts .card-rank,.card.diamonds .card-rank{color:#7B1515;}
+.card.clubs  .card-rank,.card.spades  .card-rank{color:#FDF6E3;}
+.card.joker-space .card-rank{color:#C39BD3;}
+.card.joker-time  .card-rank{color:#E8A020;}
+
+.card-center{font-size:24px;line-height:1;}
+.card.hearts .card-center,.card.diamonds .card-center{color:#7B1515;}
+.card.clubs  .card-center,.card.spades  .card-center{color:#FDF6E3;}
+.card.joker-space .card-center{color:#C39BD3;}
+.card.joker-time  .card-center{color:#E8A020;}
+
+.card-order{
+  position:absolute;top:3px;right:4px;
+  width:16px;height:16px;border-radius:50%;
+  background:var(--gold-bright);color:var(--navy);
+  font-size:10px;font-family:'Cinzel',serif;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  pointer-events:none;
+}
+.card-bot{font-size:14px;font-family:'Cinzel',serif;font-weight:700;
+  transform:rotate(180deg);align-self:flex-end;}
+.card.hearts .card-bot,.card.diamonds .card-bot{color:#7B1515;}
+.card.clubs  .card-bot,.card.spades  .card-bot{color:#FDF6E3;}
+.card.joker-space .card-bot{color:#C39BD3;}
+.card.joker-time  .card-bot{color:#E8A020;}
+
+.card-badge{
+  position:absolute;bottom:14px;
+  font-size:7px;letter-spacing:.6px;font-family:'Cinzel',serif;
+  text-align:center;width:100%;
+  padding:0 2px;
+}
+.card.hearts .card-badge,.card.diamonds .card-badge{color:rgba(123,21,21,.75);}
+.card.clubs  .card-badge,.card.spades  .card-badge{color:rgba(253,246,227,.55);}
+.card.joker-space .card-badge{color:rgba(195,155,211,.8);}
+.card.joker-time  .card-badge{color:rgba(232,160,32,.8);}
+
+/* ══ DECLARE CONTROLS ══ */
+.declare-grid{display:flex;flex-direction:column;gap:10px;}
+.control-row{display:flex;align-items:center;gap:10px;}
+.control-row label{font-size:12px;color:rgba(253,246,227,.6);
+  min-width:55px;font-family:'Cinzel',serif;letter-spacing:1px;}
+.btn-group{display:flex;gap:4px;flex-wrap:wrap;}
+.step-btn,.suit-btn{
+  padding:6px 11px;border-radius:6px;
+  border:1px solid rgba(184,134,11,.4);
+  background:rgba(184,134,11,.08);
+  color:var(--gold-light);
+  font-family:'Cinzel',serif;font-size:12px;
+  cursor:pointer;transition:all .18s;
+}
+.step-btn.active,.suit-btn.active{
+  background:var(--gold);color:var(--navy);border-color:var(--gold);}
+.suit-btn{width:38px;height:34px;display:flex;align-items:center;
+  justify-content:center;font-size:17px;padding:0;}
+
+/* ══ BATTLE AREA ══ */
+.step-dots{display:flex;gap:5px;justify-content:center;margin-bottom:8px;}
+.sdot{width:8px;height:8px;border-radius:50%;
+  background:rgba(255,255,255,.15);transition:all .3s;}
+.sdot.done{background:var(--gold);}
+.sdot.cur{background:var(--gold-bright);box-shadow:0 0 6px rgba(255,215,0,.6);}
+
+.battle-row{
+  display:flex;align-items:center;gap:7px;padding:6px 8px;
+  border-radius:7px;margin-bottom:4px;background:rgba(255,255,255,.025);
+  border:1px solid transparent;
+}
+.battle-row.winning{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.3);}
+.battle-pname{font-size:12px;font-weight:600;min-width:72px;}
+.battle-cards{display:flex;gap:3px;flex:1;flex-wrap:wrap;}
+
+.mini-card{
+  width:30px;height:42px;border-radius:4px;
+  border:1px solid rgba(184,134,11,.35);
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;font-size:8px;
+  font-family:'Cinzel',serif;font-weight:700;
+}
+.mini-card.face-down{background:linear-gradient(135deg,#0A1628,#162540);
+  border-color:rgba(184,134,11,.25);font-size:14px;}
+.mini-card.h,.mini-card.d{background:linear-gradient(150deg,#FDF6E3,#f0e4c0);color:#7B1515;}
+.mini-card.c,.mini-card.s{background:linear-gradient(150deg,#1A1E2E,#252A3A);color:#FDF6E3;}
+.mini-card.js{background:linear-gradient(150deg,#1A0A2E,#2A1A4E);color:#C39BD3;border-color:#9B59B6;}
+.mini-card.jt{background:linear-gradient(150deg,#1A0A0A,#2E1800);color:#E8A020;border-color:#E8A020;}
+
+.win-badge{font-size:10px;background:var(--gold);color:var(--navy);
+  padding:2px 6px;border-radius:3px;font-family:'Cinzel',serif;
+  font-weight:700;flex-shrink:0;}
+
+/* ══ ACTIONS ══ */
+.action-bar{
+  position:sticky;bottom:0;
+  background:linear-gradient(transparent,rgba(10,22,40,.97) 30%);
+  padding:10px 10px 12px;display:flex;flex-direction:column;gap:7px;
+  flex-shrink:0;
+}
+.btn-main{
+  width:100%;padding:14px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold),var(--gold-light));
+  color:var(--navy);font-family:'Cinzel',serif;font-size:14px;
+  font-weight:700;letter-spacing:1.5px;cursor:pointer;
+  transition:all .2s;text-transform:uppercase;
+}
+.btn-main:active{transform:scale(.98);opacity:.9;}
+.btn-main:disabled{background:rgba(184,134,11,.25);
+  color:rgba(253,246,227,.3);cursor:not-allowed;}
+
+/* ══ LOG ══ */
+.log-list{max-height:110px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:3px;}
+.log-entry{font-size:11px;color:rgba(253,246,227,.55);
+  padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04);line-height:1.5;}
+.log-entry.imp{color:var(--gold-light);font-weight:600;}
+.log-entry.warn{color:var(--crimson-l);}
+.log-entry.victory{color:var(--gold-bright);text-align:center;
+  font-family:'Cinzel',serif;font-size:13px;}
+
+/* ══ OVERLAY ══ */
+.overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.88);
+  z-index:200;display:flex;align-items:center;
+  justify-content:center;padding:20px;
+}
+.overlay.hidden{display:none!important;}
+.modal{
+  background:linear-gradient(160deg,#0f1f3d,#0A1628);
+  border:2px solid var(--gold);border-radius:16px;
+  padding:24px;max-width:340px;width:100%;text-align:center;
+}
+.modal h2{font-family:'Cinzel',serif;font-size:22px;
+  color:var(--gold-bright);margin-bottom:10px;
+  text-shadow:0 0 15px rgba(255,215,0,.4);}
+.modal p{font-size:14px;color:rgba(253,246,227,.7);
+  margin-bottom:18px;line-height:1.7;}
+.modal .dragon-row{font-size:36px;margin:10px 0;}
+
+/* ══ ROOM BROWSER ══ */
+.browser-modal{
+  background:linear-gradient(160deg,#0f1f3d,#0A1628);
+  border:2px solid rgba(195,155,211,.5);border-radius:16px;
+  padding:20px;max-width:380px;width:100%;
+}
+.browser-modal h2{font-family:'Cinzel',serif;font-size:18px;
+  color:#C39BD3;margin-bottom:4px;letter-spacing:2px;}
+.browser-subtitle{font-size:11px;color:rgba(253,246,227,.4);
+  letter-spacing:1px;margin-bottom:14px;}
+.room-list{display:flex;flex-direction:column;gap:8px;
+  max-height:340px;overflow-y:auto;margin-bottom:14px;}
+.room-card{
+  background:rgba(255,255,255,.04);border:1px solid rgba(195,155,211,.25);
+  border-radius:10px;padding:12px 14px;cursor:pointer;
+  transition:all .2s;text-align:left;display:flex;
+  flex-direction:column;gap:5px;
+}
+.room-card:hover{background:rgba(195,155,211,.1);
+  border-color:rgba(195,155,211,.5);}
+.room-card-top{display:flex;align-items:center;justify-content:space-between;}
+.room-code{font-family:'Cinzel',serif;font-size:16px;
+  color:#C39BD3;letter-spacing:3px;font-weight:700;}
+.room-phase-badge{font-size:9px;font-family:'Cinzel',serif;
+  letter-spacing:1px;padding:2px 7px;border-radius:4px;
+  text-transform:uppercase;}
+.phase-waiting{background:rgba(184,134,11,.2);color:var(--gold-light);}
+.phase-playing{background:rgba(139,0,0,.3);color:#E87070;}
+.room-card-stats{display:flex;gap:10px;align-items:center;}
+.room-stat{font-size:11px;color:rgba(253,246,227,.5);
+  display:flex;align-items:center;gap:3px;}
+.room-stat span{color:rgba(253,246,227,.8);}
+.no-rooms{text-align:center;padding:28px 0;
+  color:rgba(253,246,227,.35);font-size:13px;}
+.browser-refresh{font-size:10px;color:rgba(253,246,227,.35);
+  text-align:center;margin-bottom:10px;letter-spacing:1px;}
+</style>
+</head>
+<body>
+
+<!-- ══ LOBBY ══ -->
+<div class="screen" id="lobbyScreen">
+  <div class="logo-area">
+    <div class="logo-dragon">🐉</div>
+    <h1>DRAGON TAMER</h1>
+    <div class="subtitle">Multiplayer Card Game</div>
+  </div>
+
+  <div class="lobby-card">
+    <div>
+      <div class="field-label">Your Name</div>
+      <input class="field-input" id="playerName" placeholder="Enter your name" maxlength="20">
+    </div>
+
+    <div>
+      <div class="field-label">Room Code</div>
+      <input class="field-input" id="roomCode" placeholder="Leave empty to create new room"
+             maxlength="8" style="text-transform:uppercase">
+    </div>
+
+    <div class="ai-row">
+      <label>AI Opponents</label>
+      <div class="ai-slider-wrap">
+        <input class="ai-slider" type="range" min="1" max="9" value="3" id="aiSlider"
+               oninput="setAI(parseInt(this.value))">
+        <span class="ai-count-lbl" id="aiCountLbl">3</span>
+      </div>
+    </div>
+
+    <div class="room-actions">
+      <button class="btn btn-gold" onclick="createRoom()">New Room</button>
+      <button class="btn btn-outline" onclick="joinRoom()">Join Room</button>
+    </div>
+    <button class="btn btn-outline btn-full" onclick="spectateRoom()" style="border-color:rgba(195,155,211,.5);color:#C39BD3;">👁 Watch a Game</button>
+
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connText">Connecting to server...</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GAME SCREEN ══ -->
+<div class="screen hidden" id="gameScreen">
+  <div class="top-bar">
+    <span class="game-title">DRAGON TAMER</span>
+    <span class="round-badge" id="roundBadge">Round 1</span>
+  </div>
+  <div class="phase-bar" id="phaseBanner">Waiting...</div>
+
+  <div class="game-body" id="gameBody">
+
+    <!-- Players -->
+    <div class="section">
+      <div class="section-title">⚔ Round Table</div>
+      <div id="playerList"></div>
+    </div>
+
+    <!-- Declare (leader only) -->
+    <div class="section hidden" id="declareSection">
+      <div class="section-title">👑 Your Declaration</div>
+      <div class="declare-grid">
+        <div class="control-row">
+          <label>Steps</label>
+          <div class="btn-group" id="stepsGroup">
+            <button class="step-btn" onclick="setSteps(1)">1</button>
+            <button class="step-btn" onclick="setSteps(2)">2</button>
+            <button class="step-btn active" onclick="setSteps(3)">3</button>
+            <button class="step-btn" onclick="setSteps(4)">4</button>
+            <button class="step-btn" onclick="setSteps(5)">5</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <label>Element</label>
+          <div class="btn-group" id="suitGroup">
+            <button class="suit-btn active" onclick="setSuit('Hearts')" title="Fire">♥</button>
+            <button class="suit-btn" onclick="setSuit('Clubs')" title="Water">♣</button>
+            <button class="suit-btn" onclick="setSuit('Diamonds')" title="Air">♦</button>
+            <button class="suit-btn" onclick="setSuit('Spades')" title="Earth">♠</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hand -->
+    <div class="section">
+      <div class="section-title" id="handTitle">Your Hand</div>
+      <div class="hand-scroll" id="handCards"></div>
+    </div>
+
+    <!-- Battle -->
+    <div class="section hidden" id="battleSection">
+      <div class="section-title">⚔ Battle — Step <span id="stepNum">1</span></div>
+      <div class="step-dots" id="stepDots"></div>
+      <div id="battleRows"></div>
+    </div>
+
+    <!-- Log -->
+    <div class="section">
+      <div class="section-title">📜 Chronicle</div>
+      <div class="log-list" id="logList"></div>
+    </div>
+
+    <div style="height:80px"></div>
+  </div>
+
+  <!-- Action bar -->
+  <div class="action-bar">
+    <button class="btn-main" id="mainBtn" onclick="mainAction()" disabled>—</button>
+  </div>
+</div>
+
+<!-- ══ WAITING MODAL ══ -->
+<div class="overlay hidden" id="waitOverlay">
+  <div class="modal">
+    <h2>Room Ready</h2>
+    <div class="dragon-row">🐉</div>
+    <p>Room Code: <strong id="roomCodeDisplay" style="color:var(--gold-bright);font-family:Cinzel,serif;font-size:20px;letter-spacing:3px;"></strong><br>
+    Share this code with friends or start now.</p>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-outline btn-full" onclick="copyRoomCode(this)">Copy Code</button>
+      <button class="btn btn-gold btn-full" onclick="startGame()">Start Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GAME OVER MODAL ══ -->
+<div class="overlay hidden" id="gameOverOverlay">
+  <div class="modal">
+    <h2 id="goTitle">Game Over</h2>
+    <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
+    <p id="goText"></p>
+    <button class="btn btn-gold btn-full" onclick="location.reload()">Play Again</button>
+  </div>
+</div>
+
+<!-- ══ ROOM BROWSER MODAL ══ -->
+<div class="overlay hidden" id="roomBrowserOverlay">
+  <div class="browser-modal">
+    <h2>👁 Live Games</h2>
+    <div class="browser-subtitle">CLICK A ROOM TO SPECTATE</div>
+    <div class="room-list" id="roomListEl"></div>
+    <div class="browser-refresh" id="refreshLabel">Refreshing every 5s…</div>
+    <button class="btn btn-outline btn-full" onclick="closeRoomBrowser()" style="border-color:rgba(195,155,211,.4);color:#C39BD3;">Close</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  CONFIG — change WS_URL after deploying
+// ══════════════════════════════════════════════════════
+// Auto-detect: localhost uses ws://, production uses wss://
+const WS_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+  ? `ws://${window.location.hostname}:${window.location.port || 5000}`
+  : `wss://${window.location.host}`;
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+let ws = null;
+let myPid = null;
+let myRoomId = null;
+let gameState = null;
+let selectedSteps = 3;
+let selectedSuit  = 'Hearts';
+let selectedCardCids = [];
+let aiCount = 3;
+let phase = '';
+let isSpectator = false;
+let spectatorCount = 0;
+let _lastGameStartedAt = 0;
+
+const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
+const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
+const STRAT_LBL = {Aggressive:'Warrior',Balanced:'Knight',Conservative:'Guardian',
+                   Hoarder:'Collector',Adaptive:'Ranger',AntiDragon:'Slayer',
+                   Diplomat:'Envoy',Bluffer:'Trickster',Avenger:'Avenger'};
+
+// ══════════════════════════════════════════════════════
+//  WEBSOCKET
+// ══════════════════════════════════════════════════════
+function connect() {
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch(e) {
+    setConnStatus(false, 'Cannot connect to server');
+    return;
+  }
+
+  ws.onopen = () => setConnStatus(true, 'Connected');
+  ws.onclose = () => { setConnStatus(false, 'Disconnected — retrying...'); setTimeout(connect, 3000); };
+  ws.onerror = () => setConnStatus(false, 'Connection error');
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); }
+    catch(err) { console.error('Parse error', err); }
+  };
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN)
+    ws.send(JSON.stringify(obj));
+}
+
+function setConnStatus(ok, text) {
+  document.getElementById('connDot').className = 'conn-dot' + (ok ? ' connected' : ' error');
+  document.getElementById('connText').textContent = text;
+}
+
+// ══════════════════════════════════════════════════════
+//  LOBBY ACTIONS
+// ══════════════════════════════════════════════════════
+function setAI(n) {
+  aiCount = Math.max(1, Math.min(9, n || 3));
+  const lbl = document.getElementById('aiCountLbl');
+  if (lbl) lbl.textContent = aiCount;
+  const slider = document.getElementById('aiSlider');
+  if (slider) slider.value = aiCount;
+}
+
+function getName() {
+  return document.getElementById('playerName').value.trim() || 'Player';
+}
+
+function createRoom() {
+  const name = getName();
+  const roomId = document.getElementById('roomCode').value.trim().toUpperCase() || null;
+  send({ type: 'create_room', name, room_id: roomId, ai_count: aiCount });
+}
+
+function joinRoom() {
+  const name = getName();
+  const roomId = document.getElementById('roomCode').value.trim().toUpperCase();
+  if (!roomId) { alert('Enter a room code to join'); return; }
+  send({ type: 'join_room', name, room_id: roomId });
+}
+
+function spectateRoom() {
+  const name = getName();
+  const roomId = document.getElementById('roomCode').value.trim().toUpperCase();
+  if (!roomId) {
+    openRoomBrowser();
+    return;
+  }
+  send({ type: 'spectate_room', name, room_id: roomId });
+}
+
+// ══════════════════════════════════════════════════════
+//  ROOM BROWSER
+// ══════════════════════════════════════════════════════
+let _browserRefreshTimer = null;
+
+function openRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.remove('hidden');
+  fetchRooms();
+  _browserRefreshTimer = setInterval(fetchRooms, 5000);
+}
+
+function closeRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.add('hidden');
+  clearInterval(_browserRefreshTimer);
+  _browserRefreshTimer = null;
+}
+
+function fetchRooms() {
+  send({ type: 'list_rooms' });
+  const lbl = document.getElementById('refreshLabel');
+  if (lbl) lbl.textContent = 'Updated just now · refreshing every 5s';
+}
+
+function spectateFromBrowser(roomId) {
+  closeRoomBrowser();
+  document.getElementById('roomCode').value = roomId;
+  const name = getName();
+  send({ type: 'spectate_room', name, room_id: roomId });
+}
+
+const PHASE_LABELS = {
+  waiting: 'Lobby',
+  leader_declare: 'Declaring',
+  pick_cards: 'Picking',
+  reveal: 'Reveal',
+  end_round: 'End Round',
+  game_over: 'Game Over',
+};
+
+function renderRoomList(roomsData) {
+  const el = document.getElementById('roomListEl');
+  if (!el) return;
+
+  if (!roomsData || roomsData.length === 0) {
+    el.innerHTML = '<div class="no-rooms">🐉 No active games right now.<br>Create one and others can watch!</div>';
+    return;
+  }
+
+  el.innerHTML = '';
+  roomsData.forEach(room => {
+    const isWaiting = room.phase === 'waiting';
+    const phaseLabel = PHASE_LABELS[room.phase] || room.phase;
+    const phaseCls = isWaiting ? 'phase-waiting' : 'phase-playing';
+    const specStr = room.spectator_count > 0
+      ? `<div class="room-stat">👁 <span>${room.spectator_count}</span></div>`
+      : '';
+
+    const card = document.createElement('div');
+    card.className = 'room-card';
+    card.onclick = () => spectateFromBrowser(room.room_id);
+    card.innerHTML = `
+      <div class="room-card-top">
+        <div class="room-code">${room.room_id}</div>
+        <div class="room-phase-badge ${phaseCls}">${phaseLabel}</div>
+      </div>
+      <div class="room-card-stats">
+        <div class="room-stat">⚔ <span>${room.players}/${room.max_players}</span> players</div>
+        ${specStr}
+      </div>
+    `;
+    el.appendChild(card);
+  });
+}
+
+function startGame() {
+  document.getElementById('waitOverlay').classList.add('hidden');
+  send({ type: 'start_game' });
+}
+
+function copyRoomCode(btn) {
+  navigator.clipboard.writeText(myRoomId).then(() => {
+    if (btn) { btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = 'Copy Code', 1500); }
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  DECLARE CONTROLS
+// ══════════════════════════════════════════════════════
+function setSteps(n) {
+  selectedSteps = n;
+  document.querySelectorAll('.step-btn').forEach(b =>
+    b.classList.toggle('active', parseInt(b.textContent) === n));
+}
+
+function setSuit(s) {
+  selectedSuit = s;
+  document.querySelectorAll('.suit-btn').forEach((b,i) => {
+    const suits = ['Hearts','Clubs','Diamonds','Spades'];
+    b.classList.toggle('active', suits[i] === s);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  MAIN ACTION BUTTON
+// ══════════════════════════════════════════════════════
+function mainAction() {
+  if (phase === 'leader_declare') {
+    send({ type: 'declare', steps: selectedSteps, element: selectedSuit });
+  } else if (phase === 'pick_cards') {
+    if (selectedCardCids.length === 0) { addLog('Select your cards first!', 'warn'); return; }
+    send({ type: 'pick_cards', card_cids: selectedCardCids });
+    // Don't clear here — wait for server confirmation (cards_picked) before clearing
+  } else if (phase === 'reveal') {
+    send({ type: 'reveal' });
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  MESSAGE HANDLER
+// ══════════════════════════════════════════════════════
+function handleMessage(msg) {
+  console.log('←', msg.type, msg);
+
+  switch(msg.type) {
+    case 'room_created':
+      myPid    = msg.pid;
+      myRoomId = msg.room_id;
+      applyState(msg.state);
+      showGameScreen();
+      document.getElementById('roomCodeDisplay').textContent = msg.room_id;
+      document.getElementById('waitOverlay').classList.remove('hidden');
+      break;
+
+    case 'room_joined':
+      myPid    = msg.pid;
+      myRoomId = msg.room_id;
+      applyState(msg.state);
+      showGameScreen();
+      break;
+
+    case 'spectating':
+      isSpectator = true;
+      myRoomId = msg.room_id;
+      spectatorCount = msg.spectator_count || 0;
+      gameState = msg.state;
+      renderPlayers();
+      showGameScreen();
+      if (msg.state && msg.state.phase) setPhase(msg.state.phase, msg.state);
+      addLog(`👁 You are watching room ${msg.room_id} (${spectatorCount} watching)`, 'imp');
+      break;
+
+    case 'spectator_update':
+      spectatorCount = msg.spectator_count || 0;
+      updateSpectatorBadge();
+      break;
+
+    case 'game_started':
+      // Deduplicate: Replit preview sends 3 identical events — only process once
+      if (_lastGameStartedAt && Date.now() - _lastGameStartedAt < 500) break;
+      _lastGameStartedAt = Date.now();
+      selectedCardCids = [];
+      if (msg.first_leader_pid) {
+        const lname = nameOf(msg.first_leader_pid);
+        addLog(`── Game started! ${lname} won the initial deal and leads first ──`, 'imp');
+      } else {
+        addLog('── Game started! ──', 'imp');
+      }
+      break;
+
+    case 'hand_update':
+      if (msg.pid === myPid) {
+        if (gameState) {
+          gameState.me = msg;
+          renderHand();
+          renderPlayers();
+        }
+      }
+      break;
+
+    case 'state':
+      applyState(msg.state);
+      break;
+
+    case 'phase_change':
+      setPhase(msg.phase, msg);
+      break;
+
+    case 'declaration':
+      if (gameState) gameState.declared_steps = msg.steps;
+      addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${SUIT_SYM[msg.element]}`, 'imp');
+      renderPlayers();
+      break;
+
+    case 'cards_picked':
+      if (msg.pid === myPid) {
+        selectedCardCids = [];
+        const btn = document.getElementById('mainBtn');
+        btn.disabled = true;
+        btn.textContent = 'Waiting for others...';
+      }
+      addLog(`${nameOf(msg.pid)} is ready (${msg.count} cards)`);
+      break;
+
+    case 'step_revealed':
+      renderBattleStep(msg);
+      for (const ev of (msg.special_events || []))
+        addLog(ev, 'imp');
+      if (msg.winner_pid)
+        addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`, 'imp');
+      break;
+
+    case 'round_end':
+      addLog(`── Round ${msg.round} complete ──`);
+      hideBattle();
+      break;
+
+    case 'eliminated':
+      for (const pid of (msg.pids || []))
+        addLog(`💀 ${nameOf(pid)} eliminated!`, 'warn');
+      renderPlayers();
+      break;
+
+    case 'player_joined':
+      addLog(`${msg.name} joined the room`);
+      break;
+
+    case 'game_over':
+      showGameOver(msg);
+      break;
+
+    case 'rooms':
+      renderRoomList(msg.rooms);
+      break;
+
+    case 'error':
+      addLog(`⚠ ${msg.msg}`, 'warn');
+      // If pick was rejected, re-enable card selection so player can try again
+      if (phase === 'pick_cards') {
+        const need = gameState?.declared_steps || 0;
+        const btn = document.getElementById('mainBtn');
+        btn.disabled = selectedCardCids.length < need;
+        btn.textContent = `CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+        renderHand();
+      }
+      break;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  PHASE MANAGEMENT
+// ══════════════════════════════════════════════════════
+function setPhase(newPhase, data) {
+  phase = newPhase;
+  const banner = document.getElementById('phaseBanner');
+  const declSec = document.getElementById('declareSection');
+  const mainBtn = document.getElementById('mainBtn');
+
+  declSec.classList.add('hidden');
+  if (isSpectator) { mainBtn.disabled = true; mainBtn.textContent = '👁 Spectating'; return; }
+  mainBtn.disabled = false;
+
+  if (newPhase === 'leader_declare') {
+    const isMe = data.leader_pid === myPid;
+    banner.className = 'phase-bar declare';
+    banner.textContent = isMe
+      ? '👑 You are the Leader — declare steps & element'
+      : `⏳ ${nameOf(data.leader_pid)} is declaring...`;
+    if (isMe) declSec.classList.remove('hidden');
+    mainBtn.textContent = isMe ? 'DECLARE' : 'Waiting...';
+    mainBtn.disabled = !isMe;
+    document.getElementById('roundBadge').textContent = `Round ${data.round || ''}`;
+
+  } else if (newPhase === 'pick_cards') {
+    const n = data.steps_needed;
+    if (gameState) gameState.declared_steps = n;  // keep state in sync
+    banner.className = 'phase-bar pick';
+    banner.textContent = `🃏 Select ${n} card${n>1?'s':''} for battle`;
+    mainBtn.textContent = `CONFIRM CARDS (0/${n})`;
+    mainBtn.disabled = true;
+    selectedCardCids = [];
+    renderHand();
+
+  } else if (newPhase === 'reveal') {
+    banner.className = 'phase-bar reveal';
+    banner.textContent = `⚔ Step ${data.next_step || data.step || 1} of ${gameState?.declared_steps || '?'}`;
+    document.getElementById('battleSection').classList.remove('hidden');
+    document.getElementById('stepNum').textContent = data.next_step || 1;
+    renderStepDots(data.next_step || 1);
+    mainBtn.textContent = `REVEAL STEP ${data.next_step || 1}`;
+
+  } else if (newPhase === 'end_round') {
+    banner.className = 'phase-bar end';
+    banner.textContent = '✅ Round complete';
+    mainBtn.textContent = 'NEXT ROUND';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  STATE / RENDER
+// ══════════════════════════════════════════════════════
+function applyState(state) {
+  gameState = state;
+  renderPlayers();
+  renderHand();
+  if (state.phase) setPhase(state.phase, state);
+}
+
+function nameOf(pid) {
+  if (!gameState) return pid;
+  return gameState.players?.[pid]?.name || pid;
+}
+
+function showGameScreen() {
+  document.getElementById('lobbyScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  if (isSpectator) {
+    document.getElementById('actionBar') && (document.getElementById('actionBar').style.display = 'none');
+    document.querySelector('.action-bar').style.display = 'none';
+    document.querySelector('#handCards').parentElement.classList.add('hidden');
+    document.querySelector('#declareSection').classList.add('hidden');
+    const specBanner = document.createElement('div');
+    specBanner.id = 'specBanner';
+    specBanner.style.cssText = 'background:linear-gradient(90deg,rgba(74,26,107,.85),rgba(74,26,107,.4));padding:7px 14px;text-align:center;font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;color:#C39BD3;flex-shrink:0;';
+    specBanner.innerHTML = `👁 SPECTATING · Room ${myRoomId} · <span id="specCount">${spectatorCount}</span> watching`;
+    const phaseBannerEl = document.getElementById('phaseBanner');
+    phaseBannerEl.parentNode.insertBefore(specBanner, phaseBannerEl);
+  }
+}
+
+function updateSpectatorBadge() {
+  const el = document.getElementById('specCount');
+  if (el) el.textContent = spectatorCount;
+  const badge = document.getElementById('specWatchBadge');
+  if (badge) badge.textContent = `👁 ${spectatorCount}`;
+}
+
+function renderPlayers() {
+  if (!gameState) return;
+  const el = document.getElementById('playerList');
+  el.innerHTML = '';
+  const order = gameState.order || Object.keys(gameState.players || {});
+  const leadPid = gameState.lead_pid;
+
+  // Update section title with spectator count
+  const secTitle = el.closest('.section')?.querySelector('.section-title');
+  if (secTitle) {
+    secTitle.innerHTML = spectatorCount > 0
+      ? `⚔ Round Table &nbsp;<span style="font-size:9px;color:#C39BD3;background:rgba(74,26,107,.4);padding:1px 6px;border-radius:3px;letter-spacing:1px;">👁 ${spectatorCount} watching</span>`
+      : '⚔ Round Table';
+  }
+
+  order.forEach((pid, idx) => {
+    const p = gameState.players[pid];
+    if (!p) return;
+    const isMe = pid === myPid;
+    const isLeader = pid === leadPid;
+    const row = document.createElement('div');
+    row.className = 'player-row' + (isMe?' me':'') + (isLeader?' leader':'') + (p.out?' out':'');
+
+    const seatCls = isLeader ? 'seat-icon leader-icon' : 'seat-icon';
+    const seatIcon = isLeader ? '👑' : (idx+1);
+    const dragons = p.dragon_count || 0;
+    const dragonStr = dragons > 0 ? '🐉'.repeat(Math.min(dragons,8)) : '—';
+    const tags = (isMe?'<span class="you-tag">YOU</span>':'') +
+                 (isLeader?'<span class="leader-tag">LEAD</span>':'') +
+                 (p.is_ai?'<span class="ai-tag">AI</span>':'');
+
+    row.innerHTML = `
+      <div class="${seatCls}">${seatIcon}</div>
+      <div class="player-info">
+        <div class="pname">${p.name}${tags}</div>
+        <div class="pstrat">${p.is_ai ? (STRAT_LBL[p.ai_strategy]||p.ai_strategy||'') : 'Human'}</div>
+      </div>
+      <div class="dragon-pips">${dragonStr}</div>
+      <div class="card-chip">${p.out?'❌':(p.hand_count||0)+'🃏'}</div>
+    `;
+    el.appendChild(row);
+  });
+}
+
+function renderHand() {
+  const me = gameState?.me;
+  const el = document.getElementById('handCards');
+  el.innerHTML = '';
+  if (!me?.hand) return;
+
+  const isPick = phase === 'pick_cards';
+  const need = gameState?.declared_steps || 0;
+
+  document.getElementById('handTitle').textContent =
+    isPick ? `Your Hand — select ${need}` : `Your Hand (${me.hand.length} cards)`;
+
+  me.hand.forEach(card => {
+    const div = document.createElement('div');
+    let cls = 'card ';
+    if (card.is_joker) cls += card.joker_type === 'space' ? 'joker-space' : 'joker-time';
+    else cls += (card.suit || '').toLowerCase().replace('hearts','hearts')
+                                              .replace('clubs','clubs')
+                                              .replace('diamonds','diamonds')
+                                              .replace('spades','spades');
+    if (selectedCardCids.includes(card.cid)) cls += ' selected';
+    div.className = cls;
+
+    const sym  = card.is_joker ? card.label : SUIT_SYM[card.suit];
+    const rank = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
+    let badge = '';
+    if (card.is_dragon && !card.is_joker) badge = 'DRAGON';
+    else if (card.is_tamer)   badge = 'TAMER';
+    else if (card.is_princess) badge = 'PRINCESS';
+    else if (card.is_portal)   badge = 'PORTAL';
+    else if (card.orig_rank===8) badge = 'WIZARD';
+
+    const orderIdx = selectedCardCids.indexOf(card.cid);
+    const orderBadge = (isPick && orderIdx >= 0)
+      ? `<span class="card-order">${orderIdx + 1}</span>` : '';
+
+    div.innerHTML = `
+      <span class="card-rank">${rank}</span>
+      <span class="card-center">${sym}</span>
+      <span class="card-bot">${rank}</span>
+      ${badge ? `<span class="card-badge">${badge}</span>` : ''}
+      ${orderBadge}
+    `;
+
+    if (isPick) {
+      div.onclick = () => toggleCard(card.cid, need);
+    }
+    el.appendChild(div);
+  });
+}
+
+function toggleCard(cid, need) {
+  const idx = selectedCardCids.indexOf(cid);
+  if (idx >= 0) selectedCardCids.splice(idx, 1);
+  else if (selectedCardCids.length < need) selectedCardCids.push(cid);
+
+  const btn = document.getElementById('mainBtn');
+  btn.textContent = `CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+  btn.disabled = selectedCardCids.length < need;
+  renderHand();
+}
+
+function renderStepDots(currentStep) {
+  const total = gameState?.declared_steps || 3;
+  const el = document.getElementById('stepDots');
+  el.innerHTML = '';
+  for (let i = 1; i <= total; i++) {
+    const d = document.createElement('div');
+    d.className = 'sdot' + (i < currentStep ? ' done' : i === currentStep ? ' cur' : '');
+    el.appendChild(d);
+  }
+}
+
+function renderBattleStep(msg) {
+  const rows = document.getElementById('battleRows');
+
+  // Clear previous step cards if new step
+  if (msg.step === 1) rows.innerHTML = '';
+
+  // Update step indicator
+  renderStepDots(msg.step);
+  document.getElementById('stepNum').textContent = msg.step;
+
+  // Add a step divider
+  const divider = document.createElement('div');
+  divider.style.cssText = 'font-family:Cinzel,serif;font-size:10px;color:rgba(253,246,227,.35);text-align:center;margin:4px 0;letter-spacing:2px;';
+  divider.textContent = `— STEP ${msg.step} —`;
+  rows.appendChild(divider);
+
+  (msg.entries || []).forEach(entry => {
+    const row = document.createElement('div');
+    row.className = 'battle-row' + (entry.pid === msg.winner_pid ? ' winning' : '');
+
+    const card = entry.card;
+    let miniCls = 'mini-card ';
+    if (card.is_joker) miniCls += card.joker_type === 'space' ? 'js' : 'jt';
+    else miniCls += (card.suit||'')[0].toLowerCase();
+
+    const sym  = card.is_joker ? card.label : SUIT_SYM[card.suit];
+    const rank = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
+
+    row.innerHTML = `
+      <div class="battle-pname">${entry.pid===myPid?'👤 You':nameOf(entry.pid)}</div>
+      <div class="battle-cards">
+        <div class="${miniCls}"><span>${rank}</span><span>${sym}</span></div>
+      </div>
+      ${entry.pid===msg.winner_pid ? '<div class="win-badge">WIN</div>' : ''}
+    `;
+    rows.appendChild(row);
+  });
+
+  // Update banner
+  const banner = document.getElementById('phaseBanner');
+  if (msg.step < (gameState?.declared_steps||3)) {
+    const nextStep = msg.step + 1;
+    banner.textContent = `⚔ Step ${nextStep} of ${gameState?.declared_steps||3}`;
+    document.getElementById('mainBtn').textContent = `REVEAL STEP ${nextStep}`;
+    renderStepDots(nextStep);
+  } else {
+    banner.className = 'phase-bar end';
+    banner.textContent = '✅ All steps done — ending round';
+    document.getElementById('mainBtn').textContent = 'COLLECTING CARDS...';
+    document.getElementById('mainBtn').disabled = true;
+  }
+}
+
+function hideBattle() {
+  document.getElementById('battleSection').classList.add('hidden');
+  document.getElementById('battleRows').innerHTML = '';
+}
+
+// ══════════════════════════════════════════════════════
+//  LOG
+// ══════════════════════════════════════════════════════
+function addLog(msg, type='') {
+  const el = document.createElement('div');
+  el.className = 'log-entry' + (type ? ' '+type : '');
+  el.textContent = msg;
+  const list = document.getElementById('logList');
+  list.prepend(el);
+  while (list.children.length > 60) list.lastChild.remove();
+}
+
+// ══════════════════════════════════════════════════════
+//  GAME OVER
+// ══════════════════════════════════════════════════════
+function showGameOver(msg) {
+  const isMe = msg.winner_pid === myPid;
+  document.getElementById('goTitle').textContent = isMe ? '🏆 You Win!' : `${msg.winner_name} Wins!`;
+  document.getElementById('goDragons').textContent = '🐉'.repeat(msg.dragons || 4);
+  document.getElementById('goText').textContent = isMe
+    ? `You collected ${msg.dragons} dragons in round ${msg.round}!`
+    : `${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
+  document.getElementById('gameOverOverlay').classList.remove('hidden');
+}
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+connect();
+setSteps(3);
+setSuit('Hearts');
+</script>
+</body>
+</html>
