@@ -80,13 +80,23 @@ body::before{
 
 .ai-row{display:flex;align-items:center;gap:10px;}
 .ai-row label{font-size:13px;color:rgba(253,246,227,.65);flex:1;}
-.ai-count{display:flex;gap:4px;}
-.ai-btn{
-  width:32px;height:32px;border-radius:6px;border:1px solid rgba(184,134,11,.4);
-  background:rgba(184,134,11,.08);color:var(--gold-light);
-  font-family:'Cinzel',serif;font-size:12px;cursor:pointer;transition:all .2s;
+.ai-slider-wrap{display:flex;align-items:center;gap:8px;flex:1;}
+.ai-slider{
+  flex:1;-webkit-appearance:none;height:4px;border-radius:2px;
+  background:rgba(184,134,11,.3);outline:none;cursor:pointer;
 }
-.ai-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);}
+.ai-slider::-webkit-slider-thumb{
+  -webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  background:var(--gold);cursor:pointer;border:2px solid var(--navy);
+}
+.ai-slider::-moz-range-thumb{
+  width:18px;height:18px;border-radius:50%;
+  background:var(--gold);cursor:pointer;border:2px solid var(--navy);
+}
+.ai-count-lbl{
+  font-family:'Cinzel',serif;font-size:14px;font-weight:700;
+  color:var(--gold-bright);min-width:22px;text-align:center;
+}
 
 .conn-status{
   display:flex;align-items:center;gap:6px;font-size:12px;
@@ -401,10 +411,10 @@ body::before{
 
     <div class="ai-row">
       <label>AI Opponents</label>
-      <div class="ai-count" id="aiCount">
-        <button class="ai-btn active" onclick="setAI(3,this)">3</button>
-        <button class="ai-btn" onclick="setAI(5,this)">5</button>
-        <button class="ai-btn" onclick="setAI(9,this)">9</button>
+      <div class="ai-slider-wrap">
+        <input class="ai-slider" type="range" min="1" max="9" value="3" id="aiSlider"
+               oninput="setAI(parseInt(this.value))">
+        <span class="ai-count-lbl" id="aiCountLbl">3</span>
       </div>
     </div>
 
@@ -549,6 +559,7 @@ let aiCount = 3;
 let phase = '';
 let isSpectator = false;
 let spectatorCount = 0;
+let _lastGameStartedAt = 0;
 
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
@@ -589,10 +600,12 @@ function setConnStatus(ok, text) {
 // ══════════════════════════════════════════════════════
 //  LOBBY ACTIONS
 // ══════════════════════════════════════════════════════
-function setAI(n, btn) {
-  aiCount = n;
-  document.querySelectorAll('.ai-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+function setAI(n) {
+  aiCount = Math.max(1, Math.min(9, n || 3));
+  const lbl = document.getElementById('aiCountLbl');
+  if (lbl) lbl.textContent = aiCount;
+  const slider = document.getElementById('aiSlider');
+  if (slider) slider.value = aiCount;
 }
 
 function getName() {
@@ -779,8 +792,16 @@ function handleMessage(msg) {
       break;
 
     case 'game_started':
+      // Deduplicate: Replit preview sends 3 identical events — only process once
+      if (_lastGameStartedAt && Date.now() - _lastGameStartedAt < 500) break;
+      _lastGameStartedAt = Date.now();
       selectedCardCids = [];
-      addLog('── Game started! ──', 'imp');
+      if (msg.first_leader_pid) {
+        const lname = nameOf(msg.first_leader_pid);
+        addLog(`── Game started! ${lname} won the initial deal and leads first ──`, 'imp');
+      } else {
+        addLog('── Game started! ──', 'imp');
+      }
       break;
 
     case 'hand_update':
@@ -802,6 +823,7 @@ function handleMessage(msg) {
       break;
 
     case 'declaration':
+      if (gameState) gameState.declared_steps = msg.steps;
       addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${SUIT_SYM[msg.element]}`, 'imp');
       renderPlayers();
       break;
@@ -887,6 +909,7 @@ function setPhase(newPhase, data) {
 
   } else if (newPhase === 'pick_cards') {
     const n = data.steps_needed;
+    if (gameState) gameState.declared_steps = n;  // keep state in sync
     banner.className = 'phase-bar pick';
     banner.textContent = `🃏 Select ${n} card${n>1?'s':''} for battle`;
     mainBtn.textContent = `CONFIRM CARDS (0/${n})`;

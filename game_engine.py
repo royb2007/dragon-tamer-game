@@ -391,20 +391,32 @@ class DragonTamerGame:
 
         deck = build_deck()
         random.shuffle(deck)
-        per = len(deck) // len(self.order)
+        n = len(self.order)
 
+        # ── Leader selection: deal 1 card face-up, highest rank wins first lead ──
+        leader_cards = {pid: deck[i] for i, pid in enumerate(self.order)}
+        best_pid = max(self.order, key=lambda pid: leader_cards[pid].rank)
+        self.lead_idx = self.order.index(best_pid)
+
+        # ── Deal remaining cards evenly (leader card is included in hand) ──
+        remaining = deck[n:]
+        per = len(remaining) // n
         for i, pid in enumerate(self.order):
-            self.players[pid].hand = deck[i*per:(i+1)*per]
+            share = remaining[i * per:(i + 1) * per]
+            self.players[pid].hand = [leader_cards[pid]] + share
 
-        # Random first leader
-        self.lead_idx = random.randrange(len(self.order))
         self.round = 1
         self.phase = Phase.LEADER_DECLARE
 
         events = [
-            {'type': 'game_started', 'round': self.round},
+            {
+                'type': 'game_started',
+                'round': self.round,
+                'leader_cards': {pid: c.to_dict() for pid, c in leader_cards.items()},
+                'first_leader_pid': best_pid,
+            },
             {'type': 'phase_change', 'phase': Phase.LEADER_DECLARE,
-             'leader_pid': self._lead_pid()},
+             'leader_pid': self._lead_pid(), 'round': self.round},
         ]
         events += self._send_hands()
 
