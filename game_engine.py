@@ -135,26 +135,37 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str) -> dict:
             result['love_right_pid'] = tamers[0]['pid']
             result['special_events'].append(f"💕 Love Power → {tamers[0]['pid']}!")
 
-    # Tamer beats dragons
-    if has_dragon and len(tamers) == 1:
-        result['winner_pid'] = tamers[0]['pid']
-        result['special_events'].append(f"⚔️ {tamers[0]['pid']}'s Tamer beats all dragons!")
+    # ── Tamer beats Dragons ──────────────────────────────────────────────
+    # A Tamer (2) is the ONLY card that can defeat a Dragon (Ace/Joker).
+    # No other card—not even a King or Queen—can beat a Dragon.
+    if has_dragon and len(tamers) >= 1:
+        if len(tamers) == 1:
+            result['winner_pid'] = tamers[0]['pid']
+            result['special_events'].append(
+                f"⚔️ {tamers[0]['pid']}'s Tamer beats all dragons!")
+        else:
+            # Multiple tamers: first tamer (by play order) wins the duel
+            result['winner_pid'] = tamers[0]['pid']
+            result['special_events'].append(
+                "⚔️ Tamer duel! First Tamer wins.")
         return result
 
-    if has_dragon and len(tamers) > 1:
-        result['winner_pid'] = tamers[0]['pid']
-        result['special_events'].append("⚔️ Tamer duel! First Tamer wins (full duel UI pending).")
-        return result
+    # ── Dragon always beats every non-Tamer card ─────────────────────────
+    # If a Dragon is in play and no Tamer challenged it, Dragon wins.
+    # We pick the highest-ranked Dragon (Ace > Joker by effective_rank).
+    if has_dragon:
+        dragon_entries = [e for e in valid if e['card'].is_dragon]
+        best_dragon = max(dragon_entries,
+                          key=lambda e: e['card'].effective_rank(el))
+        result['winner_pid'] = best_dragon['pid']
+        # Fall through (do NOT return yet) so Space Dragon / Portal can fire below
 
-    # Normal resolution
-    best = _best_card([e['card'] for e in valid], el)
-    top_e = best.effective_rank(el)
-    tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
-
-    if len(tied) == 1:
-        result['winner_pid'] = tied[0]['pid']
     else:
-        result['winner_pid'] = lead_pid
+        # ── Normal resolution: highest effective rank wins ────────────────
+        best = _best_card([e['card'] for e in valid], el)
+        top_e = best.effective_rank(el)
+        tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
+        result['winner_pid'] = tied[0]['pid'] if len(tied) == 1 else lead_pid
 
     # Space dragon
     space_j = next((e for e in valid if e['card'].joker_type == 'space'), None)
