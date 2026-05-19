@@ -167,10 +167,8 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str) -> dict:
         tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
         result['winner_pid'] = tied[0]['pid'] if len(tied) == 1 else lead_pid
 
-    # Space dragon
-    space_j = next((e for e in valid if e['card'].joker_type == 'space'), None)
-    if space_j and not tamers:
-        result['special_events'].append(f"🌌 Space Dragon! {space_j['pid']} may change seat.")
+    # Space dragon event is handled in _do_reveal (to support interactive human choice)
+    _ = next((e for e in valid if e['card'].joker_type == 'space'), None)  # detected downstream
 
     # Portal detection
     portal_e = next((e for e in valid if e['card'].is_portal), None)
@@ -311,6 +309,8 @@ class DragonTamerGame:
         self.pending_time_dragon: Optional[str] = None  # pid who must choose
         self._pending_td_prev_winner: Optional[str] = None
         self._pending_td_prev_cards: List[Card] = []
+        # Space Dragon interactive choice state
+        self.pending_space_dragon: Optional[str] = None  # pid who must choose
 
     def add_player(self, pid: str, name: str, is_ai: bool = False,
                    ai_strategy: str = 'Balanced') -> dict:
@@ -443,8 +443,8 @@ class DragonTamerGame:
     def reveal_step(self, pid: str) -> List[dict]:
         if self.phase != Phase.REVEAL:
             return [{'type': 'error', 'msg': 'Not in reveal phase'}]
-        # Block while waiting for a human's Time Dragon choice
-        if self.pending_time_dragon:
+        # Block while waiting for a human's joker power choice
+        if self.pending_time_dragon or self.pending_space_dragon:
             return []
         # Debounce: Replit's WS proxy triple-sends each message from the browser.
         now = time.time()
@@ -479,6 +479,32 @@ class DragonTamerGame:
         return [{'type': 'phase_change', 'phase': Phase.REVEAL,
                  'next_step': self.current_step + 1}]
 
+    def _do_space_dragon_seat_change(self, pid: str):
+        """Rotate the turn order by one seat (everyone shifts one position)."""
+        if len(self.order) < 2:
+            return
+        current_lead = self._lead_pid()
+        self.order = self.order[1:] + [self.order[0]]
+        if current_lead in self.order:
+            self.lead_idx = self.order.index(current_lead)
+
+    def resolve_space_dragon(self, pid: str, choice: str) -> List[dict]:
+        """Apply the human player's Space Dragon choice and continue the round."""
+        if self.pending_space_dragon != pid:
+            return []
+        name = self.players[pid].name
+        if choice == 'change':
+            self._do_space_dragon_seat_change(pid)
+            self._log(f"🌌 {name} warps through space — seat order changed!")
+        else:
+            self._log(f"🌌 {name} lets the Space Dragon power fade unused.")
+        self.pending_space_dragon = None
+        # Re-enable button on client side by emitting the deferred phase event
+        if self.current_step >= self.declared_steps:
+            return self._end_round()
+        return [{'type': 'phase_change', 'phase': Phase.REVEAL,
+                 'next_step': self.current_step + 1}]
+
     def _do_reveal(self) -> List[dict]:
         si = self.current_step
         active = [p for p in self.players.values() if not p.out]
@@ -499,8 +525,9 @@ class DragonTamerGame:
         winner_pid = result['winner_pid']
         all_cards  = result['all_cards']
 
-        # Time dragon logic
+        # Joker helpers
         time_j = next((e for e in entries if e['card'].joker_type == 'time'), None)
+        space_j = next((e for e in entries if e['card'].joker_type == 'space'), None)
         has_tamer = any(e['card'].is_tamer for e in entries)
 
         time_owner_pid = None
@@ -572,6 +599,31 @@ class DragonTamerGame:
             result['special_events'].append(
                 f"⏳ {self.players[time_owner_pid].name} must choose the Time Dragon's power!")
 
+        # ── Space Dragon power ────────────────────────────────────────────
+        # Determine who gets the space dragon power:
+        #   - Tamer wins + space dragon in play → tamer gets the power
+        #   - Space dragon wins on its own       → space dragon owner gets it
+        space_owner_pid = None
+        if space_j:
+            if has_tamer and winner_pid:
+                space_owner_pid = winner_pid
+                result['special_events'].append(
+                    f"🌌 {self.players[winner_pid].name} tamed the Space Dragon — gaining warp power!")
+            elif not has_tamer:
+                space_owner_pid = space_j['pid']
+                result['special_events'].append(
+                    f"🌌 Space Dragon! {self.players[space_j['pid']].name} may change seat.")
+
+        sd_is_human = bool(space_owner_pid and not self.players[space_owner_pid].is_ai)
+
+        if space_owner_pid and not sd_is_human:
+            # AI: always rotate seat
+            self._do_space_dragon_seat_change(space_owner_pid)
+            result['special_events'].append(
+                f"🌌 {self.players[space_owner_pid].name} warps to a new seat!")
+        elif sd_is_human:
+            self.pending_space_dragon = space_owner_pid
+
         events = [{
             'type': 'step_revealed',
             'step': si + 1,
@@ -583,10 +635,11 @@ class DragonTamerGame:
             # Signal to client: human must respond before game continues
             'time_dragon_prompt': time_owner_pid if td_is_human else None,
             'has_prev_step': bool(td_prev_winner),
+            'space_dragon_prompt': space_owner_pid if sd_is_human else None,
         }]
 
-        # Hold back phase_change while human is choosing Time Dragon power
-        if td_is_human:
+        # Hold back phase_change while a human is choosing a joker power
+        if td_is_human or sd_is_human:
             return events
 
         if self.current_step >= self.declared_steps:
@@ -648,6 +701,17 @@ class DragonTamerGame:
                     'winner_sleeping': [[t.to_dict(), d.to_dict()] for t, d in p.sleeping],
                     'all_dragons': [c.to_dict() for c in p.hand if c.is_dragon]
                                   + [d.to_dict() for _, d in p.sleeping],
+                    'all_players': [
+                        {
+                            'pid': pl.pid,
+                            'name': pl.name,
+                            'dragons': pl.dragon_count,
+                            'out': pl.out,
+                            'hand': [c.to_dict() for c in pl.hand],
+                            'sleeping': [[t.to_dict(), d.to_dict()] for t, d in pl.sleeping],
+                        }
+                        for pl in self.players.values()
+                    ],
                 }, {'type': 'eliminated', 'pids': eliminated}]
 
         # Next leader

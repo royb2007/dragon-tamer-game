@@ -225,18 +225,24 @@ body::before{content:'';position:fixed;inset:0;
 .battle-row.winning{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.3);}
 .battle-pname{font-size:13px;font-weight:600;min-width:80px;}
 .battle-cards{display:flex;gap:6px;flex:1;flex-wrap:wrap;align-items:flex-start;}
-/* Scaled-down full card for battle results (Issue 4) */
-.battle-card-wrap{width:44px;height:63px;position:relative;flex-shrink:0;overflow:visible;}
-.battle-card-wrap .card{transform:scale(0.5);transform-origin:top left;pointer-events:none;}
+/* Full-size card wrapper for battle results — issue 1: was 0.5× scale, now 1× */
+.battle-card-wrap{width:88px;height:126px;position:relative;flex-shrink:0;overflow:visible;}
+.battle-card-wrap .card{transform:none;pointer-events:none;}
 .win-badge{font-size:11px;background:var(--gold);color:var(--navy);
   padding:2px 7px;border-radius:3px;font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
-/* Declaration summary bar (Issue 1) */
+/* Declaration summary bar */
 .decl-summary{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.8px;color:var(--gold);
   background:rgba(184,134,11,.12);border:1px solid rgba(184,134,11,.25);
   border-radius:6px;padding:5px 10px;margin:0 0 6px;text-align:center;}
 /* Win-screen dragon cards row */
 .go-dragons-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0;}
-.go-dragons-row .battle-card-wrap{width:44px;height:63px;}
+.go-dragons-row .battle-card-wrap{width:88px;height:126px;}
+/* Win-screen all-players final hand grid */
+.go-all-hands{margin-top:10px;text-align:left;max-height:320px;overflow-y:auto;}
+.go-player-row{margin-bottom:10px;}
+.go-player-name{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;
+  font-family:'Cinzel',serif;letter-spacing:.6px;}
+.go-player-cards{display:flex;gap:5px;flex-wrap:wrap;}
 
 /* ── LOG ── */
 .log-list{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;}
@@ -443,6 +449,8 @@ body::before{content:'';position:fixed;inset:0;
     <p id="goText"></p>
     <!-- Dragon cards won (shown for winner) -->
     <div class="go-dragons-row hidden" id="goDragonCards"></div>
+    <!-- All players' final hands -->
+    <div class="go-all-hands hidden" id="goAllHands"></div>
     <button class="btn btn-gold btn-full" onclick="location.reload()">Play Again</button>
   </div>
 </div>
@@ -740,10 +748,14 @@ function handleMessage(msg) {
       if(msg.winner_pid) addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
       // Issue 5: server is pausing for human Time Dragon choice — show modal immediately
       if(msg.time_dragon_prompt && msg.time_dragon_prompt===myPid && !isSpectator){
-        // Disable Reveal button while choosing
         const btn=document.getElementById('mainBtn');
         if(btn){btn.disabled=true; btn.textContent='Choose Time Dragon Power...';}
         showTimeDragonModal(msg, msg);
+      }
+      if(msg.space_dragon_prompt && msg.space_dragon_prompt===myPid && !isSpectator){
+        const btn=document.getElementById('mainBtn');
+        if(btn){btn.disabled=true; btn.textContent='Choose Space Dragon Power...';}
+        showSpaceDragonModal(msg, msg);
       }
       break;
     }
@@ -1152,13 +1164,17 @@ function resolveTimeDragon(choice) {
   addLog(msgs[choice]||'','imp');
 }
 function showSpaceDragonModal(ev, msg) {
-  document.getElementById('spaceDragonText').textContent='The Space Dragon lets you warp reality. Change your seat at the table?';
+  document.getElementById('spaceDragonText').textContent=
+    'The Space Dragon warps reality. Change your seat order at the table, or stay put?';
   document.getElementById('spaceDragonOverlay').classList.remove('hidden');
 }
 function resolveSpaceDragon(choice) {
   document.getElementById('spaceDragonOverlay').classList.add('hidden');
   send({type:'joker_power',power:'space',choice});
-  addLog(choice==='change'?'🌌 Space Dragon: seat changed!':'🌌 Space Dragon: held your position.','imp');
+  addLog(choice==='change'?'🌌 Space Dragon: seat order changed!':'🌌 Space Dragon: held position.','imp');
+  // Re-enable main button — server will send phase_change to unblock
+  const btn=document.getElementById('mainBtn');
+  if(btn){btn.disabled=false; btn.textContent='REVEAL STEP';}
 }
 
 // ══════════════════════════════════════════════════════
@@ -1183,7 +1199,7 @@ function showGameOver(msg) {
   document.getElementById('goText').textContent=isMe
     ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
     :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
-  // Issue 6: show the actual dragon cards the winner collected
+  // Show the winner's actual dragon cards
   const dragonRow=document.getElementById('goDragonCards');
   dragonRow.innerHTML='';
   const dragons=msg.all_dragons||[];
@@ -1197,6 +1213,45 @@ function showGameOver(msg) {
     dragonRow.classList.remove('hidden');
   } else {
     dragonRow.classList.add('hidden');
+  }
+  // Show all players' final hands
+  const allHandsEl=document.getElementById('goAllHands');
+  allHandsEl.innerHTML='';
+  const allPlayers=msg.all_players||[];
+  if(allPlayers.length){
+    const hdr=document.createElement('div');
+    hdr.style.cssText='font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin:10px 0 6px;text-align:center;';
+    hdr.textContent='— FINAL HANDS —';
+    allHandsEl.appendChild(hdr);
+    allPlayers.forEach(p=>{
+      const row=document.createElement('div');
+      row.className='go-player-row';
+      const nameEl=document.createElement('div');
+      nameEl.className='go-player-name';
+      const prefix=p.pid===msg.winner_pid?'🏆 ': p.out?'💀 ':'';
+      nameEl.textContent=`${prefix}${p.name}  ·  ${p.dragons}🐉`;
+      const cardsDiv=document.createElement('div');
+      cardsDiv.className='go-player-cards';
+      // hand cards
+      (p.hand||[]).forEach(card=>{
+        const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+        wrap.appendChild(renderCardEl(card,false,false,-1));
+        cardsDiv.appendChild(wrap);
+      });
+      // sleeping pairs (tamer+dragon shown as the dragon card)
+      (p.sleeping||[]).forEach(pair=>{
+        const d=pair[1];
+        const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+        wrap.appendChild(renderCardEl(d,false,false,-1));
+        cardsDiv.appendChild(wrap);
+      });
+      row.appendChild(nameEl);
+      row.appendChild(cardsDiv);
+      allHandsEl.appendChild(row);
+    });
+    allHandsEl.classList.remove('hidden');
+  } else {
+    allHandsEl.classList.add('hidden');
   }
   document.getElementById('gameOverOverlay').classList.remove('hidden');
 }

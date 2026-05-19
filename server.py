@@ -207,6 +207,9 @@ async def handle_joker_power(ws, data):
     if power == 'time':
         events = game.resolve_time_dragon(pid, choice)
         await broadcast_events(meta['room_id'], events)
+    elif power == 'space':
+        events = game.resolve_space_dragon(pid, choice)
+        await broadcast_events(meta['room_id'], events)
 
 
 async def handle_get_state(ws, data):
