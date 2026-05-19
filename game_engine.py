@@ -7,6 +7,7 @@ Fixes applied:
 """
 import random
 import json
+import time
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -427,6 +428,12 @@ class DragonTamerGame:
     def reveal_step(self, pid: str) -> List[dict]:
         if self.phase != Phase.REVEAL:
             return [{'type': 'error', 'msg': 'Not in reveal phase'}]
+        # Debounce: Replit's WS proxy triple-sends each message from the browser.
+        # Ignore any reveal that arrives within 400 ms of the previous one.
+        now = time.time()
+        if now - getattr(self, '_last_reveal_ts', 0.0) < 0.4:
+            return []
+        self._last_reveal_ts = now
         return self._do_reveal()
 
     def _do_reveal(self) -> List[dict]:
@@ -435,9 +442,8 @@ class DragonTamerGame:
 
         entries = []
         for p in active:
-            rev_idx = len(p.battle) - 1 - si
-            if rev_idx >= 0:
-                entries.append({'pid': p.pid, 'card': p.battle[rev_idx]})
+            if p.battle:  # always reveal first card; it is removed after each step
+                entries.append({'pid': p.pid, 'card': p.battle[0]})
 
         if not entries:
             return self._end_round()

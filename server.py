@@ -194,6 +194,15 @@ async def handle_reveal(ws, data):
     await broadcast_events(meta['room_id'], events)
 
 
+async def handle_joker_power(ws, data):
+    """Receives the player's joker power choice (time/space dragon).
+    Currently logged; future versions will pause resolution for human input."""
+    meta = socket_meta.get(ws, {})
+    power  = data.get('power', '')
+    choice = data.get('choice', '')
+    log.info(f"joker_power from {meta.get('name','?')}: power={power} choice={choice}")
+
+
 async def handle_get_state(ws, data):
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
@@ -248,6 +257,7 @@ HANDLERS = {
     'declare':       handle_declare,
     'pick_cards':    handle_pick_cards,
     'reveal':        handle_reveal,
+    'joker_power':   handle_joker_power,
     'get_state':     handle_get_state,
     'list_rooms':    handle_list_rooms,
 }
