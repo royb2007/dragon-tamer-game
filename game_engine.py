@@ -307,6 +307,10 @@ class DragonTamerGame:
         self.prev_step_cards:   List[Card] = []
         self.prev_step_winner:  Optional[str] = None
         self.event_log:      List[str] = []
+        # Time Dragon interactive choice state
+        self.pending_time_dragon: Optional[str] = None  # pid who must choose
+        self._pending_td_prev_winner: Optional[str] = None
+        self._pending_td_prev_cards: List[Card] = []
 
     def add_player(self, pid: str, name: str, is_ai: bool = False,
                    ai_strategy: str = 'Balanced') -> dict:
@@ -439,13 +443,41 @@ class DragonTamerGame:
     def reveal_step(self, pid: str) -> List[dict]:
         if self.phase != Phase.REVEAL:
             return [{'type': 'error', 'msg': 'Not in reveal phase'}]
+        # Block while waiting for a human's Time Dragon choice
+        if self.pending_time_dragon:
+            return []
         # Debounce: Replit's WS proxy triple-sends each message from the browser.
-        # Ignore any reveal that arrives within 400 ms of the previous one.
         now = time.time()
         if now - getattr(self, '_last_reveal_ts', 0.0) < 0.4:
             return []
         self._last_reveal_ts = now
         return self._do_reveal()
+
+    def resolve_time_dragon(self, pid: str, choice: str) -> List[dict]:
+        """Apply the human player's Time Dragon choice and continue the round."""
+        if self.pending_time_dragon != pid:
+            return []
+        name = self.players[pid].name
+        if choice == 'back' and self._pending_td_prev_winner and self._pending_td_prev_cards:
+            pw = self.players[self._pending_td_prev_winner]
+            for c in self._pending_td_prev_cards:
+                if c in pw.accum:
+                    pw.accum.remove(c)
+            self.players[pid].accum += self._pending_td_prev_cards
+            self._log(f"⏳ {name} reaches back in time and claims the previous step's cards!")
+        elif choice == 'forward':
+            self.players[pid].skip_next = True
+            self._log(f"⏳ {name} leaps forward — will skip their next round.")
+        else:
+            self._log(f"⏳ {name} lets the Time Dragon power fade unused.")
+        self.pending_time_dragon = None
+        self._pending_td_prev_winner = None
+        self._pending_td_prev_cards = []
+        # Now emit the phase event that _do_reveal held back
+        if self.current_step >= self.declared_steps:
+            return self._end_round()
+        return [{'type': 'phase_change', 'phase': Phase.REVEAL,
+                 'next_step': self.current_step + 1}]
 
     def _do_reveal(self) -> List[dict]:
         si = self.current_step
@@ -477,16 +509,21 @@ class DragonTamerGame:
         elif time_j and not has_tamer:
             time_owner_pid = time_j['pid']
 
-        if time_owner_pid:
-            if self.prev_step_winner and self.prev_step_cards:
-                pw = self.players[self.prev_step_winner]
-                for c in self.prev_step_cards:
+        # Save pre-current-step "previous" data so Time Dragon "back" works correctly
+        td_prev_winner = self.prev_step_winner
+        td_prev_cards  = list(self.prev_step_cards)
+        td_is_human    = time_owner_pid and not self.players[time_owner_pid].is_ai
+
+        if time_owner_pid and not td_is_human:
+            # AI: auto-decide based on whether there is a previous step to claim
+            if td_prev_winner and td_prev_cards:
+                pw = self.players[td_prev_winner]
+                for c in td_prev_cards:
                     if c in pw.accum: pw.accum.remove(c)
-                self.players[time_owner_pid].accum += self.prev_step_cards
+                self.players[time_owner_pid].accum += td_prev_cards
                 result['special_events'].append(
                     f"⏳ {self.players[time_owner_pid].name} claims previous step!")
             else:
-                # forward in time — set skip_next
                 self.players[time_owner_pid].skip_next = True
                 result['special_events'].append(
                     f"⏳ {self.players[time_owner_pid].name} skips next round.")
@@ -527,6 +564,14 @@ class DragonTamerGame:
         self.prev_step_winner = winner_pid
         self.current_step += 1
 
+        # If human player has Time Dragon power, pause and let them choose
+        if td_is_human:
+            self.pending_time_dragon = time_owner_pid
+            self._pending_td_prev_winner = td_prev_winner
+            self._pending_td_prev_cards  = td_prev_cards
+            result['special_events'].append(
+                f"⏳ {self.players[time_owner_pid].name} must choose the Time Dragon's power!")
+
         events = [{
             'type': 'step_revealed',
             'step': si + 1,
@@ -535,7 +580,14 @@ class DragonTamerGame:
             'winner_pid': winner_pid,
             'special_events': result['special_events'],
             'love_right_pid': result['love_right_pid'],
+            # Signal to client: human must respond before game continues
+            'time_dragon_prompt': time_owner_pid if td_is_human else None,
+            'has_prev_step': bool(td_prev_winner),
         }]
+
+        # Hold back phase_change while human is choosing Time Dragon power
+        if td_is_human:
+            return events
 
         if self.current_step >= self.declared_steps:
             events += self._end_round()
@@ -592,6 +644,10 @@ class DragonTamerGame:
                     'winner_name': p.name,
                     'dragons': p.dragon_count,
                     'round': self.round,
+                    'winner_hand': [c.to_dict() for c in p.hand],
+                    'winner_sleeping': [[t.to_dict(), d.to_dict()] for t, d in p.sleeping],
+                    'all_dragons': [c.to_dict() for c in p.hand if c.is_dragon]
+                                  + [d.to_dict() for _, d in p.sleeping],
                 }, {'type': 'eliminated', 'pids': eliminated}]
 
         # Next leader

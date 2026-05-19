@@ -224,16 +224,19 @@ body::before{content:'';position:fixed;inset:0;
   border-radius:7px;margin-bottom:4px;background:rgba(255,255,255,.025);border:1px solid transparent;}
 .battle-row.winning{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.3);}
 .battle-pname{font-size:13px;font-weight:600;min-width:80px;}
-.battle-cards{display:flex;gap:4px;flex:1;flex-wrap:wrap;}
-.mini-card{width:34px;height:48px;border-radius:5px;border:1px solid rgba(184,134,11,.35);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:1px;font-size:9px;font-family:'Cinzel',serif;font-weight:700;}
-.mini-card.h,.mini-card.d{background:linear-gradient(150deg,#fffaf0,#f0e6c8);color:#8B1515;}
-.mini-card.c,.mini-card.s{background:linear-gradient(150deg,#1a1e30,#22283c);color:#e8e0d0;}
-.mini-card.js{background:linear-gradient(150deg,#160a2e,#22144a);color:#C39BD3;border-color:#9B59B6;}
-.mini-card.jt{background:linear-gradient(150deg,#1a0a0a,#2e1600);color:#E8A020;border-color:#E8A020;}
+.battle-cards{display:flex;gap:6px;flex:1;flex-wrap:wrap;align-items:flex-start;}
+/* Scaled-down full card for battle results (Issue 4) */
+.battle-card-wrap{width:44px;height:63px;position:relative;flex-shrink:0;overflow:visible;}
+.battle-card-wrap .card{transform:scale(0.5);transform-origin:top left;pointer-events:none;}
 .win-badge{font-size:11px;background:var(--gold);color:var(--navy);
   padding:2px 7px;border-radius:3px;font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
+/* Declaration summary bar (Issue 1) */
+.decl-summary{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.8px;color:var(--gold);
+  background:rgba(184,134,11,.12);border:1px solid rgba(184,134,11,.25);
+  border-radius:6px;padding:5px 10px;margin:0 0 6px;text-align:center;}
+/* Win-screen dragon cards row */
+.go-dragons-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0;}
+.go-dragons-row .battle-card-wrap{width:44px;height:63px;}
 
 /* ── LOG ── */
 .log-list{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;}
@@ -393,6 +396,9 @@ body::before{content:'';position:fixed;inset:0;
       <div class="hand-scroll" id="handCards"></div>
     </div>
 
+    <!-- Declaration summary (visible during pick/reveal so everyone knows what was declared) -->
+    <div class="decl-summary hidden" id="declSummary"></div>
+
     <!-- Battle -->
     <div class="section hidden" id="battleSection">
       <div class="section-title">⚔ Battle — Step <span id="stepNum">1</span></div>
@@ -435,6 +441,8 @@ body::before{content:'';position:fixed;inset:0;
     <h2 id="goTitle">Game Over</h2>
     <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
     <p id="goText"></p>
+    <!-- Dragon cards won (shown for winner) -->
+    <div class="go-dragons-row hidden" id="goDragonCards"></div>
     <button class="btn btn-gold btn-full" onclick="location.reload()">Play Again</button>
   </div>
 </div>
@@ -730,11 +738,21 @@ function handleMessage(msg) {
         if(!isSpectator) checkJokerModal(ev,msg);
       }
       if(msg.winner_pid) addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
+      // Issue 5: server is pausing for human Time Dragon choice — show modal immediately
+      if(msg.time_dragon_prompt && msg.time_dragon_prompt===myPid && !isSpectator){
+        // Disable Reveal button while choosing
+        const btn=document.getElementById('mainBtn');
+        if(btn){btn.disabled=true; btn.textContent='Choose Time Dragon Power...';}
+        showTimeDragonModal(msg, msg);
+      }
       break;
     }
 
     case 'round_end':
-      addLog(`── Round ${msg.round} complete ──`); hideBattle(); break;
+      addLog(`── Round ${msg.round} complete ──`);
+      // Issue 3: delay hiding battle so player can see the last step's result
+      setTimeout(hideBattle, 3000);
+      break;
 
     case 'eliminated':
       for(const pid of (msg.pids||[])) addLog(`💀 ${nameOf(pid)} eliminated!`,'warn');
@@ -793,6 +811,19 @@ function setPhase(newPhase, data) {
   if(phaseLbl) phaseLbl.textContent = PHASE_LABELS[newPhase]||newPhase;
 
   declSec.classList.add('hidden');
+  // Issue 1: show declaration summary bar during pick/reveal so everyone sees what was declared
+  const declSum=document.getElementById('declSummary');
+  if(declSum){
+    if((newPhase==='pick_cards'||newPhase==='reveal')&&gameState){
+      const ldr=nameOf(gameState.lead_pid||'');
+      const steps=gameState.declared_steps||'?';
+      const el=gameState.declared_el||'Hearts';
+      declSum.textContent=`👑 ${ldr} declares ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
+      declSum.classList.remove('hidden');
+    } else {
+      declSum.classList.add('hidden');
+    }
+  }
   if(isSpectator){mainBtn.disabled=true;mainBtn.textContent='👁 Spectating';return;}
   mainBtn.disabled=false;
 
@@ -1060,16 +1091,23 @@ function renderBattleStep(msg) {
   (msg.entries||[]).forEach(entry=>{
     const row=document.createElement('div');
     row.className='battle-row'+(entry.pid===msg.winner_pid?' winning':'');
-    const c=entry.card;
-    let mc='mini-card ';
-    if(c.is_joker) mc+=c.joker_type==='space'?'js':'jt';
-    else mc+=(c.suit||'')[0].toLowerCase();
-    const sym=c.is_joker?c.label:SUIT_SYM[c.suit];
-    const rank=c.is_joker?'':c.label.replace(/[♥♣♦♠]/g,'');
-    row.innerHTML=`
-      <div class="battle-pname">${entry.pid===myPid?'👤 You':nameOf(entry.pid)}</div>
-      <div class="battle-cards"><div class="${mc}"><span>${rank}</span><span>${sym}</span></div></div>
-      ${entry.pid===msg.winner_pid?'<div class="win-badge">WIN</div>':''}`;
+    // Render the card using the same full renderCardEl (scaled via CSS) — Issue 4
+    const wrap=document.createElement('div');
+    wrap.className='battle-card-wrap';
+    wrap.appendChild(renderCardEl(entry.card, false, false, -1));
+    const pname=document.createElement('div');
+    pname.className='battle-pname';
+    pname.textContent=entry.pid===myPid?'👤 You':nameOf(entry.pid);
+    const cardsDiv=document.createElement('div');
+    cardsDiv.className='battle-cards';
+    cardsDiv.appendChild(wrap);
+    row.appendChild(pname);
+    row.appendChild(cardsDiv);
+    if(entry.pid===msg.winner_pid){
+      const wb=document.createElement('div');
+      wb.className='win-badge'; wb.textContent='WIN';
+      row.appendChild(wb);
+    }
     rows.appendChild(row);
   });
 
@@ -1097,8 +1135,12 @@ function hideBattle() {
 //  JOKER MODALS
 // ══════════════════════════════════════════════════════
 function showTimeDragonModal(ev, msg) {
-  const hasPrev=!!(msg.prev_step_winner||(gameState?.current_step>1));
-  document.getElementById('timeDragonText').textContent='The Time Dragon grants you a temporal power. Choose wisely:';
+  // Use server-supplied flag; fall back to checking if we're past step 1
+  const hasPrev=!!(msg.has_prev_step||(gameState?.current_step>1));
+  document.getElementById('timeDragonText').textContent=
+    hasPrev
+      ? 'The Time Dragon grants you power! Go back and claim the previous step\'s cards, or leap forward and skip your next round.'
+      : 'The Time Dragon grants you power! There\'s no previous step to claim, so you can only leap forward (skip your next round) or do nothing.';
   const backBtn=document.getElementById('timeBackBtn');
   backBtn.style.opacity=hasPrev?'1':'.35'; backBtn.disabled=!hasPrev;
   document.getElementById('timeDragonOverlay').classList.remove('hidden');
@@ -1139,8 +1181,23 @@ function showGameOver(msg) {
   document.getElementById('goTitle').textContent=isMe?'🏆 You Win!':`${msg.winner_name} Wins!`;
   document.getElementById('goDragons').textContent='🐉'.repeat(msg.dragons||4);
   document.getElementById('goText').textContent=isMe
-    ?`You collected ${msg.dragons} dragons in round ${msg.round}!`
+    ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
     :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
+  // Issue 6: show the actual dragon cards the winner collected
+  const dragonRow=document.getElementById('goDragonCards');
+  dragonRow.innerHTML='';
+  const dragons=msg.all_dragons||[];
+  if(isMe && dragons.length){
+    dragons.forEach(card=>{
+      const wrap=document.createElement('div');
+      wrap.className='battle-card-wrap';
+      wrap.appendChild(renderCardEl(card,false,false,-1));
+      dragonRow.appendChild(wrap);
+    });
+    dragonRow.classList.remove('hidden');
+  } else {
+    dragonRow.classList.add('hidden');
+  }
   document.getElementById('gameOverOverlay').classList.remove('hidden');
 }
 
