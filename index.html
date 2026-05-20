@@ -31,6 +31,7 @@ body::before{content:'';position:fixed;inset:0;
 /* ── SCREENS ── */
 .screen{position:absolute;inset:0;display:flex;flex-direction:column;z-index:1;overflow:hidden;}
 .screen.hidden{display:none!important;}
+.hidden{display:none!important;}
 
 /* ── LOBBY ── */
 #lobbyScreen{align-items:center;justify-content:center;padding:24px;gap:20px;}
@@ -935,7 +936,7 @@ function setPhase(newPhase, data) {
     renderTable();
 
   } else if(newPhase==='pick_cards'){
-    const n=data.steps_needed;
+    const n=data.steps_needed||data.declared_steps||gameState?.declared_steps||2;
     if(gameState) gameState.declared_steps=n;
     banner.className='phase-bar pick';
     banner.textContent=`🃏 Select ${n} card${n>1?'s':''} for battle`;
