@@ -206,6 +206,11 @@ body::before{content:'';position:fixed;inset:0;
 .card.joker-time  .card-badge{color:rgba(232,160,32,.8);}
 
 /* Dragon icon overlay on Ace cards */
+/* Dominant-element bolt badge */
+.dominant-bolt{position:absolute;top:3px;right:4px;font-size:10px;line-height:1;z-index:2;
+  animation:boltBlink 1.6s ease-in-out infinite;pointer-events:none;}
+@keyframes boltBlink{0%,100%{opacity:1;filter:drop-shadow(0 0 3px #ffe066);}
+  50%{opacity:.2;filter:none;}}
 .ace-dragon-icon{position:absolute;top:50%;left:50%;
   transform:translate(-50%,-50%) translateY(6px);
   font-size:26px;line-height:1;pointer-events:none;
@@ -717,9 +722,10 @@ function handleMessage(msg) {
       break;
 
     case 'declaration':
-      // ── Always sync declared_steps AND lead_pid from declaration event ──
+      // ── Always sync declared_steps, declared_el AND lead_pid from declaration event ──
       if(gameState){
         gameState.declared_steps=msg.steps;
+        gameState.declared_el=msg.element;
         gameState.lead_pid=msg.pid;
       }
       addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${SUIT_SYM[msg.element]}`,'imp');
@@ -997,16 +1003,18 @@ function buildCardPips(origRank, suitSym) {
 function renderCardEl(card, isPick, isSelected, orderIdx) {
   let cls='card ';
   const sym = card.is_joker ? (card.joker_type==='space'?'🌌':'⏳') : SUIT_SYM[card.suit];
-  const rankStr = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
+  // 3: Replace 'J' with 'P' for Jacks (Princess)
+  let rankStr = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
+  if(card.orig_rank===11) rankStr='P';
 
   if(card.is_joker) cls+=card.joker_type==='space'?'joker-space':'joker-time';
   else cls+=(card.suit||'').toLowerCase();
   if(isSelected) cls+=' selected';
 
   let badge='';
-  if(card.is_tamer)    badge='TAMER';
+  if(card.is_tamer)         badge='TAMER';
   else if(card.is_princess) badge='PRINCESS';
-  else if(card.is_portal)   badge='PORTAL';
+  else if(card.is_portal)   badge='🌀 PORTAL';  // 2: spiral + label on portal
   else if(card.orig_rank===8) badge='WIZARD';
 
   // Dragon icon for Ace cards
@@ -1014,6 +1022,11 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
     ? '<span class="ace-dragon-icon">🐉</span>' : '';
 
   const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx+1}</span>`:'';
+
+  // 1: blinking bolt for cards matching the declared dominant element
+  const isDominant = !card.is_joker && gameState?.declared_el
+                     && card.suit===gameState.declared_el;
+  const dominantBolt = isDominant ? '<span class="dominant-bolt">⚡</span>' : '';
 
   let centerHTML='';
   if(card.is_joker){
@@ -1024,8 +1037,8 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
       <div class="joker-sub">DRAGON</div>
     </div></div>`;
   } else if(card.orig_rank>=11){
-    // Face card: show large letter
-    const faceLetters={11:'J',12:'Q',13:'K'};
+    // Face card: P for Jack/Princess, Q, K
+    const faceLetters={11:'P',12:'Q',13:'K'};
     centerHTML=`<div class="pip-area"><span class="face-center" style="font-size:${card.orig_rank===13?30:28}px;">${faceLetters[card.orig_rank]||rankStr}</span></div>`;
   } else {
     centerHTML=`<div class="pip-area">${buildCardPips(card.orig_rank, sym)}</div>`;
@@ -1045,6 +1058,7 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
       <span class="corner-sym">${card.is_joker?'':sym}</span>
     </div>
     ${dragonIcon}
+    ${dominantBolt}
     ${badge?`<span class="card-badge">${badge}</span>`:''}
     ${orderBadge}`;
   return el;
