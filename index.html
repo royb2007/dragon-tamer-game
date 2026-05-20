@@ -584,7 +584,13 @@ const PIP_LAYOUTS = {
 function connect() {
   try { ws = new WebSocket(WS_URL); }
   catch(e) { setConnStatus(false,'Cannot connect'); return; }
-  ws.onopen  = () => setConnStatus(true,'Connected');
+  ws.onopen  = () => {
+    setConnStatus(true,'Connected');
+    if(myPid && myRoomId) {
+      setConnStatus(true,'Reconnecting...');
+      send({type:'rejoin', pid:myPid, room_id:myRoomId});
+    }
+  };
   ws.onclose = () => { setConnStatus(false,'Disconnected — retrying...'); setTimeout(connect,3000); };
   ws.onerror = () => setConnStatus(false,'Connection error');
   ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch(err) { console.error(err); } };
@@ -769,6 +775,13 @@ function handleMessage(msg) {
 
     case 'hand_update':
       if(msg.pid===myPid&&gameState){gameState.me=msg;renderHand();renderTable();}
+      break;
+
+    case 'rejoined':
+      myPid=msg.pid; myRoomId=msg.room_id;
+      applyState(msg.state);
+      setConnStatus(true,'Reconnected');
+      addLog('🔄 Reconnected to game','imp');
       break;
 
     case 'state':

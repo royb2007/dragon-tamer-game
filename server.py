@@ -248,6 +248,36 @@ async def handle_spectate_room(ws, data):
     log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
 
 
+async def handle_rejoin(ws, data):
+    """Re-associate a reconnected WebSocket with an existing room/player."""
+    room_id = data.get('room_id', '').upper()
+    pid     = data.get('pid', '')
+    game    = rooms.get_room(room_id)
+    if not game:
+        await send(ws, {'type': 'error', 'msg': 'Room not found — game may have ended'})
+        return
+    if pid not in game.players:
+        await send(ws, {'type': 'error', 'msg': 'Player not found in room'})
+        return
+    name = game.players[pid].name
+    # Remove any old socket entry for this pid in this room
+    stale = [w for w, m in socket_meta.items()
+             if m.get('room_id') == room_id and m.get('pid') == pid and w is not ws]
+    for w in stale:
+        room_sockets.get(room_id, set()).discard(w)
+        socket_meta.pop(w, None)
+    # Register new socket
+    room_sockets.setdefault(room_id, set()).add(ws)
+    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
+    await send(ws, {
+        'type': 'rejoined',
+        'room_id': room_id,
+        'pid': pid,
+        'state': game.player_state(pid),
+    })
+    log.info(f"Rejoined: {name} ({pid}) in room {room_id}")
+
+
 async def handle_list_rooms(ws, data):
     room_list = rooms.list_rooms()
     for r in room_list:
@@ -261,6 +291,7 @@ async def handle_list_rooms(ws, data):
 HANDLERS = {
     'create_room':   handle_create_room,
     'join_room':     handle_join_room,
+    'rejoin':        handle_rejoin,
     'spectate_room': handle_spectate_room,
     'start_game':    handle_start_game,
     'declare':       handle_declare,
