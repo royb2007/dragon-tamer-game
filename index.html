@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🐉 Dragon Tamer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 
@@ -341,6 +342,8 @@ body::before{content:'';position:fixed;inset:0;
     </div>
     <button class="btn btn-outline btn-full" onclick="spectateRoom()"
             style="border-color:rgba(195,155,211,.5);color:#C39BD3;">👁 Watch a Game</button>
+    <button class="btn btn-outline btn-full" onclick="showShareModal()"
+            style="border-color:rgba(100,200,100,.4);color:#8fdb8f;margin-top:2px;">📱 Share / QR Code</button>
     <div class="conn-status">
       <div class="conn-dot" id="connDot"></div>
       <span id="connText">Connecting to server...</span>
@@ -507,6 +510,23 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
+<!-- ══ SHARE / QR MODAL ══ -->
+<div class="overlay hidden" id="shareOverlay">
+  <div class="modal" style="max-width:320px;text-align:center;">
+    <h2>📱 שחק מהטלפון</h2>
+    <p style="font-size:13px;color:rgba(253,246,227,.7);margin:4px 0 12px;">סרוק את הקוד או שלח את הקישור לחברים</p>
+    <div id="qrCanvas" style="display:flex;justify-content:center;margin:0 auto 14px;"></div>
+    <div id="shareUrl" style="font-size:10px;word-break:break-all;color:rgba(253,246,227,.5);
+         background:rgba(255,255,255,.05);border-radius:6px;padding:7px 10px;margin-bottom:12px;
+         font-family:monospace;cursor:pointer;" onclick="copyShareUrl(this)" title="Click to copy"></div>
+    <button class="btn btn-gold btn-full" onclick="copyShareUrl(document.getElementById('shareUrl'))">
+      📋 Copy Link
+    </button>
+    <button class="btn btn-outline btn-full" onclick="document.getElementById('shareOverlay').classList.add('hidden')"
+            style="margin-top:8px;">Close</button>
+  </div>
+</div>
+
 <!-- ══ ROOM BROWSER ══ -->
 <div class="overlay hidden" id="roomBrowserOverlay">
   <div class="browser-modal">
@@ -606,6 +626,44 @@ function openRoomBrowser() {
   document.getElementById('roomBrowserOverlay').classList.remove('hidden');
   fetchRooms(); _browserTimer=setInterval(fetchRooms,5000);
 }
+// ── SHARE / QR ──────────────────────────────────────────
+let _qrInstance = null;
+function showShareModal() {
+  // Use the public-facing URL (strips any Replit iframe wrapper path)
+  const url = window.location.origin + window.location.pathname.replace('/__replco/workspace_iframe.html','') ;
+  const cleanUrl = url.endsWith('/') ? url : url + '/';
+  document.getElementById('shareUrl').textContent = cleanUrl;
+  const canvas = document.getElementById('qrCanvas');
+  canvas.innerHTML = '';
+  try {
+    _qrInstance = new QRCode(canvas, {
+      text: cleanUrl,
+      width: 200, height: 200,
+      colorDark: '#1a1228',
+      colorLight: '#fdf6e3',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch(e) {
+    canvas.textContent = '(QR not available)';
+  }
+  document.getElementById('shareOverlay').classList.remove('hidden');
+}
+function copyShareUrl(el) {
+  const txt = el.textContent.trim();
+  navigator.clipboard?.writeText(txt).then(()=>{
+    const orig = el.textContent;
+    el.textContent = '✅ Copied!';
+    setTimeout(()=>{ el.textContent = orig; }, 1800);
+  }).catch(()=>{
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+    const orig = el.textContent;
+    el.textContent = '✅ Copied!';
+    setTimeout(()=>{ el.textContent = orig; }, 1800);
+  });
+}
+
 function closeRoomBrowser() {
   document.getElementById('roomBrowserOverlay').classList.add('hidden');
   clearInterval(_browserTimer); _browserTimer=null;
