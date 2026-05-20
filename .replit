@@ -6,8 +6,8 @@ modules = ["python-3.11:v25-20250124-f1e7250"]
 channel = "stable-24_05"
 
 [deployment]
-run = ["python3", "main.py"]
-deploymentTarget = "cloudrun"
+run = ["python3", "server.py"]
+deploymentTarget = "vm"
 
 [[ports]]
 localPort = 5000
