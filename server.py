@@ -326,7 +326,7 @@ async def _http_handler(path, request_headers):
 
 async def main():
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 5000))
+    port = int(os.getenv('PORT', 8080))
 
     log.info(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
     async with websockets.serve(
