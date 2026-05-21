@@ -87,7 +87,6 @@ def _new_card(rank, suit, is_joker=False, joker_type=None) -> Card:
 
 def build_deck() -> List[Card]:
     global _card_counter
-    _card_counter = 0
     deck = []
     for suit in SUITS:
         for r in range(1, 14):
@@ -152,12 +151,19 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str) -> dict:
 
     # ── Dragon always beats every non-Tamer card ─────────────────────────
     # If a Dragon is in play and no Tamer challenged it, Dragon wins.
-    # We pick the highest-ranked Dragon (Ace > Joker by effective_rank).
+    # Multiple dragons at same rank = duel → leader wins the tie.
     if has_dragon:
         dragon_entries = [e for e in valid if e['card'].is_dragon]
-        best_dragon = max(dragon_entries,
-                          key=lambda e: e['card'].effective_rank(el))
-        result['winner_pid'] = best_dragon['pid']
+        best_rank = max(e['card'].effective_rank(el) for e in dragon_entries)
+        top_dragons = [e for e in dragon_entries
+                       if e['card'].effective_rank(el) == best_rank]
+        if len(top_dragons) == 1:
+            result['winner_pid'] = top_dragons[0]['pid']
+        else:
+            # True duel — leader wins the tie
+            result['winner_pid'] = lead_pid
+            result['special_events'].append(
+                f"⚔️ Dragon Duel! Equal rank — leader wins the clash!")
         # Fall through (do NOT return yet) so Space Dragon / Portal can fire below
 
     else:
@@ -221,6 +227,8 @@ class PlayerState:
             'hand_count': len(self.hand),
             'battle_count': len(self.battle),
             'sleeping_count': len(self.sleeping),
+            'accum_count': len(self.accum),
+            'accum': [c.to_dict() for c in self.accum],
             'out': self.out, 'is_ai': self.is_ai,
         }
 
@@ -447,10 +455,10 @@ class DragonTamerGame:
         if self.pending_time_dragon or self.pending_space_dragon:
             return []
         # Debounce: Replit's WS proxy triple-sends each message from the browser.
-        now = time.time()
-        if now - getattr(self, '_last_reveal_ts', 0.0) < 0.4:
+        last_step = getattr(self, '_last_reveal_step', -1)
+        if last_step == self.current_step:
             return []
-        self._last_reveal_ts = now
+        self._last_reveal_step = self.current_step
         return self._do_reveal()
 
     def resolve_time_dragon(self, pid: str, choice: str) -> List[dict]:
@@ -493,17 +501,21 @@ class DragonTamerGame:
         if self.pending_space_dragon != pid:
             return []
         name = self.players[pid].name
+        events = []
         if choice == 'change':
             self._do_space_dragon_seat_change(pid)
             self._log(f"🌌 {name} warps through space — seat order changed!")
+            # Broadcast new seat order so all clients update their table
+            events.append({'type': 'seat_changed',
+                           'new_order': self.order,
+                           'lead_pid': self._lead_pid()})
         else:
             self._log(f"🌌 {name} lets the Space Dragon power fade unused.")
         self.pending_space_dragon = None
-        # Re-enable button on client side by emitting the deferred phase event
         if self.current_step >= self.declared_steps:
-            return self._end_round()
-        return [{'type': 'phase_change', 'phase': Phase.REVEAL,
-                 'next_step': self.current_step + 1}]
+            return events + self._end_round()
+        return events + [{'type': 'phase_change', 'phase': Phase.REVEAL,
+                          'next_step': self.current_step + 1}]
 
     def _do_reveal(self) -> List[dict]:
         si = self.current_step

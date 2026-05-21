@@ -122,6 +122,14 @@ body::before{content:'';position:fixed;inset:0;
 .player-seat.is-me .seat-name{color:var(--gold-light);}
 .seat-dragons{font-size:9px;line-height:1;text-align:center;}
 .seat-meta{font-size:9px;color:rgba(253,246,227,.38);font-family:'Cinzel',serif;}
+.seat-pile{display:flex;flex-wrap:wrap;gap:1px;max-width:80px;margin-top:2px;justify-content:center;}
+.pile-card-mini{width:14px;height:20px;border-radius:2px;border:1px solid rgba(184,134,11,.5);
+  font-size:6px;display:flex;align-items:center;justify-content:center;
+  font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
+.pile-card-mini.h,.pile-card-mini.d{background:#f0e4c0;color:#7B1515;}
+.pile-card-mini.c,.pile-card-mini.s{background:#1A1E2E;color:#e8e0d0;}
+.pile-card-mini.js{background:#2A1A4E;color:#C39BD3;}
+.pile-card-mini.jt{background:#2E1600;color:#E8A020;}
 
 @keyframes pulse-ring{
   0%  {box-shadow:0 0 0 0 rgba(255,215,0,.7);}
@@ -141,6 +149,8 @@ body::before{content:'';position:fixed;inset:0;
   background:rgba(184,134,11,.08);color:var(--gold-light);
   font-family:'Cinzel',serif;font-size:13px;cursor:pointer;transition:all .18s;}
 .step-btn.active,.suit-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);}
+.step-btn.inactive,.suit-btn.inactive{opacity:.28;cursor:not-allowed;pointer-events:none;}
+.step-btn.display-only,.suit-btn.display-only{opacity:.6;cursor:default;pointer-events:none;}
 .suit-btn{width:42px;height:38px;display:flex;align-items:center;justify-content:center;font-size:19px;padding:0;}
 .waiting-declare{font-size:14px;color:rgba(253,246,227,.5);text-align:center;padding:8px 0;font-style:italic;}
 
@@ -209,7 +219,7 @@ body::before{content:'';position:fixed;inset:0;
 
 /* Dragon icon overlay on Ace cards */
 /* Dominant-element bolt badge */
-.dominant-bolt{position:absolute;top:3px;right:4px;font-size:10px;line-height:1;z-index:2;
+.dominant-bolt{position:absolute;top:3px;right:4px;font-size:22px;line-height:1;z-index:2;
   animation:boltBlink 1.6s ease-in-out infinite;pointer-events:none;}
 @keyframes boltBlink{0%,100%{opacity:1;filter:drop-shadow(0 0 3px #ffe066);}
   50%{opacity:.2;filter:none;}}
@@ -374,31 +384,28 @@ body::before{content:'';position:fixed;inset:0;
       </div>
     </div>
 
-    <!-- Player Declaration (leader declares; others wait) -->
-    <div class="section hidden" id="declareSection">
+    <!-- Player Declaration — always visible -->
+    <div class="section" id="declareSection">
       <div class="section-title">👑 Player Declaration</div>
-      <div class="declare-leader-line" id="declareLeaderLine">— Waiting —</div>
-      <!-- Controls shown only to the leader -->
-      <div id="declareControls" class="hidden">
-        <div class="declare-grid">
-          <div class="control-row">
-            <label>Steps</label>
-            <div class="btn-group" id="stepsGroup">
-              <button class="step-btn" onclick="setSteps(1)">1</button>
-              <button class="step-btn" onclick="setSteps(2)">2</button>
-              <button class="step-btn active" onclick="setSteps(3)">3</button>
-              <button class="step-btn" onclick="setSteps(4)">4</button>
-              <button class="step-btn" onclick="setSteps(5)">5</button>
-            </div>
+      <div class="declare-leader-line" id="declareLeaderLine">— Waiting for game to start —</div>
+      <div class="declare-grid">
+        <div class="control-row">
+          <label>Steps</label>
+          <div class="btn-group" id="stepsGroup">
+            <button class="step-btn" id="step1" onclick="setSteps(1)">1</button>
+            <button class="step-btn" id="step2" onclick="setSteps(2)">2</button>
+            <button class="step-btn" id="step3" onclick="setSteps(3)">3</button>
+            <button class="step-btn" id="step4" onclick="setSteps(4)">4</button>
+            <button class="step-btn" id="step5" onclick="setSteps(5)">5</button>
           </div>
-          <div class="control-row">
-            <label>Element</label>
-            <div class="btn-group" id="suitGroup">
-              <button class="suit-btn active" onclick="setSuit('Hearts')" title="Fire">♥</button>
-              <button class="suit-btn" onclick="setSuit('Clubs')" title="Water">♣</button>
-              <button class="suit-btn" onclick="setSuit('Diamonds')" title="Air">♦</button>
-              <button class="suit-btn" onclick="setSuit('Spades')" title="Earth">♠</button>
-            </div>
+        </div>
+        <div class="control-row">
+          <label>Element</label>
+          <div class="btn-group" id="suitGroup">
+            <button class="suit-btn" id="suitH" onclick="setSuit('Hearts')" title="Fire">♥</button>
+            <button class="suit-btn" id="suitC" onclick="setSuit('Clubs')" title="Water">♣</button>
+            <button class="suit-btn" id="suitD" onclick="setSuit('Diamonds')" title="Air">♦</button>
+            <button class="suit-btn" id="suitS" onclick="setSuit('Spades')" title="Earth">♠</button>
           </div>
         </div>
       </div>
@@ -815,7 +822,7 @@ function handleMessage(msg) {
 
     case 'step_revealed': {
       // Dedup: build a key from step number + card cids; skip if identical to last
-      const revKey = msg.step + ':' + (msg.entries||[]).map(e=>e.card?.cid).sort().join(',');
+      const revKey = (gameState?.round||0) + ':' + msg.step + ':' + (msg.entries||[]).map(e=>e.card?.cid).sort().join(',');
       if (revKey === _lastRevealKey) break;
       _lastRevealKey = revKey;
       renderBattleStep(msg);
@@ -850,6 +857,12 @@ function handleMessage(msg) {
 
     case 'player_joined':
       addLog(`${msg.name} joined the room`); break;
+
+        case 'seat_changed':
+      if(gameState){ gameState.order=msg.new_order; if(msg.lead_pid) gameState.lead_pid=msg.lead_pid; }
+      renderTable();
+      addLog('🌌 Seat order changed!','imp');
+      break;
 
     case 'game_over':
       showGameOver(msg); break;
@@ -900,7 +913,8 @@ function setPhase(newPhase, data) {
   const phaseLbl = document.getElementById('tablePhaseLbl');
   if(phaseLbl) phaseLbl.textContent = PHASE_LABELS[newPhase]||newPhase;
 
-  declSec.classList.add('hidden');
+  // Declaration panel is always visible — just update its state
+  updateDeclarePanel(newPhase, data);
   // Issue 1: show declaration summary bar during pick/reveal so everyone sees what was declared
   const declSum=document.getElementById('declSummary');
   if(declSum){
@@ -928,18 +942,10 @@ function setPhase(newPhase, data) {
       ? '👑 You are the Leader — declare steps & element'
       : `⏳ ${nameOf(leaderPid)} is declaring...`;
 
-    // Player Declaration section
-    declSec.classList.remove('hidden');
     const leaderLine = document.getElementById('declareLeaderLine');
-    const ctrl = document.getElementById('declareControls');
-    const wait = document.getElementById('declareWait');
-    leaderLine.textContent = `Leader: ${nameOf(leaderPid)}`;
-    if(isMe){
-      ctrl.classList.remove('hidden'); wait.classList.add('hidden');
-    } else {
-      ctrl.classList.add('hidden'); wait.classList.remove('hidden');
-      wait.textContent = `Waiting for ${nameOf(leaderPid)} to declare...`;
-    }
+    if(leaderLine) leaderLine.textContent = isMe
+      ? `👑 You are the Leader`
+      : `⏳ Waiting for ${nameOf(leaderPid)} to declare...`;
     mainBtn.textContent = isMe ? 'DECLARE' : 'Waiting...';
     mainBtn.disabled = !isMe;
     if(data.round){
@@ -1045,12 +1051,28 @@ function renderTable() {
     const seat=document.createElement('div');
     seat.className='player-seat'+(isMe?' is-me':'')+(isLeader?' is-leader':'')+(p.out?' is-out':'')+(isTurn?' is-turn':'');
     seat.style.left=x+'px'; seat.style.top=y+'px';
+    // Build accum pile HTML
+    const accumCards = p.accum || [];
+    let pileHTML = '';
+    if(accumCards.length > 0){
+      const shown = accumCards.slice(-6); // show last 6 won cards
+      const pips = shown.map(c => {
+        let cls = 'pile-card-mini ';
+        if(c.is_joker) cls += c.joker_type==='space'?'js':'jt';
+        else cls += (c.suit||'')[0].toLowerCase();
+        const r = c.is_joker ? (c.joker_type==='space'?'🌌':'⏳')
+                             : c.label.replace(/[♥♣♦♠]/g,'');
+        return `<div class="${cls}">${r}</div>`;
+      }).join('');
+      pileHTML = `<div class="seat-pile">${pips}${accumCards.length>6?`<div style="font-size:8px;color:var(--gold-light);">+${accumCards.length-6}</div>`:''}</div>`;
+    }
     seat.innerHTML=`
       <div class="seat-avatar" style="width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize*.38)}px;">
         ${isLeader?'<span class="seat-crown">👑</span>':''}${initials}
       </div>
       <div class="seat-name">${p.name}</div>
       ${dragonStr?`<div class="seat-dragons">${dragonStr}</div>`:''}
+      ${pileHTML}
       <div class="seat-meta">${metaStr}</div>`;
     container.appendChild(seat);
   });
@@ -1096,8 +1118,10 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
   const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx+1}</span>`:'';
 
   // 1: blinking bolt for cards matching the declared dominant element
-  const isDominant = !card.is_joker && gameState?.declared_el
-                     && card.suit===gameState.declared_el;
+  const isDominant = !card.is_joker 
+                     && gameState?.declared_el
+                     && card.suit===gameState.declared_el
+                     && (phase==='pick_cards'||phase==='reveal');
   const dominantBolt = isDominant ? '<span class="dominant-bolt">⚡</span>' : '';
 
   let centerHTML='';
@@ -1340,6 +1364,51 @@ function showGameOver(msg) {
     allHandsEl.classList.add('hidden');
   }
   document.getElementById('gameOverOverlay').classList.remove('hidden');
+}
+
+// ══════════════════════════════════════════════════════
+//  DECLARATION PANEL
+// ══════════════════════════════════════════════════════
+function updateDeclarePanel(phase, data) {
+  const isLeader = (data.leader_pid || gameState?.lead_pid) === myPid;
+  const isActive = phase === 'leader_declare' && isLeader;
+  const leaderPid = data.leader_pid || gameState?.lead_pid;
+
+  // Buttons: active only if I'm leader in declare phase
+  document.querySelectorAll('.step-btn').forEach(b => {
+    b.classList.toggle('inactive', !isActive);
+  });
+  document.querySelectorAll('.suit-btn').forEach(b => {
+    b.classList.toggle('inactive', !isActive);
+  });
+
+  // If AI declared or game not started — show declared values greyed
+  if(phase === 'pick_cards' || phase === 'reveal') {
+    const steps = gameState?.declared_steps || 0;
+    const el = gameState?.declared_el || '';
+    // Highlight declared values in display-only mode
+    document.querySelectorAll('.step-btn').forEach((b,i) => {
+      b.classList.remove('active','inactive','display-only');
+      if(i+1 === steps) b.classList.add('display-only','active');
+      else b.classList.add('inactive');
+    });
+    document.querySelectorAll('.suit-btn').forEach((b,i) => {
+      const suits = ['Hearts','Clubs','Diamonds','Spades'];
+      b.classList.remove('active','inactive','display-only');
+      if(suits[i] === el) b.classList.add('display-only','active');
+      else b.classList.add('inactive');
+    });
+    const ll = document.getElementById('declareLeaderLine');
+    if(ll) ll.textContent = `👑 ${nameOf(leaderPid)} · ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
+  } else if(phase === 'waiting' || phase === 'end_round') {
+    // All inactive, no highlight
+    document.querySelectorAll('.step-btn,.suit-btn').forEach(b => {
+      b.classList.remove('active','display-only');
+      b.classList.add('inactive');
+    });
+    const ll = document.getElementById('declareLeaderLine');
+    if(ll) ll.textContent = '— Waiting —';
+  }
 }
 
 // ══════════════════════════════════════════════════════
