@@ -26,7 +26,7 @@ import threading
 import time
 import uuid
 from functools import wraps
-from flask import Flask, request, jsonify, Response, g
+from flask import Flask, request, jsonify, Response, g, send_file
 from game_engine import RoomManager, Phase
 
 app = Flask(__name__)
@@ -319,6 +319,10 @@ def health():
 
 @app.route('/', methods=['GET'])
 def index():
+    return send_file('index.html')
+
+@app.route('/api')
+def api_info():
     return jsonify({
         'name': 'Dragon Tamer Game Server',
         'version': '1.0',
