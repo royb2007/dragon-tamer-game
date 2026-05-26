@@ -97,7 +97,7 @@ def game_state_for(game, pid):
 
 # ── WebSocket handler ──────────────────────────────────────────────────────
 
-@sock.route('/ws')
+@sock.route("/")
 def ws_handler(ws):
     pid     = None
     room_id = None
