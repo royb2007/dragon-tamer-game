@@ -1,13 +1,28 @@
 """
-Dragon Tamer — Game Engine v1.1
+Dragon Tamer — Game Engine v3.4
 Fixes applied:
   - dragon_count: jokers now count as dragons
-  - Portal (9♣): steal blind card from opponent
+  - Portal (9♣): human chooses target; stolen card enters battle before resolve; winner takes all
+  - Portal stolen card tracked in prev_step_cards (Time Dragon "back" fix) [Bug #19]
   - skip_next: Time Dragon forward actually skips next round
+  - Wizard (8): beats same-suit cards up to King; inherits Tamer power vs Dragon [Bug #4]
+  - Queen (Q): beats same-suit cards except Wizard/Dragon; loses to other-suit Kings [Bug #5]
+  - Tamer duel: actual draw-from-pile duel [Bug #6]
+  - Dragon/tie duel: actual duel instead of leader-wins [Bug #7]
+  - Two Jokers duel: duel implemented, winner uses own power only [Bug #8]
+  - Sleeping pairs: player chooses each round (sleep/wake/pass) — no longer automatic [Bugs #9, #10]
+  - Love Power: princess chooses between tamers; AI auto-chooses [Bug #11]
+  - skip_next reset at start of skipped round, not end of current round [Bug #20]
+  - Dominant suit bonus: +0.5 instead of +1 [Bug #1]
+  - Leftover cards on uneven deal go to leader [Bug #16]
+  - Victory check before elimination (edge case: 4 dragons same round as running out) [Bug #15]
+  - Setup: full deck reshuffled after leader draw before dealing [Bug #17]
+  - Sleeping cards excluded from _end_round card-return (card duplication bug found by stress test)
+  - MAX_ROUNDS=300 stalemate safeguard: most dragons wins
+  - AI sleeping: wakes pairs when 1 dragon from victory
 """
 import random
 import json
-import time
 from enum import Enum
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -15,12 +30,14 @@ from typing import Optional, List, Dict, Any
 SUITS = ['Hearts', 'Clubs', 'Diamonds', 'Spades']
 SUIT_SYM = {'Hearts': '♥', 'Clubs': '♣', 'Diamonds': '♦', 'Spades': '♠'}
 SUIT_ELEMENT = {'Hearts': 'Fire', 'Clubs': 'Water', 'Diamonds': 'Air', 'Spades': 'Earth'}
-WIN_DRAGONS = 4
+WIN_DRAGONS   = 5
+MAX_ROUNDS    = 300   # stalemate safeguard: declare winner by dragon count after this many rounds
 
 
 class Phase(str, Enum):
     WAITING        = "waiting"
     LEADER_DECLARE = "leader_declare"
+    SLEEPING       = "sleeping"
     PICK_CARDS     = "pick_cards"
     REVEAL         = "reveal"
     END_ROUND      = "end_round"
@@ -54,10 +71,18 @@ class Card:
     def is_portal(self) -> bool:
         return self.orig_rank == 9 and self.suit == 'Clubs'
 
-    def effective_rank(self, leading_suit: Optional[str]) -> int:
+    @property
+    def is_wizard(self) -> bool:
+        return self.orig_rank == 8 and not self.is_joker
+
+    @property
+    def is_queen(self) -> bool:
+        return self.orig_rank == 12 and not self.is_joker
+
+    def effective_rank(self, leading_suit: Optional[str]) -> float:
         if self.is_joker or not self.suit or not leading_suit:
-            return self.rank
-        return min(self.rank + 1, 15) if self.suit == leading_suit else self.rank
+            return float(self.rank)
+        return self.rank + 0.5 if self.suit == leading_suit else float(self.rank)
 
     def to_dict(self) -> dict:
         return {
@@ -66,6 +91,7 @@ class Card:
             'is_joker': self.is_joker, 'joker_type': self.joker_type,
             'is_dragon': self.is_dragon, 'is_tamer': self.is_tamer,
             'is_princess': self.is_princess, 'is_portal': self.is_portal,
+            'is_wizard': self.is_wizard, 'is_queen': self.is_queen,
         }
 
 
@@ -87,6 +113,7 @@ def _new_card(rank, suit, is_joker=False, joker_type=None) -> Card:
 
 def build_deck() -> List[Card]:
     global _card_counter
+    _card_counter = 0
     deck = []
     for suit in SUITS:
         for r in range(1, 14):
@@ -104,12 +131,66 @@ def _best_card(cards: List[Card], el: Optional[str]) -> Optional[Card]:
     return best
 
 
-def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str) -> dict:
+def _run_duel(contestants: List[dict], all_players: Dict[str, 'PlayerState'],
+              lead_pid: str, events: List[str]) -> tuple:
+    """
+    Draw top cards from each contestant's Main Pile repeatedly until one wins.
+    Returns (winning_pid, duel_cards) where duel_cards is ALL cards drawn during the duel.
+    Per rules: winner takes all original battle cards + all duel cards into accum.
+    """
+    active    = list(contestants)
+    all_drawn: List['Card'] = []  # every card drawn across all duel rounds
+
+    while True:
+        draws: Dict[str, 'Card'] = {}
+        eliminated_from_duel = []
+        for c in active:
+            pid = c['pid']
+            p = all_players[pid]
+            if p.hand:
+                drawn = p.hand.pop(0)
+                draws[pid] = drawn
+                all_drawn.append(drawn)
+                events.append(f"⚔️ Duel: {p.name} draws {drawn.label}")
+            else:
+                eliminated_from_duel.append(pid)
+                events.append(f"⚔️ Duel: {p.name} has no cards — eliminated from duel")
+
+        active = [c for c in active if c['pid'] not in eliminated_from_duel]
+
+        if not active:
+            events.append(f"⚔️ Duel: all out of cards — leader {lead_pid} wins")
+            return lead_pid, all_drawn
+
+        if not draws:
+            return lead_pid, all_drawn
+
+        best_rank = max(draws[pid].rank for pid in draws)
+        winners = [c for c in active if draws[c['pid']].rank == best_rank]
+
+        if len(winners) == 1:
+            winner_pid = winners[0]['pid']
+            events.append(f"⚔️ Duel won by {winner_pid}!")
+            return winner_pid, all_drawn
+
+        # Still tied — only keep tied players and loop
+        active = winners
+        events.append("⚔️ Duel tied again — redraw!")
+
+
+def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
+                 all_players: Optional[Dict] = None) -> dict:
+    """
+    Resolve a single battle step.
+    all_players is the game's players dict; required for duels.
+    """
     result = {
         'winner_pid': None,
         'all_cards': [e['card'] for e in entries],
         'joker_powers': [],
         'love_right_pid': None,
+        'love_choice_needed': None,
+        'space_dragon_pid': None,
         'portal_pid': None,
         'special_events': [],
     }
@@ -118,65 +199,272 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str) -> dict:
     if not valid:
         return result
 
+    # ── Portal dual-entry: if a player has two cards (portal + stolen),
+    # collapse to the best-ranked one for resolution purposes,
+    # but keep ALL cards in all_cards so winner takes the full pot.
+    pid_entries: Dict[str, List[dict]] = {}
+    for e in valid:
+        pid_entries.setdefault(e['pid'], []).append(e)
+
+    resolved_valid = []
+    for pid, player_entries in pid_entries.items():
+        if len(player_entries) == 1:
+            resolved_valid.append(player_entries[0])
+        else:
+            # Player has multiple cards (portal + stolen) — use best-ranked for competition
+            best_entry = max(player_entries,
+                             key=lambda e: e['card'].effective_rank(el or 'Hearts'))
+            other_entries = [e for e in player_entries if e is not best_entry]
+            combined = dict(best_entry)
+            combined['portal_extras'] = [e['card'] for e in other_entries]
+            if any(e.get('stolen') for e in player_entries):
+                combined['stolen'] = True
+            resolved_valid.append(combined)
+            portal_card   = next((e['card'] for e in player_entries if e['card'].is_portal), None)
+            stolen_card   = next((e['card'] for e in player_entries if e.get('stolen')), None)
+            best_label    = best_entry['card'].label
+            other_labels  = [e['card'].label for e in other_entries]
+            result['special_events'].append(
+                f"🌀 {pid} plays Portal ({portal_card.label if portal_card else '9♣'}) "
+                f"+ stolen {stolen_card.label if stolen_card else other_labels[0]} "
+                f"— best card {best_label} competes, winner takes both!")
+
+    valid = resolved_valid
+
     has_dragon = any(e['card'].is_dragon for e in valid)
     tamers     = [e for e in valid if e['card'].is_tamer]
     princesses = [e for e in valid if e['card'].is_princess]
     jokers     = [e for e in valid if e['card'].is_joker]
+    wizards    = [e for e in valid if e['card'].is_wizard]
+    queens     = [e for e in valid if e['card'].is_queen]
 
     result['joker_powers'] = [j['card'].joker_type for j in jokers if j['card'].joker_type]
 
-    # Love Power
-    if tamers and princesses:
-        if len(tamers) == 1:
-            result['love_right_pid'] = tamers[0]['pid']
-            result['special_events'].append(f"💕 Love Power! {tamers[0]['pid']} earns next lead!")
-        else:
-            result['love_right_pid'] = tamers[0]['pid']
-            result['special_events'].append(f"💕 Love Power → {tamers[0]['pid']}!")
+    # ── Love Power (always checked regardless of outcome) ──
+    # Must be evaluated before Wizard tamer-inheritance changes who "holds" Love Power.
+    # Rule: Love Power stays with the player who PLAYED the Tamer, even if Wizard inherits.
+    love_tamers = list(tamers)  # snapshot before any wizard shenanigans
 
-    # ── Tamer beats Dragons ──────────────────────────────────────────────
-    # A Tamer (2) is the ONLY card that can defeat a Dragon (Ace/Joker).
-    # No other card—not even a King or Queen—can beat a Dragon.
-    if has_dragon and len(tamers) >= 1:
-        if len(tamers) == 1:
-            result['winner_pid'] = tamers[0]['pid']
+    # ── Wizard tamer-inheritance check ──
+    # A Wizard of suit S that beats the Tamer of suit S inherits tamer power
+    # when a Dragon is also present.
+    wizard_inherited_tamer: Optional[dict] = None  # the wizard entry that inherits
+    wizard_displaced_tamer: Optional[dict] = None  # the tamer it beat
+
+    if has_dragon and wizards and tamers:
+        for w_entry in wizards:
+            w = w_entry['card']
+            # Find a tamer of the SAME suit
+            same_suit_tamer = next(
+                (t for t in tamers if t['card'].suit == w.suit), None
+            )
+            if same_suit_tamer:
+                # Wizard beats that tamer (rank 8 < tamer rank 2... wait,
+                # Tamer is orig_rank 2 → rank 2; Wizard is orig_rank 8 → rank 8.
+                # Wizard (8) > Tamer (2), so Wizard always beats same-suit Tamer.
+                wizard_inherited_tamer = w_entry
+                wizard_displaced_tamer = same_suit_tamer
+                result['special_events'].append(
+                    f"🧙 {w_entry['pid']}'s Wizard ({w.label}) inherits Tamer power "
+                    f"from {same_suit_tamer['pid']}!"
+                )
+                break  # only one inheritance can happen per step
+
+    # Rebuild effective tamer list for combat resolution:
+    # - If a wizard inherited, it replaces the displaced tamer in the combat-tamer list
+    # - Love Power still belongs to the displaced tamer's player
+    combat_tamers = list(tamers)
+    if wizard_inherited_tamer and wizard_displaced_tamer:
+        combat_tamers = [
+            wizard_inherited_tamer if e is wizard_displaced_tamer else e
+            for e in combat_tamers
+            if e is not wizard_displaced_tamer or e is wizard_displaced_tamer
+        ]
+        # Replace displaced tamer with wizard in combat_tamers
+        combat_tamers = [
+            e for e in combat_tamers if e is not wizard_displaced_tamer
+        ] + [wizard_inherited_tamer]
+
+    # ── Love Power — uses original tamer players ──
+    if love_tamers and princesses:
+        if len(love_tamers) == 1:
+            result['love_right_pid'] = love_tamers[0]['pid']
             result['special_events'].append(
-                f"⚔️ {tamers[0]['pid']}'s Tamer beats all dragons!")
+                f"💕 Love Power! {love_tamers[0]['pid']} earns next lead!")
         else:
-            # Multiple tamers: first tamer (by play order) wins the duel
-            result['winner_pid'] = tamers[0]['pid']
+            # ── Fix #11: signal that the princess must choose ──
+            # The caller (_resolve_and_finish_step) handles the pause/auto-choice.
+            result['love_choice_needed'] = {
+                'princess_pids': [e['pid'] for e in princesses],
+                'tamer_pids':    [e['pid'] for e in love_tamers],
+            }
             result['special_events'].append(
-                "⚔️ Tamer duel! First Tamer wins.")
+                "💕 Love Power — princess must choose between tamers!")
+
+    # ── Tamer / Wizard-as-Tamer beats dragons ──
+    if has_dragon and len(combat_tamers) == 1:
+        result['winner_pid'] = combat_tamers[0]['pid']
+        result['special_events'].append(
+            f"⚔️ {combat_tamers[0]['pid']}'s "
+            f"{'Wizard' if combat_tamers[0] is wizard_inherited_tamer else 'Tamer'} "
+            f"beats all dragons!")
         return result
 
-    # ── Dragon always beats every non-Tamer card ─────────────────────────
-    # If a Dragon is in play and no Tamer challenged it, Dragon wins.
-    # Multiple dragons at same rank = duel → leader wins the tie.
-    if has_dragon:
-        dragon_entries = [e for e in valid if e['card'].is_dragon]
-        best_rank = max(e['card'].effective_rank(el) for e in dragon_entries)
-        top_dragons = [e for e in dragon_entries
-                       if e['card'].effective_rank(el) == best_rank]
-        if len(top_dragons) == 1:
-            result['winner_pid'] = top_dragons[0]['pid']
+    if has_dragon and len(combat_tamers) > 1:
+        # ── Bug #6 fix: actual Tamer duel ──
+        result['special_events'].append("⚔️ Tamer duel!")
+        if all_players:
+            winner_pid, duel_cards = _run_duel(combat_tamers, all_players, lead_pid,
+                                               result['special_events'])
+            result['all_cards'] += duel_cards
         else:
-            # True duel — leader wins the tie
-            result['winner_pid'] = lead_pid
+            winner_pid = combat_tamers[0]['pid']  # fallback if no player state
+        result['winner_pid'] = winner_pid
+        return result
+
+    # ── Queen logic ──
+    # Queen beats all cards of her OWN suit except Wizard and Dragon of that suit.
+    # Loses to Kings from OTHER suits.
+    # No dragon present here (handled above), no tamer.
+    if queens and not has_dragon and not combat_tamers:
+        # Check each queen: does she dominate?
+        surviving_queens = []
+        for q_entry in queens:
+            q = q_entry['card']
+            beaten = False
+            for e in valid:
+                c = e['card']
+                if c is q:
+                    continue
+                if c.suit == q.suit:
+                    # Same suit: Queen loses only to Wizard and Dragon of own suit
+                    if c.is_wizard or c.is_dragon:
+                        beaten = True
+                        break
+                else:
+                    # Other suit: Queen loses to Kings (rank 13)
+                    if c.orig_rank == 13:
+                        beaten = True
+                        break
+            if not beaten:
+                surviving_queens.append(q_entry)
+
+        if surviving_queens:
+            if len(surviving_queens) == 1:
+                result['winner_pid'] = surviving_queens[0]['pid']
+                result['special_events'].append(
+                    f"👑 {surviving_queens[0]['pid']}'s Queen dominates!")
+                # Portal detection still applies
+                portal_e = next((e for e in valid if e['card'].is_portal), None)
+                if portal_e:
+                    result['portal_pid'] = portal_e['pid']
+                return result
+            else:
+                # Multiple queens survive — fall through to normal rank comparison
+                # (they'll tie and go to duel below)
+                result['special_events'].append("👑 Multiple Queens — comparing ranks!")
+
+    # ── Wizard normal power (no dragon present, no tamer) ──
+    # Wizard beats all cards of its own suit up to King (rank ≤ 13).
+    # Two Wizards: higher effective rank wins; equal → duel.
+    if wizards and not has_dragon and not combat_tamers:
+        # Find the best non-wizard non-dragon cards
+        non_wizard_entries = [e for e in valid if not e['card'].is_wizard]
+        for w_entry in wizards:
+            w = w_entry['card']
+            same_suit_losers = [
+                e for e in non_wizard_entries
+                if e['card'].suit == w.suit and not e['card'].is_dragon
+                and e['card'].orig_rank <= 13
+            ]
+            # Remove all cards this wizard beats from competition
+            non_wizard_entries = [
+                e for e in non_wizard_entries if e not in same_suit_losers
+            ]
+
+        # Now resolve among wizards + any remaining non-wizard cards
+        contenders = wizards + non_wizard_entries
+        best_rank = max(e['card'].effective_rank(el) for e in contenders)
+        top = [e for e in contenders if e['card'].effective_rank(el) == best_rank]
+
+        if len(top) == 1:
+            result['winner_pid'] = top[0]['pid']
             result['special_events'].append(
-                f"⚔️ Dragon Duel! Equal rank — leader wins the clash!")
-        # Fall through (do NOT return yet) so Space Dragon / Portal can fire below
+                f"🧙 Wizard wins: {top[0]['pid']}!")
+        else:
+            # Tied wizards (or wizard tied with another card) → duel
+            result['special_events'].append("🧙 Wizard tie — duel!")
+            if all_players:
+                winner_pid, duel_cards = _run_duel(top, all_players, lead_pid,
+                                                   result['special_events'])
+                result['all_cards'] += duel_cards
+            else:
+                winner_pid = lead_pid
+            result['winner_pid'] = winner_pid
 
+        portal_e = next((e for e in valid if e['card'].is_portal), None)
+        if portal_e:
+            result['portal_pid'] = portal_e['pid']
+        return result
+
+    # ── Normal resolution ──
+    best = _best_card([e['card'] for e in valid], el)
+    top_e = best.effective_rank(el)
+    tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
+
+    if len(tied) == 1:
+        result['winner_pid'] = tied[0]['pid']
     else:
-        # ── Normal resolution: highest effective rank wins ────────────────
-        best = _best_card([e['card'] for e in valid], el)
-        top_e = best.effective_rank(el)
-        tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
-        result['winner_pid'] = tied[0]['pid'] if len(tied) == 1 else lead_pid
+        # All tied players (dragons, jokers, or any equal-rank cards) enter a duel.
+        # Jokers and regular dragons are treated equally — whoever is highest rank
+        # among the tied group wins. Only the WINNER's joker power (if any) fires.
+        dragon_tied = [e for e in tied if e['card'].is_dragon]  # includes jokers
+        all_tied    = tied  # all tied, regardless of card type
 
-    # Space dragon event is handled in _do_reveal (to support interactive human choice)
-    _ = next((e for e in valid if e['card'].joker_type == 'space'), None)  # detected downstream
+        if len(all_tied) >= 2:
+            n_drag = len(dragon_tied)
+            n_jok  = sum(1 for e in all_tied if e['card'].is_joker)
+            if n_jok >= 2:
+                result['special_events'].append(
+                    f"🃏 Dragon duel! ({n_jok} Jokers" +
+                    (f" + {n_drag - n_jok} Dragon(s)" if n_drag > n_jok else "") + ")")
+            else:
+                result['special_events'].append(
+                    f"⚔️ Dragon duel! ({n_drag} dragon(s) tied)")
 
-    # Portal detection
+            if all_players:
+                winner_pid, duel_cards = _run_duel(all_tied, all_players, lead_pid,
+                                                   result['special_events'])
+                result['all_cards'] += duel_cards
+            else:
+                winner_pid = lead_pid
+            result['winner_pid'] = winner_pid
+
+            # Joker power: only applies if the WINNER played a joker
+            winning_entry = next((e for e in all_tied if e['pid'] == winner_pid), None)
+            if winning_entry and winning_entry['card'].is_joker:
+                result['joker_powers'] = [winning_entry['card'].joker_type]
+                result['special_events'].append(
+                    f"🃏 {winner_pid} wins duel with {winning_entry['card'].joker_type} Dragon — power activates!")
+            else:
+                # Winner played a regular dragon — no joker power fires
+                result['joker_powers'] = []
+                if n_jok > 0:
+                    result['special_events'].append(
+                        "🃏 Joker owner(s) lost the duel — dragon powers forfeit.")
+        else:
+            result['winner_pid'] = lead_pid
+
+    # Space dragon — only fires if the owner of the 🌌 card WON the step
+    space_j = next((e for e in valid if e['card'].joker_type == 'space'), None)
+    if space_j and not tamers:
+        if result['winner_pid'] == space_j['pid']:
+            result['space_dragon_pid'] = space_j['pid']
+            result['special_events'].append(
+                f"🌌 Space Dragon! {space_j['pid']} won — may swap seats.")
+        # else: space dragon owner lost — power forfeit, no swap
+
+    # Portal detection (steal executed in _do_reveal)
     portal_e = next((e for e in valid if e['card'].is_portal), None)
     if portal_e:
         result['portal_pid'] = portal_e['pid']
@@ -200,8 +488,9 @@ class PlayerState:
 
     @property
     def dragon_count(self) -> int:
-        # jokers ARE dragons — count them
+        # ── FIX: include battle cards — dragons may already be picked
         return (sum(1 for c in self.hand if c.is_dragon)
+                + sum(1 for c in self.battle if c.is_dragon)
                 + len(self.sleeping))
 
     def apply_sleeping(self):
@@ -220,6 +509,57 @@ class PlayerState:
                     self.hand.remove(d)
                     self.sleeping.append((t, d))
 
+    def sleep_pair(self, tamer_cid: int, dragon_cid: int) -> bool:
+        """
+        Move a specific tamer+dragon pair to sleeping.
+        Returns True on success, False if the pair is invalid or a joker.
+        """
+        hand_map = {c.cid: c for c in self.hand}
+        t = hand_map.get(tamer_cid)
+        d = hand_map.get(dragon_cid)
+        if not t or not d:
+            return False
+        if not t.is_tamer or not d.is_dragon:
+            return False
+        if d.is_joker:  # Jokers cannot sleep
+            return False
+        if t.suit != d.suit:  # Must be matching suit
+            return False
+        self.hand.remove(t)
+        self.hand.remove(d)
+        self.sleeping.append((t, d))
+        return True
+
+    def wake_pair(self, pair_index: int) -> bool:
+        """
+        Wake a sleeping pair by index, returning both cards to hand.
+        Returns True on success.
+        """
+        if pair_index < 0 or pair_index >= len(self.sleeping):
+            return False
+        t, d = self.sleeping.pop(pair_index)
+        self.hand.append(t)
+        self.hand.append(d)
+        return True
+
+    def eligible_sleep_pairs(self) -> List[tuple]:
+        """
+        Return list of (tamer, dragon) pairs in hand that could be put to sleep.
+        Excludes jokers and pairs already sleeping.
+        """
+        sleeping_cids = {c.cid for pair in self.sleeping for c in pair}
+        dragons = {c.suit: c for c in self.hand
+                   if c.is_dragon and not c.is_joker and c.suit
+                   and c.cid not in sleeping_cids}
+        tamers  = {c.suit: c for c in self.hand
+                   if c.is_tamer and c.suit
+                   and c.cid not in sleeping_cids}
+        pairs = []
+        for suit in SUITS:
+            if suit in dragons and suit in tamers:
+                pairs.append((tamers[suit], dragons[suit]))
+        return pairs
+
     def public_dict(self) -> dict:
         return {
             'pid': self.pid, 'name': self.name,
@@ -227,8 +567,6 @@ class PlayerState:
             'hand_count': len(self.hand),
             'battle_count': len(self.battle),
             'sleeping_count': len(self.sleeping),
-            'accum_count': len(self.accum),
-            'accum': [c.to_dict() for c in self.accum],
             'out': self.out, 'is_ai': self.is_ai,
         }
 
@@ -252,48 +590,373 @@ def ai_pick_cards(player: PlayerState, n: int, el: str) -> List[Card]:
 
     if strat == 'Aggressive':
         return sorted_h[:n]
+
     elif strat == 'Conservative':
         if dragons_count >= 3: return sorted_h[:n]
         result = others[:n]
         if len(result) < n: result += dragons[:n-len(result)]
         if len(result) < n: result += tamers[:n-len(result)]
         return result[:n]
+
     elif strat in ('Diplomat', 'AntiDragon'):
         precious = [c for c in hand if c.is_tamer or c.is_princess]
         result = others[:n]
         if len(result) < n: result += dragons[:n-len(result)]
         if len(result) < n: result += precious[:n-len(result)]
         return result[:n]
+
     elif strat == 'Bluffer':
         weak = sorted(others, key=lambda c: c.effective_rank(el))
         result = weak[:n]
         if len(result) < n: result += dragons[:n-len(result)]
+        if len(result) < n: result += tamers[:n-len(result)]
         return result[:n]
+
+    # ── NEW CHARACTERS ──
+
+    elif strat == 'DragonHunter':
+        # Dragons first (highest rank), then high others, then tamers as filler
+        high_others = sorted(others, key=lambda c: -c.effective_rank(el))
+        result = list(dragons)
+        if len(result) < n: result += high_others[:n-len(result)]
+        if len(result) < n: result += tamers[:n-len(result)]
+        return result[:n]
+
+    elif strat == 'Purist':
+        # Only dominant-suit cards, highest first; fill with any high card
+        suit_cards = sorted([c for c in hand if c.suit == el],
+                            key=lambda c: -c.effective_rank(el))
+        off_suit   = sorted([c for c in hand if c.suit != el],
+                            key=lambda c: -c.effective_rank(el))
+        result = suit_cards[:n]
+        if len(result) < n: result += off_suit[:n-len(result)]
+        return result[:n]
+
+    elif strat == 'Maximalist':
+        # Strict alternating extreme: best, worst, 2nd best, 2nd worst...
+        asc  = sorted(hand, key=lambda c: c.effective_rank(el))   # worst first
+        desc = sorted(hand, key=lambda c: -c.effective_rank(el))  # best first
+        result = []; seen = set()
+        hi, lo = 0, 0
+        for i in range(min(n, len(hand))):
+            card = desc[hi] if i % 2 == 0 else asc[lo]
+            if card.cid not in seen:
+                result.append(card); seen.add(card.cid)
+            if i % 2 == 0: hi += 1
+            else: lo += 1
+            if hi >= len(desc) or lo >= len(asc): break
+        if len(result) < n:
+            for c in sorted_h:
+                if c.cid not in seen:
+                    result.append(c); seen.add(c.cid)
+                if len(result) >= n: break
+        return result[:n]
+
+    elif strat == 'Minimalist':
+        # Single best card (always declares 1 step, so n=1 normally)
+        return sorted_h[:n]
+
+    elif strat == 'Opportunist':
+        # Try to beat what the prev winner played — send cards just above their level
+        # Falls back to high cards if no prev info
+        prev_max_rank = max(
+            (c.effective_rank(el) for c in player.prev_step_cards_seen),
+            default=0
+        ) if hasattr(player, 'prev_step_cards_seen') and player.prev_step_cards_seen else 0
+
+        if prev_max_rank > 0:
+            # Cards that beat prev winner, sorted lowest-sufficient first (efficient)
+            beaters = sorted(
+                [c for c in hand if c.effective_rank(el) > prev_max_rank],
+                key=lambda c: c.effective_rank(el)
+            )
+            result = beaters[:n]
+            if len(result) < n:
+                # Not enough beaters — send best available
+                result += [c for c in sorted_h if c.cid not in {x.cid for x in result}]
+            return result[:n]
+        else:
+            return sorted_h[:n]
+
     else:
+        # Default: alternating high/low (Balanced, Hoarder, Adaptive, Avenger, RandomAI)
         result = []
+        seen_cids = set()
         lo, hi = len(sorted_h)-1, 0
         for i in range(min(n, len(sorted_h))):
-            result.append(sorted_h[hi] if i % 2 == 0 else sorted_h[lo])
+            card = sorted_h[hi] if i % 2 == 0 else sorted_h[lo]
+            if card.cid not in seen_cids:
+                result.append(card)
+                seen_cids.add(card.cid)
             if i % 2 == 0: hi += 1
             else: lo -= 1
+            if hi > lo: break
+        if len(result) < n:
+            for c in sorted_h:
+                if c.cid not in seen_cids:
+                    result.append(c); seen_cids.add(c.cid)
+                if len(result) >= n: break
         return result[:n]
 
 
 def ai_declare(player: PlayerState) -> tuple:
-    hand = player.hand
+    hand  = player.hand
     strat = player.ai_strategy
-    d = player.dragon_count
-    best_el = max(SUITS,
-        key=lambda s: sum(c.effective_rank(s) for c in hand if c.suit == s),
-        default='Hearts')
-    steps_map = {
-        'Aggressive': 4 if d == 0 else 5,
-        'Conservative': 4 if d >= 3 else (2 if d >= 2 else 1),
-        'Bluffer': 1 if d < 2 else 3,
-        'Diplomat': 2 if d < 3 else 4,
-    }
-    steps = steps_map.get(strat, 3)
-    return steps, best_el
+    d     = player.dragon_count
+    n_hand = len(hand)
+
+    def suit_value(s):
+        return sum(c.effective_rank(s) for c in hand if c.suit == s)
+
+    def suit_count(s):
+        return sum(1 for c in hand if c.suit == s)
+
+    def dragon_suit():
+        """Suit where player holds most dragons."""
+        ds = [c.suit for c in hand if c.is_dragon and c.suit]
+        return max(SUITS, key=lambda s: ds.count(s)) if ds else best_value_suit()
+
+    def best_value_suit():
+        return max(SUITS, key=suit_value)
+
+    def richest_suit():
+        """Suit with most cards in hand."""
+        return max(SUITS, key=suit_count)
+
+    def highest_card_suit():
+        """Suit of single highest-ranked card."""
+        if not hand: return 'Hearts'
+        best = max(hand, key=lambda c: c.rank)
+        return best.suit or 'Hearts'
+
+    # ── Existing strategies ──
+    if strat == 'Aggressive':
+        return (4 if d == 0 else 5), best_value_suit()
+
+    elif strat == 'Conservative':
+        steps = 4 if d >= 3 else (2 if d >= 2 else 1)
+        return steps, best_value_suit()
+
+    elif strat == 'Bluffer':
+        return (1 if d < 2 else 3), best_value_suit()
+
+    elif strat == 'Diplomat':
+        return (2 if d < 3 else 4), best_value_suit()
+
+    # ── New characters ──
+    elif strat == 'DragonHunter':
+        # Element: suit of most dragons held
+        # Steps: 3 always (send dragons + fillers to contest 3 steps)
+        return 3, dragon_suit()
+
+    elif strat == 'Purist':
+        # Element: suit with most cards
+        # Steps: number of cards in that suit (min 1, max 5)
+        el = richest_suit()
+        steps = max(1, min(5, suit_count(el)))
+        return steps, el
+
+    elif strat == 'Maximalist':
+        # Element: highest total value suit
+        # Steps: always 5 (flood the table)
+        steps = min(5, max(1, n_hand))
+        return steps, best_value_suit()
+
+    elif strat == 'Minimalist':
+        # Element: suit of single best card
+        # Steps: always 1 (precision over volume)
+        return 1, highest_card_suit()
+
+    elif strat == 'Opportunist':
+        # Element: best value suit (adapt each round)
+        # Steps: 1 if behind (d < 2), 3 if competitive, 5 if close to winning
+        steps = 5 if d >= WIN_DRAGONS - 1 else (3 if d >= 2 else 1)
+        return steps, best_value_suit()
+
+    else:
+        # Default (Balanced, Hoarder, Adaptive, Avenger, RandomAI, etc.)
+        return 3, best_value_suit()
+
+
+def ai_sleeping_choice(player: PlayerState) -> dict:
+    strat = player.ai_strategy
+    eligible = player.eligible_sleep_pairs()
+    has_sleeping = len(player.sleeping) > 0
+    dragons_needed = WIN_DRAGONS - player.dragon_count
+
+    # Universal: if 1 more dragon wins, wake a pair to deploy it
+    if has_sleeping and dragons_needed <= 1:
+        return {'action': 'wake', 'pair_index': 0}
+
+    if strat in ('Conservative', 'Hoarder'):
+        if len(player.sleeping) >= WIN_DRAGONS - 1 and has_sleeping:
+            return {'action': 'wake', 'pair_index': 0}
+        if eligible:
+            t, d = eligible[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+
+    elif strat == 'Aggressive':
+        if has_sleeping:
+            return {'action': 'wake', 'pair_index': 0}
+        if eligible:
+            t, d = eligible[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+
+    elif strat in ('Diplomat', 'Balanced', 'Adaptive'):
+        if len(player.sleeping) < 2 and eligible:
+            t, d = eligible[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+
+    # ── New characters ──
+    elif strat == 'DragonHunter':
+        # Never sleep — keep all dragons in hand for battle
+        pass
+
+    elif strat == 'Purist':
+        # Sleep pairs where dragon suit doesn't match the purist's dominant suit
+        # (determined by richest suit in hand)
+        dominant = max(('Hearts','Diamonds','Clubs','Spades'),
+                       key=lambda s: sum(1 for c in player.hand if c.suit == s))
+        off_suit_pairs = [(t,d) for t,d in eligible if d.suit != dominant]
+        if off_suit_pairs:
+            t, d = off_suit_pairs[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+        # Don't sleep same-suit dragons
+        pass
+
+    elif strat == 'Maximalist':
+        # Never sleep — needs all cards to fill max steps
+        pass
+
+    elif strat == 'Minimalist':
+        # Sleep EVERY eligible pair immediately — dragons are safest asleep
+        if eligible:
+            t, d = eligible[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+
+    elif strat == 'Opportunist':
+        # Sleep if already has 2+ sleeping pairs, else pass
+        if len(player.sleeping) >= 2 and eligible:
+            pass  # enough sleeping, don't over-extend
+        elif eligible and len(player.sleeping) < 2:
+            t, d = eligible[0]
+            return {'action': 'sleep', 'tamer_cid': t.cid, 'dragon_cid': d.cid}
+
+    return {'action': 'pass'}
+
+
+def ai_forced_wake_choice(player: PlayerState, pairs_needed: int,
+                          declared_el: Optional[str]) -> List[int]:
+    strat = player.ai_strategy
+    indexed = list(enumerate(player.sleeping))
+
+    def score_deploy(idx_pair):
+        idx, (t, d) = idx_pair
+        matches_el = 1 if d.suit == declared_el else 0
+        return matches_el, d.rank
+
+    def score_preserve(idx_pair):
+        idx, (t, d) = idx_pair
+        matches_el = 1 if d.suit == declared_el else 0
+        return -matches_el, -d.rank  # sacrifice weakest non-matching
+
+    if strat in ('Aggressive', 'Balanced', 'Diplomat', 'DragonHunter', 'Opportunist'):
+        # Deploy the best matching pair
+        ranked = sorted(indexed, key=score_deploy, reverse=True)
+    elif strat in ('Conservative', 'Hoarder', 'Purist'):
+        # Sacrifice weakest pair, preserve best
+        ranked = sorted(indexed, key=score_preserve, reverse=True)
+    elif strat == 'Maximalist':
+        # Deploy highest-rank pair regardless of suit (maximise battle power)
+        ranked = sorted(indexed, key=lambda x: x[1][1].rank, reverse=True)
+    elif strat == 'Minimalist':
+        # Wake the pair with highest-rank dragon (precision deployment)
+        ranked = sorted(indexed, key=lambda x: x[1][1].rank, reverse=True)
+    elif strat == 'Adaptive':
+        ranked = sorted(indexed, key=score_deploy, reverse=True)
+    else:
+        ranked = indexed  # FIFO fallback
+
+    chosen_indices = [idx for idx, _ in ranked[:pairs_needed]]
+    return sorted(chosen_indices, reverse=True)
+
+
+def ai_portal_target(player, valid_targets):
+    """AI chooses portal steal target by strategy."""
+    strat = player.ai_strategy
+
+    def stealable_count(p):
+        sleeping_cids = {c.cid for pair in p.sleeping for c in pair}
+        return sum(1 for c in p.hand if c.cid not in sleeping_cids)
+
+    if strat in ('Aggressive', 'Adaptive', 'DragonHunter', 'Minimalist'):
+        return max(valid_targets, key=lambda p: (p.dragon_count, stealable_count(p)))
+    elif strat in ('Hoarder', 'Maximalist', 'Diplomat', 'AntiDragon', 'Avenger', 'RandomAI', 'Bluffer'):
+        return max(valid_targets, key=stealable_count)
+    elif strat == 'Conservative':
+        return min(valid_targets, key=lambda p: (p.dragon_count, stealable_count(p)))
+    elif strat == 'Balanced':
+        return max(valid_targets, key=lambda p: p.dragon_count + stealable_count(p))
+    elif strat == 'Purist':
+        dominant = max(('Hearts','Diamonds','Clubs','Spades'),
+                       key=lambda s: sum(1 for c in player.hand if c.suit == s))
+        return max(valid_targets, key=lambda p: sum(1 for c in p.hand if c.suit == dominant))
+    elif strat == 'Opportunist':
+        prev = getattr(player, '_prev_step_winner_seen', None)
+        if prev:
+            m = next((t for t in valid_targets if t.pid == prev), None)
+            if m: return m
+        return max(valid_targets, key=stealable_count)
+    else:
+        return max(valid_targets, key=stealable_count)
+
+
+def ai_space_dragon_swap(player, active_players):
+    opponents = [p for p in active_players if p.pid != player.pid]
+    if not opponents: return None
+    strat = player.ai_strategy
+    if strat in ("Conservative", "Hoarder"): return None
+    elif strat in ("Aggressive", "Adaptive", "DragonHunter", "Minimalist"):
+        return max(opponents, key=lambda p: p.dragon_count).pid
+    elif strat in ("Balanced", "Diplomat", "Purist", "Maximalist"):
+        return opponents[0].pid
+    elif strat == "Opportunist":
+        prev = getattr(player, "_prev_step_winner_seen", None)
+        if prev:
+            m = next((p for p in opponents if p.pid == prev), None)
+            if m: return m.pid
+        return opponents[0].pid
+    else:
+        import random as _r; return _r.choice(opponents).pid
+
+
+def ai_time_dragon_choice(player, prev_step_cards, prev_step_winner_pid):
+    strat = player.ai_strategy
+    has_prev = bool(prev_step_cards)
+    prev_has_dragon = has_prev and any(c.is_dragon for c in prev_step_cards)
+    prev_big = has_prev and len(prev_step_cards) >= 3
+    if strat in ("Aggressive", "DragonHunter"): return "back" if has_prev else "forward"
+    elif strat in ("Hoarder", "Conservative"): return "back" if has_prev else "nothing"
+    elif strat == "Maximalist": return "back" if prev_big else "forward"
+    elif strat == "Minimalist": return "forward"
+    elif strat == "Opportunist": return "back" if prev_has_dragon else "forward"
+    elif strat in ("Balanced", "Adaptive", "Purist"): return "back" if has_prev else "forward"
+    else: return "back" if has_prev else "nothing"
+
+
+def ai_love_tamer_choice(princess_player, tamer_pids, all_players):
+    strat = princess_player.ai_strategy
+    tamer_players = [all_players[pid] for pid in tamer_pids if pid in all_players]
+    if not tamer_players: return tamer_pids[0]
+    if strat in ("Aggressive", "DragonHunter", "Maximalist"):
+        return max(tamer_players, key=lambda p: p.dragon_count).pid
+    elif strat in ("Conservative", "Minimalist", "Hoarder"):
+        return min(tamer_players, key=lambda p: p.dragon_count).pid
+    elif strat in ("Balanced", "Purist"):
+        def btr(p): return max((c.rank for c in p.hand if c.is_tamer), default=0)
+        return max(tamer_players, key=btr).pid
+    else:
+        return max(tamer_players, key=lambda p: p.dragon_count).pid
 
 
 class DragonTamerGame:
@@ -313,12 +976,29 @@ class DragonTamerGame:
         self.prev_step_cards:   List[Card] = []
         self.prev_step_winner:  Optional[str] = None
         self.event_log:      List[str] = []
-        # Time Dragon interactive choice state
-        self.pending_time_dragon: Optional[str] = None  # pid who must choose
-        self._pending_td_prev_winner: Optional[str] = None
-        self._pending_td_prev_cards: List[Card] = []
-        # Space Dragon interactive choice state
-        self.pending_space_dragon: Optional[str] = None  # pid who must choose
+        # Portal state — set while waiting for human to choose a target
+        self._pending_portal_pid:     Optional[str] = None
+        self._pending_portal_entries: List[dict] = []
+        # Sleeping phase — tracks which players still need to make their choice
+        self._sleeping_pending: List[str] = []  # pids yet to act
+        # Love Power — set while waiting for princess to choose between tamers
+        self._pending_love_princess_pid: Optional[str] = None
+        self._pending_love_tamer_pids:   List[str] = []
+        self._pending_love_step_result:  Optional[dict] = None
+        self._pending_love_entries:      List[dict] = []
+        self._pending_love_si:           int = 0
+        # Forced wake — set while waiting for human to choose which pairs to wake
+        self._pending_forced_wake_pid:    Optional[str] = None
+        self._pending_forced_wake_needed: int = 0
+        # Space Dragon — set while waiting for seat-swap choice
+        self._pending_space_dragon_pid:     Optional[str] = None
+        self._pending_space_dragon_entries: List[dict] = []
+        self._pending_space_dragon_si:      int = 0
+        # Cards won mid-round — tracked separately so battle stays fixed-length
+        # (rev_idx = len(battle)-1-si requires battle not to shrink between steps)
+        self._claimed_cids: set = set()
+        self.final_snapshot: dict = {}
+        self._skipped_this_round: set = set()  # pids skipping the current round
 
     def add_player(self, pid: str, name: str, is_ai: bool = False,
                    ai_strategy: str = 'Balanced') -> dict:
@@ -359,16 +1039,20 @@ class DragonTamerGame:
         random.shuffle(deck)
         n = len(self.order)
 
-        # Leader by highest dealt card
+        # Leader by highest dealt card from initial draw
         leader_cards = {pid: deck[i] for i, pid in enumerate(self.order)}
         best_pid = max(self.order, key=lambda pid: leader_cards[pid].rank)
         self.lead_idx = self.order.index(best_pid)
 
-        remaining = deck[n:]
-        per = len(remaining) // n
+        # ── Fix #17: reshuffle ALL 54 cards back in, then deal fresh ──
+        random.shuffle(deck)
+        per = len(deck) // n
+        leftover = deck[per * n:]  # cards that don't divide evenly
         for i, pid in enumerate(self.order):
-            share = remaining[i * per:(i + 1) * per]
-            self.players[pid].hand = [leader_cards[pid]] + share
+            self.players[pid].hand = deck[i * per:(i + 1) * per]
+        # ── Fix #16: leftover cards go to leader ──
+        if leftover:
+            self.players[best_pid].hand += leftover
 
         self.round = 1
         self.phase = Phase.LEADER_DECLARE
@@ -405,19 +1089,241 @@ class DragonTamerGame:
         self._log(f"👑 {self.players[pid].name} declares: {steps} steps · "
                   f"{SUIT_ELEMENT[element]} {SUIT_SYM[element]}")
 
-        self.phase = Phase.PICK_CARDS
-        self.current_step = 0
-
         events = [{
             'type': 'declaration',
             'pid': pid, 'steps': steps, 'element': element,
             'element_name': SUIT_ELEMENT[element],
-        }, {
-            'type': 'phase_change',
-            'phase': Phase.PICK_CARDS,
-            'steps_needed': steps,
         }]
-        events += self._ai_pick_all()
+        events += self._start_sleeping_phase()
+        return events
+
+    def _start_sleeping_phase(self) -> List[dict]:
+        """Enter SLEEPING phase — collect choices from all active players."""
+        self.phase = Phase.SLEEPING
+        self.current_step = 0
+        self._claimed_cids = set()  # fresh for this round
+        self._skipped_this_round = set()  # fresh for this round
+
+        # ── Fix #20: reset skip_next HERE, at the start of the round being skipped ──
+        # Capture skipped players BEFORE clearing the flag, so they're excluded this round.
+        skip_events = []
+        skipped_pids = set()
+        for p in self.players.values():
+            if p.skip_next:
+                skipped_pids.add(p.pid)
+                self._skipped_this_round.add(p.pid)
+                p.skip_next = False
+                self._log(f"⏳ {p.name} returns from Time Dragon skip.")
+                skip_events.append({'type': 'skip_next_cleared', 'pid': p.pid})
+
+        active = [p for p in self.players.values()
+                  if not p.out and p.pid not in skipped_pids]
+        self._sleeping_pending = [p.pid for p in active]
+
+        self.assert_card_integrity(f'round={self.round} sleeping_phase_start')
+
+        events = skip_events + [{'type': 'phase_change', 'phase': Phase.SLEEPING,
+                                  'pending_pids': list(self._sleeping_pending)}]
+
+        # AI players act immediately
+        events += self._ai_sleeping_all()
+        return events
+
+    def _ai_sleeping_all(self) -> List[dict]:
+        """Process sleeping choices for all AI players still pending."""
+        events = []
+        for pid in list(self._sleeping_pending):
+            p = self.players[pid]
+            if p.is_ai:
+                choice = ai_sleeping_choice(p)
+                events += self._apply_sleeping_choice(pid, choice)
+        return events
+
+    def player_sleeping_choice(self, pid: str, action: str,
+                               tamer_cid: int = None, dragon_cid: int = None,
+                               pair_index: int = None) -> List[dict]:
+        """
+        Human calls this with action='sleep'|'wake'|'pass'.
+        For 'sleep': tamer_cid and dragon_cid required.
+        For 'wake':  pair_index required.
+        """
+        if self.phase != Phase.SLEEPING:
+            return [{'type': 'error', 'msg': 'Not in sleeping phase'}]
+        if pid not in self._sleeping_pending:
+            return [{'type': 'error', 'msg': 'Not your turn for sleeping choice'}]
+        choice = {'action': action, 'tamer_cid': tamer_cid,
+                  'dragon_cid': dragon_cid, 'pair_index': pair_index}
+        return self._apply_sleeping_choice(pid, choice)
+
+    def _apply_sleeping_choice(self, pid: str, choice: dict) -> List[dict]:
+        p = self.players[pid]
+        events = []
+        action = choice.get('action', 'pass')
+
+        if action == 'sleep':
+            t_cid = choice.get('tamer_cid')
+            d_cid = choice.get('dragon_cid')
+            if t_cid and d_cid and p.sleep_pair(t_cid, d_cid):
+                self._log(f"😴 {p.name} puts a pair to sleep.")
+                events.append({'type': 'sleeping_choice', 'pid': pid,
+                               'action': 'sleep', 'dragon_count': p.dragon_count})
+            else:
+                events.append({'type': 'sleeping_choice', 'pid': pid,
+                               'action': 'pass', 'reason': 'invalid_pair'})
+
+        elif action == 'wake':
+            idx = choice.get('pair_index', 0)
+            if isinstance(idx, int) and p.wake_pair(idx):
+                self._log(f"⏰ {p.name} wakes a sleeping pair!")
+                events.append({'type': 'sleeping_choice', 'pid': pid,
+                               'action': 'wake', 'dragon_count': p.dragon_count})
+            else:
+                events.append({'type': 'sleeping_choice', 'pid': pid,
+                               'action': 'pass', 'reason': 'invalid_index'})
+
+        else:  # pass
+            events.append({'type': 'sleeping_choice', 'pid': pid, 'action': 'pass'})
+
+        if pid in self._sleeping_pending:
+            self._sleeping_pending.remove(pid)
+
+        # If all players have acted, move to PICK_CARDS (forced-wake runs inside _start_pick_phase)
+        if not self._sleeping_pending:
+            if not self._pending_forced_wake_pid:
+                events += self._start_pick_phase()
+
+        return events
+
+    def _force_wake_if_needed(self) -> List[dict]:
+        """
+        After sleeping phase: any player with fewer hand cards than declared_steps
+        must wake sleeping pairs until they have enough (or exhaust all pairs).
+
+        - AI: selects which pairs to wake by strategy via ai_forced_wake_choice()
+        - Human: emits forced_wake_choose event and pauses; resumes via forced_wake_chosen()
+        """
+        events = []
+        for p in self.players.values():
+            if p.out or p.skip_next:
+                continue
+            shortfall = self.declared_steps - len(p.hand)
+            if shortfall <= 0 or not p.sleeping:
+                continue
+
+            # How many pairs must be woken (each pair adds 2 cards)
+            pairs_needed = 0
+            sim_hand = len(p.hand)
+            for _ in p.sleeping:
+                if sim_hand >= self.declared_steps:
+                    break
+                sim_hand += 2
+                pairs_needed += 1
+
+            if p.is_ai:
+                indices = ai_forced_wake_choice(p, pairs_needed, self.declared_el)
+                woken = []
+                for idx in sorted(indices, reverse=True):  # high→low so pops are safe
+                    t, d = p.sleeping.pop(idx)
+                    p.hand.append(t)
+                    p.hand.append(d)
+                    woken.append({'tamer': t.to_dict(), 'dragon': d.to_dict()})
+                    self._log(f"⏰ {p.name} forced to wake {d.suit} pair "
+                              f"(strategy: {p.ai_strategy})")
+                events.append({
+                    'type': 'forced_wake',
+                    'pid': p.pid,
+                    'pairs_woken': woken,
+                    'hand_size': len(p.hand),
+                    'steps_needed': self.declared_steps,
+                })
+            else:
+                # Human: build suggested_default using Balanced logic
+                suggested = ai_forced_wake_choice(
+                    PlayerState(pid=p.pid, name=p.name, is_ai=True,
+                                ai_strategy='Balanced',
+                                sleeping=list(p.sleeping), hand=list(p.hand)),
+                    pairs_needed, self.declared_el
+                )
+                self._pending_forced_wake_pid    = p.pid
+                self._pending_forced_wake_needed = pairs_needed
+                events.append({
+                    'type': 'forced_wake_choose',
+                    'pid': p.pid,
+                    'pairs_available': [
+                        {'index': i, 'tamer': t.to_dict(), 'dragon': d.to_dict()}
+                        for i, (t, d) in enumerate(p.sleeping)
+                    ],
+                    'pairs_needed': pairs_needed,
+                    'suggested_default': suggested,
+                    'steps_needed': self.declared_steps,
+                    'hand_size': len(p.hand),
+                })
+                # Stop here — game pauses until forced_wake_chosen() is called
+                return events
+
+        return events
+
+    def forced_wake_chosen(self, pid: str, pair_indices: List[int]) -> List[dict]:
+        """
+        Called by frontend when human player selects which pairs to wake.
+        pair_indices: list of sleeping[] indices to wake (length must == pairs_needed).
+        If the server timer expired, call this with suggested_default indices.
+        """
+        if self._pending_forced_wake_pid != pid:
+            return [{'type': 'error', 'msg': 'No pending forced wake for this player'}]
+
+        p = self.players[pid]
+        needed = self._pending_forced_wake_needed
+
+        # Validate
+        if len(pair_indices) != needed:
+            return [{'type': 'error',
+                     'msg': f'Must choose exactly {needed} pair(s), got {len(pair_indices)}'}]
+        for idx in pair_indices:
+            if idx < 0 or idx >= len(p.sleeping):
+                return [{'type': 'error', 'msg': f'Invalid pair index {idx}'}]
+
+        self._pending_forced_wake_pid    = None
+        self._pending_forced_wake_needed = 0
+
+        # Wake chosen pairs (high→low index so pops are safe)
+        woken = []
+        for idx in sorted(pair_indices, reverse=True):
+            t, d = p.sleeping.pop(idx)
+            p.hand.append(t)
+            p.hand.append(d)
+            woken.append({'tamer': t.to_dict(), 'dragon': d.to_dict()})
+            self._log(f"⏰ {p.name} woke {d.suit} pair (forced, player chose)")
+
+        events = [{
+            'type': 'forced_wake',
+            'pid': pid,
+            'pairs_woken': woken,
+            'hand_size': len(p.hand),
+            'steps_needed': self.declared_steps,
+        }]
+
+        # Check if any other players also need forced wake (multi-human games)
+        events += self._force_wake_if_needed()
+
+        # If no more pending forced wakes, advance to pick phase
+        if not self._pending_forced_wake_pid:
+            events += self._start_pick_phase()
+
+        return events
+
+    def _start_pick_phase(self) -> List[dict]:
+        self.assert_card_integrity(f'round={self.round} pick_phase_start')
+        self.phase = Phase.PICK_CARDS
+        events = [{'type': 'phase_change', 'phase': Phase.PICK_CARDS,
+                   'steps_needed': self.declared_steps}]
+        events += self._send_hands()
+        # Force-wake BEFORE AI picks so woken cards are available immediately
+        fw_events = self._force_wake_if_needed()
+        events += fw_events
+        # Only proceed to pick if no human forced-wake is pending
+        if not self._pending_forced_wake_pid:
+            events += self._ai_pick_all()
         return events
 
     def player_pick_cards(self, pid: str, card_cids: List[int]) -> List[dict]:
@@ -437,6 +1343,13 @@ class DragonTamerGame:
             if cid not in hand_cids:
                 return [{'type': 'error', 'msg': f'Card {cid} not in hand'}]
 
+        # Guard: deduplicate cids (defensive — AI should never send dupes)
+        seen = set(); deduped = []
+        for cid in card_cids:
+            if cid not in seen:
+                deduped.append(cid); seen.add(cid)
+        card_cids = deduped
+
         chosen = [hand_cids[cid] for cid in card_cids]
         p.battle = chosen
         p.hand   = [c for c in p.hand if c.cid not in set(card_cids)]
@@ -451,146 +1364,238 @@ class DragonTamerGame:
     def reveal_step(self, pid: str) -> List[dict]:
         if self.phase != Phase.REVEAL:
             return [{'type': 'error', 'msg': 'Not in reveal phase'}]
-        # Block while waiting for a human's joker power choice
-        if self.pending_time_dragon or self.pending_space_dragon:
-            return []
-        # Debounce: Replit's WS proxy triple-sends each message from the browser.
-        last_step = getattr(self, '_last_reveal_step', -1)
-        if last_step == self.current_step:
-            return []
-        self._last_reveal_step = self.current_step
         return self._do_reveal()
-
-    def resolve_time_dragon(self, pid: str, choice: str) -> List[dict]:
-        """Apply the human player's Time Dragon choice and continue the round."""
-        if self.pending_time_dragon != pid:
-            return []
-        name = self.players[pid].name
-        if choice == 'back' and self._pending_td_prev_winner and self._pending_td_prev_cards:
-            pw = self.players[self._pending_td_prev_winner]
-            for c in self._pending_td_prev_cards:
-                if c in pw.accum:
-                    pw.accum.remove(c)
-            self.players[pid].accum += self._pending_td_prev_cards
-            self._log(f"⏳ {name} reaches back in time and claims the previous step's cards!")
-        elif choice == 'forward':
-            self.players[pid].skip_next = True
-            self._log(f"⏳ {name} leaps forward — will skip their next round.")
-        else:
-            self._log(f"⏳ {name} lets the Time Dragon power fade unused.")
-        self.pending_time_dragon = None
-        self._pending_td_prev_winner = None
-        self._pending_td_prev_cards = []
-        # Now emit the phase event that _do_reveal held back
-        if self.current_step >= self.declared_steps:
-            return self._end_round()
-        return [{'type': 'phase_change', 'phase': Phase.REVEAL,
-                 'next_step': self.current_step + 1}]
-
-    def _do_space_dragon_seat_change(self, pid: str):
-        """Rotate the turn order by one seat (everyone shifts one position)."""
-        if len(self.order) < 2:
-            return
-        current_lead = self._lead_pid()
-        self.order = self.order[1:] + [self.order[0]]
-        if current_lead in self.order:
-            self.lead_idx = self.order.index(current_lead)
-
-    def resolve_space_dragon(self, pid: str, choice: str) -> List[dict]:
-        """Apply the human player's Space Dragon choice and continue the round."""
-        if self.pending_space_dragon != pid:
-            return []
-        name = self.players[pid].name
-        events = []
-        if choice == 'change':
-            self._do_space_dragon_seat_change(pid)
-            self._log(f"🌌 {name} warps through space — seat order changed!")
-            # Broadcast new seat order so all clients update their table
-            events.append({'type': 'seat_changed',
-                           'new_order': self.order,
-                           'lead_pid': self._lead_pid()})
-        else:
-            self._log(f"🌌 {name} lets the Space Dragon power fade unused.")
-        self.pending_space_dragon = None
-        if self.current_step >= self.declared_steps:
-            return events + self._end_round()
-        return events + [{'type': 'phase_change', 'phase': Phase.REVEAL,
-                          'next_step': self.current_step + 1}]
 
     def _do_reveal(self) -> List[dict]:
         si = self.current_step
-        active = [p for p in self.players.values() if not p.out]
+        active = [p for p in self.players.values()
+                  if not p.out and p.pid not in self._skipped_this_round]
 
         entries = []
         for p in active:
-            if p.battle:  # always reveal first card; it is removed after each step
-                entries.append({'pid': p.pid, 'card': p.battle[0]})
+            rev_idx = len(p.battle) - 1 - si
+            if rev_idx >= 0:
+                card = p.battle[rev_idx]
+                if card.cid not in self._claimed_cids:
+                    entries.append({'pid': p.pid, 'card': card})
 
         if not entries:
             return self._end_round()
 
-        result = resolve_step(entries, self.declared_el, self._lead_pid())
+        # ── Portal: fires when 9♣ is the current step's card ──
+        # The portal card (9♣) is already in entries as the portal owner's step card.
+        # The stolen card is added alongside it — both compete in this step.
+        # Winner takes all: portal card + stolen card + all other players' step cards.
+        # Resolution uses the BEST effective_rank among the portal owner's two cards.
+        portal_entry = next((e for e in entries if e['card'].is_portal), None)
+        if portal_entry:
+            portal_pid    = portal_entry['pid']
+            portal_player = self.players[portal_pid]
+            targets       = [p for p in active if p.pid != portal_pid and p.hand]
+            valid_targets = []
+            for t in targets:
+                sleeping_cids = {c.cid for pair in t.sleeping for c in pair}
+                if any(c.cid not in sleeping_cids for c in t.hand):
+                    valid_targets.append(t)
+
+            if valid_targets:
+                if not portal_player.is_ai:
+                    self._pending_portal_pid     = portal_pid
+                    self._pending_portal_entries = entries
+                    return [{
+                        'type': 'portal_choose_target',
+                        'portal_pid': portal_pid,
+                        'step': si + 1,
+                        'valid_target_pids': [t.pid for t in valid_targets],
+                    }]
+                else:
+                    chosen_target = ai_portal_target(portal_player, valid_targets)
+                    events = self._execute_portal_steal(
+                        portal_pid, chosen_target.pid, entries, si)
+                    return events
+
+        return self._resolve_and_finish_step(entries, si)
+
+    def portal_target_chosen(self, pid: str, target_pid: str) -> List[dict]:
+        """Called by the frontend when the human Portal player picks a target."""
+        if self._pending_portal_pid != pid:
+            return [{'type': 'error', 'msg': 'No pending portal choice for this player'}]
+        if target_pid not in self.players or self.players[target_pid].out:
+            return [{'type': 'error', 'msg': 'Invalid portal target'}]
+
+        entries = self._pending_portal_entries
+        si = self.current_step
+        self._pending_portal_pid = None
+        self._pending_portal_entries = []
+
+        return self._execute_portal_steal(pid, target_pid, entries, si)
+
+    def princess_choose_tamer(self, princess_pid: str, chosen_tamer_pid: str) -> List[dict]:
+        """Called by the frontend when the human princess picks which tamer gets Love Power."""
+        if self._pending_love_princess_pid != princess_pid:
+            return [{'type': 'error', 'msg': 'No pending love choice for this princess'}]
+        if chosen_tamer_pid not in self._pending_love_tamer_pids:
+            return [{'type': 'error', 'msg': 'Invalid tamer choice'}]
+
+        result  = self._pending_love_step_result
+        entries = self._pending_love_entries
+        si      = self._pending_love_si
+
+        self._pending_love_princess_pid = None
+        self._pending_love_tamer_pids   = []
+        self._pending_love_step_result  = None
+        self._pending_love_entries      = []
+        self._pending_love_si           = 0
+
+        result['love_right_pid'] = chosen_tamer_pid
+        result['special_events'].append(
+            f"💕 Princess chooses {chosen_tamer_pid} for Love Power!")
+        self.love_right = chosen_tamer_pid
+
+        return self._finish_step_after_resolve(result, entries, si)
+
+    def _execute_portal_steal(
+        self, portal_pid: str, target_pid: str,
+        entries: List[dict], si: int
+    ) -> List[dict]:
+        """
+        Steal a blind card from target.
+        The stolen card joins THIS step alongside the portal card (9♣).
+        Both belong to the portal owner — the best of the two determines their
+        rank in resolution. Both stay in the pot; winner takes all.
+        """
+        target = self.players[target_pid]
+        sleeping_cids = {c.cid for pair in target.sleeping for c in pair}
+        stealable = [c for c in target.hand if c.cid not in sleeping_cids]
+
+        steal_events = []
+        if stealable:
+            stolen = random.choice(stealable)
+            target.hand.remove(stolen)
+            # Add stolen card to entries alongside the portal card.
+            # Both entries have portal_pid — resolution sees two cards for this player.
+            # resolve_step will use the best-ranked of the two for comparison.
+            entries = list(entries) + [{'pid': portal_pid, 'card': stolen, 'stolen': True}]
+            self._log(
+                f"🌀 {self.players[portal_pid].name} stole {stolen.label} "
+                f"from {target.name} — both cards compete in this step!"
+            )
+            steal_events.append({
+                'type': 'portal_steal',
+                'portal_pid': portal_pid,
+                'target_pid': target_pid,
+                'stolen_card': stolen.to_dict(),
+            })
+
+        return steal_events + self._resolve_and_finish_step(entries, si)
+
+    def _resolve_and_finish_step(self, entries: List[dict], si: int) -> List[dict]:
+        """Run resolve_step on final entries and handle all post-resolution logic."""
+        # Entries are views into p.battle (already counted there) EXCEPT stolen cards
+        # which were removed from target.hand before being appended to entries.
+        # So stolen cards are NOT in any player location — pass them as extra.
+        stolen_entries = [e for e in entries if e.get('stolen')]
+        self.assert_card_integrity(
+            f'round={self.round} step={si+1} pre-resolve',
+            stolen_entries if stolen_entries else None
+        )
+        result = resolve_step(entries, self.declared_el, self._lead_pid(),
+                              all_players=self.players)
+
+        # ── Fix #11: handle princess choice for Love Power ──
+        if result.get('love_choice_needed'):
+            lcd = result['love_choice_needed']
+            princess_pids = lcd['princess_pids']
+            tamer_pids    = lcd['tamer_pids']
+            # Find the first human princess
+            human_princess = next(
+                (pid for pid in princess_pids
+                 if not self.players[pid].is_ai), None)
+
+            if human_princess:
+                # Pause and wait for human input
+                self._pending_love_princess_pid = human_princess
+                self._pending_love_tamer_pids   = tamer_pids
+                self._pending_love_step_result  = result
+                self._pending_love_entries      = entries
+                self._pending_love_si           = si
+                # Emit partial step info plus the choice request
+                partial_events = []
+                for msg in result['special_events']:
+                    self._log(msg)
+                partial_events.append({
+                    'type': 'love_choose_tamer',
+                    'princess_pid': human_princess,
+                    'tamer_pids': tamer_pids,
+                    'step': si + 1,
+                    'entries': [{'pid': e['pid'], 'card': e['card'].to_dict(),
+                                 'stolen': e.get('stolen', False)} for e in entries],
+                    'special_events': result['special_events'],
+                })
+                return partial_events
+            else:
+                # AI princess — use strategy-based love tamer choice
+                ai_princess_pid = princess_pids[0]
+                chosen = ai_love_tamer_choice(
+                    self.players[ai_princess_pid], tamer_pids, self.players
+                )
+                result['love_right_pid'] = chosen
+                result['special_events'].append(
+                    f"💕 AI princess chooses {chosen} for Love Power!")
 
         if result['love_right_pid']:
             self.love_right = result['love_right_pid']
 
-        winner_pid = result['winner_pid']
-        all_cards  = result['all_cards']
+        return self._finish_step_after_resolve(result, entries, si)
 
-        # Joker helpers
+    def _finish_step_after_resolve(self, result: dict, entries: List[dict], si: int) -> List[dict]:
+        """Apply result to game state and advance the step. Shared by normal and paused flows."""
+        winner_pid = result['winner_pid']
+        all_cards  = result['all_cards']  # includes stolen card if portal fired
+
+        # Time dragon logic — only fires if the ⏳ owner WON the step
         time_j = next((e for e in entries if e['card'].joker_type == 'time'), None)
-        space_j = next((e for e in entries if e['card'].joker_type == 'space'), None)
         has_tamer = any(e['card'].is_tamer for e in entries)
 
         time_owner_pid = None
-        if has_tamer and 'time' in result['joker_powers'] and winner_pid:
-            time_owner_pid = winner_pid
-        elif time_j and not has_tamer:
-            time_owner_pid = time_j['pid']
+        if time_j and winner_pid == time_j['pid']:
+            # Time Dragon owner won — power activates
+            if has_tamer and 'time' in result['joker_powers']:
+                time_owner_pid = winner_pid
+            elif not has_tamer:
+                time_owner_pid = winner_pid
+        # else: time dragon owner lost — power forfeit
 
-        # Save pre-current-step "previous" data so Time Dragon "back" works correctly
-        td_prev_winner = self.prev_step_winner
-        td_prev_cards  = list(self.prev_step_cards)
-        td_is_human    = time_owner_pid and not self.players[time_owner_pid].is_ai
+        if time_owner_pid:
+            time_player  = self.players[time_owner_pid]
+            time_choice  = ai_time_dragon_choice(
+                time_player, self.prev_step_cards, self.prev_step_winner
+            ) if time_player.is_ai else ('back' if (self.prev_step_winner and self.prev_step_cards) else 'forward')
 
-        if time_owner_pid and not td_is_human:
-            # AI: auto-decide based on whether there is a previous step to claim
-            if td_prev_winner and td_prev_cards:
-                pw = self.players[td_prev_winner]
-                for c in td_prev_cards:
+            if time_choice == 'back' and self.prev_step_winner and self.prev_step_cards:
+                pw = self.players[self.prev_step_winner]
+                for c in self.prev_step_cards:
                     if c in pw.accum: pw.accum.remove(c)
-                self.players[time_owner_pid].accum += td_prev_cards
+                self.players[time_owner_pid].accum += self.prev_step_cards
                 result['special_events'].append(
-                    f"⏳ {self.players[time_owner_pid].name} claims previous step!")
-            else:
+                    f"⏳ {time_player.name} claims previous step!")
+            elif time_choice == 'forward':
                 self.players[time_owner_pid].skip_next = True
                 result['special_events'].append(
-                    f"⏳ {self.players[time_owner_pid].name} skips next round.")
-
-        # Execute Portal steal
-        if result.get('portal_pid'):
-            portal_pid = result['portal_pid']
-            targets = [p for p in active
-                       if p.pid != portal_pid and p.hand]
-            if targets:
-                target = max(targets, key=lambda p: len(p.hand))
-                sleeping_cids = {c.cid for pair in target.sleeping for c in pair}
-                stealable = [c for c in target.hand
-                            if c.cid not in sleeping_cids]
-                if stealable:
-                    stolen = random.choice(stealable)
-                    target.hand.remove(stolen)
-                    self.players[portal_pid].accum.append(stolen)
-                    self._log(f"🌀 {self.players[portal_pid].name} "
-                              f"stole a card from {target.name}!")
-
-        # Remove revealed cards from battle piles
-        revealed_cids = {c.cid for c in all_cards}
-        for p in active:
-            p.battle = [c for c in p.battle if c.cid not in revealed_cids]
+                    f"⏳ {time_player.name} skips next round.")
+            else:
+                result['special_events'].append(
+                    f"⏳ {time_player.name} passes Time Dragon power.")
 
         if winner_pid:
+            won_cids = {c.cid for c in all_cards}
             self.players[winner_pid].accum += all_cards
+            # Track claimed cids — do NOT remove from battle mid-round.
+            # battle list must stay fixed-length so rev_idx keeps working for remaining steps.
+            # Cards are physically cleared from battle in _end_round.
+            self._claimed_cids.update(won_cids)
+
+        self.assert_card_integrity(f'round={self.round} step={si+1} post-resolve')
 
         for msg in result['special_events']:
             self._log(msg)
@@ -603,56 +1608,95 @@ class DragonTamerGame:
         self.prev_step_winner = winner_pid
         self.current_step += 1
 
-        # If human player has Time Dragon power, pause and let them choose
-        if td_is_human:
-            self.pending_time_dragon = time_owner_pid
-            self._pending_td_prev_winner = td_prev_winner
-            self._pending_td_prev_cards  = td_prev_cards
-            result['special_events'].append(
-                f"⏳ {self.players[time_owner_pid].name} must choose the Time Dragon's power!")
-
-        # ── Space Dragon power ────────────────────────────────────────────
-        # Determine who gets the space dragon power:
-        #   - Tamer wins + space dragon in play → tamer gets the power
-        #   - Space dragon wins on its own       → space dragon owner gets it
-        space_owner_pid = None
-        if space_j:
-            if has_tamer and winner_pid:
-                space_owner_pid = winner_pid
-                result['special_events'].append(
-                    f"🌌 {self.players[winner_pid].name} tamed the Space Dragon — gaining warp power!")
-            elif not has_tamer:
-                space_owner_pid = space_j['pid']
-                result['special_events'].append(
-                    f"🌌 Space Dragon! {self.players[space_j['pid']].name} may change seat.")
-
-        sd_is_human = bool(space_owner_pid and not self.players[space_owner_pid].is_ai)
-
-        if space_owner_pid and not sd_is_human:
-            # AI: always rotate seat
-            self._do_space_dragon_seat_change(space_owner_pid)
-            result['special_events'].append(
-                f"🌌 {self.players[space_owner_pid].name} warps to a new seat!")
-        elif sd_is_human:
-            self.pending_space_dragon = space_owner_pid
-
-        events = [{
+        step_event = {
             'type': 'step_revealed',
             'step': si + 1,
             'total_steps': self.declared_steps,
-            'entries': [{'pid': e['pid'], 'card': e['card'].to_dict()} for e in entries],
+            'entries': [{'pid': e['pid'], 'card': e['card'].to_dict(),
+                         'stolen': e.get('stolen', False)} for e in entries],
             'winner_pid': winner_pid,
             'special_events': result['special_events'],
             'love_right_pid': result['love_right_pid'],
-            # Signal to client: human must respond before game continues
-            'time_dragon_prompt': time_owner_pid if td_is_human else None,
-            'has_prev_step': bool(td_prev_winner),
-            'space_dragon_prompt': space_owner_pid if sd_is_human else None,
-        }]
+        }
 
-        # Hold back phase_change while a human is choosing a joker power
-        if td_is_human or sd_is_human:
-            return events
+        # ── Space Dragon: pause immediately for seat-swap choice ──
+        space_pid = result.get('space_dragon_pid')
+        if space_pid:
+            active = [p for p in self.players.values() if not p.out]
+            valid_targets = [p.pid for p in active if p.pid != space_pid]
+            space_player = self.players[space_pid]
+
+            if not space_player.is_ai:
+                # Pause for human choice
+                self._pending_space_dragon_pid     = space_pid
+                self._pending_space_dragon_entries = entries
+                self._pending_space_dragon_si      = si
+                return [step_event, {
+                    'type': 'space_dragon_choose_swap',
+                    'space_pid': space_pid,
+                    'valid_target_pids': valid_targets,
+                    'step': si + 1,
+                    'can_pass': True,
+                }]
+            else:
+                # AI decides and applies immediately
+                target_pid = ai_space_dragon_swap(
+                    space_player,
+                    [self.players[p] for p in valid_targets]
+                )
+                if target_pid:
+                    swap_events = self._apply_seat_swap(space_pid, target_pid)
+                    events = [step_event] + swap_events
+                else:
+                    events = [step_event]
+
+        else:
+            events = [step_event]
+
+        # Advance: next step or end round
+        if self.current_step >= self.declared_steps:
+            events += self._end_round()
+        else:
+            events.append({
+                'type': 'phase_change',
+                'phase': Phase.REVEAL,
+                'next_step': self.current_step + 1,
+            })
+
+        return events
+
+    def _apply_seat_swap(self, pid_a: str, pid_b: str) -> List[dict]:
+        """Swap the seat positions of two players in self.order."""
+        if pid_a not in self.order or pid_b not in self.order:
+            return [{'type': 'error', 'msg': 'Invalid swap pids'}]
+        ia, ib = self.order.index(pid_a), self.order.index(pid_b)
+        self.order[ia], self.order[ib] = self.order[ib], self.order[ia]
+        # Update lead_idx if either swapped player is the current leader
+        lead = self._lead_pid()  # recalculate after swap
+        self._log(f"🌌 {self.players[pid_a].name} swaps seat with "
+                  f"{self.players[pid_b].name}!")
+        return [{'type': 'seat_swap', 'pid_a': pid_a, 'pid_b': pid_b,
+                 'new_order': list(self.order)}]
+
+    def space_dragon_swap_chosen(self, pid: str,
+                                 target_pid: Optional[str]) -> List[dict]:
+        """
+        Called by frontend when human Space Dragon winner chooses a swap target.
+        target_pid=None means pass (stay in current seat).
+        """
+        if self._pending_space_dragon_pid != pid:
+            return [{'type': 'error', 'msg': 'No pending Space Dragon choice for this player'}]
+
+        si      = self._pending_space_dragon_si
+        self._pending_space_dragon_pid     = None
+        self._pending_space_dragon_entries = []
+        self._pending_space_dragon_si      = 0
+
+        events = []
+        if target_pid:
+            if target_pid not in self.players or self.players[target_pid].out:
+                return [{'type': 'error', 'msg': 'Invalid swap target'}]
+            events += self._apply_seat_swap(pid, target_pid)
 
         if self.current_step >= self.declared_steps:
             events += self._end_round()
@@ -666,18 +1710,18 @@ class DragonTamerGame:
         return events
 
     def _end_round(self) -> List[dict]:
-        # Reset skip_next for players who were skipping
-        for p in self.players.values():
-            if p.skip_next:
-                p.skip_next = False
-                self._log(f"⏳ {p.name} returns from Time Dragon skip.")
+        # NOTE: skip_next is NOT reset here — it must survive into the next round
+        # and be cleared at the START of that round (_start_sleeping_phase).
+        # Resetting here was Bug #20.
 
-        # Return cards
+        # Return cards — unclaimed battle cards back to hand, clear battle and accum
         for p in self.players.values():
             if p.out: continue
-            existing = {c.cid for c in p.hand}
+            sleeping_cids = {c.cid for pair in p.sleeping for c in pair}
+            existing = {c.cid for c in p.hand} | sleeping_cids
             for c in p.battle:
-                if c.cid not in existing:
+                # unclaimed battle cards return to hand; claimed ones are already in accum
+                if c.cid not in existing and c.cid not in self._claimed_cids:
                     p.hand.append(c); existing.add(c.cid)
             for c in p.accum:
                 if c.cid not in existing:
@@ -685,10 +1729,24 @@ class DragonTamerGame:
             p.battle = []
             p.accum  = []
 
-        # Dragon sleep
+        self._claimed_cids = set()  # reset for next round
+
+        # (Sleeping pairs are now managed by player choice at round start, not auto-applied here)
+        self.assert_card_integrity(f'round={self.round} end_round post-return')
+
+        # ── Fix #15: Victory check BEFORE elimination ──
         for p in self.players.values():
-            if not p.out:
-                p.apply_sleeping()
+            if not p.out and p.dragon_count >= WIN_DRAGONS:
+                self.phase = Phase.GAME_OVER
+                self._capture_final_snapshot()
+                self._log(f"🏆 {p.name} wins with {p.dragon_count} dragons!")
+                return [{
+                    'type': 'game_over',
+                    'winner_pid': p.pid,
+                    'winner_name': p.name,
+                    'dragons': p.dragon_count,
+                    'round': self.round,
+                }, {'type': 'eliminated', 'pids': []}]
 
         # Elimination
         eliminated = []
@@ -698,10 +1756,11 @@ class DragonTamerGame:
                 eliminated.append(p.pid)
                 self._log(f"💀 {p.name} is eliminated!")
 
-        # Victory check
+        # Victory check after elimination
         for p in self.players.values():
             if not p.out and p.dragon_count >= WIN_DRAGONS:
                 self.phase = Phase.GAME_OVER
+                self._capture_final_snapshot()
                 self._log(f"🏆 {p.name} wins with {p.dragon_count} dragons!")
                 return [{
                     'type': 'game_over',
@@ -709,28 +1768,26 @@ class DragonTamerGame:
                     'winner_name': p.name,
                     'dragons': p.dragon_count,
                     'round': self.round,
-                    'winner_hand': [c.to_dict() for c in p.hand],
-                    'winner_sleeping': [[t.to_dict(), d.to_dict()] for t, d in p.sleeping],
-                    'all_dragons': [c.to_dict() for c in p.hand if c.is_dragon]
-                                  + [d.to_dict() for _, d in p.sleeping],
-                    'all_players': [
-                        {
-                            'pid': pl.pid,
-                            'name': pl.name,
-                            'dragons': pl.dragon_count,
-                            'out': pl.out,
-                            'hand': [c.to_dict() for c in pl.hand],
-                            'sleeping': [[t.to_dict(), d.to_dict()] for t, d in pl.sleeping],
-                        }
-                        for pl in self.players.values()
-                    ],
                 }, {'type': 'eliminated', 'pids': eliminated}]
+
+        # ── Stalemate safeguard ──
+        if self.round >= MAX_ROUNDS:
+            active_players = [p for p in self.players.values() if not p.out]
+            winner = max(active_players, key=lambda p: (p.dragon_count, len(p.hand)))
+            self.phase = Phase.GAME_OVER
+            self._capture_final_snapshot()
+            self._log(f"⏱️ Round limit reached — {winner.name} wins by dragon count!")
+            return [{'type': 'eliminated', 'pids': eliminated},
+                    {'type': 'game_over', 'winner_pid': winner.pid,
+                     'winner_name': winner.name, 'dragons': winner.dragon_count,
+                     'round': self.round, 'reason': 'round_limit'}]
 
         # Next leader
         active = [pid for pid in self.order if not self.players[pid].out]
         if len(active) <= 1:
             winner = self.players[active[0]] if active else None
             self.phase = Phase.GAME_OVER
+            self._capture_final_snapshot()
             return [{'type': 'game_over',
                      'winner_pid': winner.pid if winner else None,
                      'winner_name': winner.name if winner else 'Nobody',
@@ -765,16 +1822,80 @@ class DragonTamerGame:
 
         return events
 
+    def _capture_final_snapshot(self):
+        """Store a snapshot of all card locations at the moment game ends."""
+        self.final_snapshot = {}
+        for p in self.players.values():
+            # Unclaimed battle cards = cards still in battle not yet won
+            unclaimed_battle = [c for c in p.battle if c.cid not in self._claimed_cids]
+            self.final_snapshot[p.pid] = {
+                'hand':    list(p.hand),
+                'battle':  unclaimed_battle,
+                'accum':   list(p.accum),
+                'sleeping': list(p.sleeping),
+            }
+
     def _lead_pid(self) -> str:
         return self.order[self.lead_idx % len(self.order)]
 
+    def assert_card_integrity(self, context: str = '', entries: List[dict] = None):
+        """
+        Assert all 54 cards appear exactly once across every location.
+        Note: during mid-round, won cards sit in both battle (for rev_idx) and accum.
+        _claimed_cids tracks these; we count them only from accum, skip in battle.
+        """
+        seen: Dict[int, str] = {}
+
+        def register(cid: int, location: str):
+            if cid in seen:
+                raise AssertionError(
+                    f'[{context}] DUPLICATE card cid={cid}: '
+                    f'first at {seen[cid]}, again at {location}'
+                )
+            seen[cid] = location
+
+        for p in self.players.values():
+            label = p.name
+            for c in p.hand:
+                register(c.cid, f'{label}.hand')
+            for c in p.battle:
+                # Skip claimed cards in battle — they're counted in accum
+                if c.cid not in self._claimed_cids:
+                    register(c.cid, f'{label}.battle')
+            for c in p.accum:
+                register(c.cid, f'{label}.accum')
+            for i, pair in enumerate(p.sleeping):
+                for c in pair:
+                    register(c.cid, f'{label}.sleeping[{i}]')
+
+        if entries:
+            for e in entries:
+                c = e['card']
+                register(c.cid, f'entries[pid={e["pid"]}]')
+
+        total = len(seen)
+        if total != 54:
+            all_expected = set(range(1, 55))
+            missing = all_expected - set(seen.keys())
+            raise AssertionError(
+                f'[{context}] WRONG card count: expected 54, got {total}. '
+                f'Missing cids: {sorted(missing)}'
+            )
+
     def _all_picked(self) -> bool:
-        # skip_next players don't need to pick
         active = [p for p in self.players.values()
-                  if not p.out and not p.skip_next]
-        return all(p.battle or p.is_ai for p in active)
+                  if not p.out and not p.skip_next
+                  and p.pid not in self._skipped_this_round]
+        for p in active:
+            if p.battle:
+                continue          # submitted cards — done
+            if not p.hand:
+                continue          # no cards to submit — contributes nothing this round
+            return False          # has cards but hasn't picked yet (human or AI mid-loop)
+        return True
 
     def _start_reveal(self) -> List[dict]:
+        self.assert_card_integrity(f'round={self.round} reveal_start')
         self.phase = Phase.REVEAL
         self.current_step = 0
         return [{'type': 'phase_change', 'phase': Phase.REVEAL,
@@ -794,13 +1915,32 @@ class DragonTamerGame:
 
     def _ai_pick_all(self) -> List[dict]:
         events = []
+        # Pick for ALL eligible AI players first, without triggering _all_picked mid-loop
+        picks = []
         for p in self.players.values():
-            # skip players with skip_next
-            if p.is_ai and not p.out and not p.battle and not p.skip_next:
+            if (p.is_ai and not p.out and not p.battle and not p.skip_next
+                    and p.pid not in self._skipped_this_round):
                 n = min(self.declared_steps, len(p.hand))
                 chosen = ai_pick_cards(p, n, self.declared_el)
-                cids = [c.cid for c in chosen]
-                events += self.player_pick_cards(p.pid, cids)
+                picks.append((p, chosen))
+
+        # Apply all picks atomically
+        for p, chosen in picks:
+            cids = [c.cid for c in chosen]
+            # Deduplicate
+            seen_c = set(); deduped = []
+            for cid in cids:
+                if cid not in seen_c: deduped.append(cid); seen_c.add(cid)
+            hand_map = {c.cid: c for c in p.hand}
+            valid_cids = [cid for cid in deduped if cid in hand_map]
+            p.battle = [hand_map[cid] for cid in valid_cids]
+            p.hand   = [c for c in p.hand if c.cid not in set(valid_cids)]
+            events.append({'type': 'cards_picked', 'pid': p.pid, 'count': len(valid_cids)})
+
+        # Now check if everyone is ready
+        if self._all_picked():
+            events += self._start_reveal()
+
         return events
 
     def _log(self, msg: str):
@@ -876,5 +2016,4 @@ if __name__ == '__main__':
         if game.phase == Phase.GAME_OVER:
             print("GAME OVER")
             break
-
-    print("\n✅ Engine test passed")
+    print("\n✅ Engine v1.1 test passed")

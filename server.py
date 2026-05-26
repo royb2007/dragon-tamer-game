@@ -1,371 +1,336 @@
 """
-Dragon Tamer — WebSocket Server
-Python 3.10+ | websockets 12+
+Dragon Tamer — Game Server v1.0
+Flask REST + SSE server bridging the game_engine to frontend clients.
 
-Run locally:  python server.py
-Deploy:       Railway / Render (see README)
+Routes:
+  POST /room/create          Create a room
+  POST /room/<id>/join       Join as human or AI
+  POST /room/<id>/start      Start the game
+  GET  /room/<id>/state      Full game state (for the calling player)
+  GET  /room/<id>/stream     SSE stream of events
+  POST /room/<id>/declare    Leader declares steps + element
+  POST /room/<id>/sleep      Player sleeping choice
+  POST /room/<id>/pick       Player picks battle cards
+  POST /room/<id>/reveal     Trigger next step reveal
+  POST /room/<id>/portal     Human chooses portal steal target
+  POST /room/<id>/love       Princess chooses tamer
+  POST /room/<id>/swap       Space Dragon swap choice
+  POST /room/<id>/wake       Forced wake choice
+  GET  /rooms                List all active rooms
+  DELETE /room/<id>          Delete a room
 """
-import asyncio
+
 import json
-import logging
-import os
+import queue
+import threading
+import time
 import uuid
-import http
-from typing import Dict, Set
-
-import websockets
-from websockets.server import WebSocketServerProtocol
-
+from functools import wraps
+from flask import Flask, request, jsonify, Response, g
 from game_engine import RoomManager, Phase
 
-logging.basicConfig(level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s')
-log = logging.getLogger(__name__)
+app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False
 
-# ══════════════════════════════════════════════════════
-# CONNECTION REGISTRY
-# ══════════════════════════════════════════════════════
-rooms  = RoomManager()
+# ── State ──────────────────────────────────────────────────────────────────
+rm       = RoomManager()
+# event_queues[room_id][client_id] = Queue()
+event_queues: dict[str, dict[str, queue.Queue]] = {}
+lock = threading.Lock()
 
-# room_id → set of websockets (players + spectators)
-room_sockets: Dict[str, Set[WebSocketServerProtocol]] = {}
-# websocket → {pid, room_id, name, is_spectator}
-socket_meta:  Dict[WebSocketServerProtocol, dict] = {}
+# ── Helpers ────────────────────────────────────────────────────────────────
 
-
-def _spectator_count(room_id: str) -> int:
-    return sum(1 for ws, m in socket_meta.items()
-               if m.get('room_id') == room_id and m.get('is_spectator'))
-
-
-def _get_room_sockets(room_id: str) -> Set[WebSocketServerProtocol]:
-    return room_sockets.get(room_id, set())
-
-
-async def broadcast(room_id: str, message: dict,
-                    exclude: WebSocketServerProtocol = None):
-    """Send a message to every socket in a room."""
-    data = json.dumps(message)
-    targets = {ws for ws in _get_room_sockets(room_id) if ws is not exclude}
-    if targets:
-        await asyncio.gather(*[ws.send(data) for ws in targets],
-                              return_exceptions=True)
-
-
-async def send(ws: WebSocketServerProtocol, message: dict):
-    """Send a message to one socket."""
-    try:
-        await ws.send(json.dumps(message))
-    except Exception:
-        pass
-
-
-async def broadcast_events(room_id: str, events: list,
-                            private_ws: WebSocketServerProtocol = None):
-    """
-    Broadcast a list of engine events.
-    hand_update events are sent only to the relevant player.
-    """
-    game = rooms.get_room(room_id)
+def get_game(room_id):
+    game = rm.get_room(room_id)
     if not game:
+        return None, jsonify({'error': f'Room {room_id} not found'}), 404
+    return game, None, None
+
+def broadcast(room_id: str, events: list):
+    """Push engine events to every SSE subscriber of a room."""
+    if not events:
         return
+    with lock:
+        queues = event_queues.get(room_id, {})
+    payload = json.dumps(events, default=str)
+    for q in queues.values():
+        try:
+            q.put_nowait(payload)
+        except queue.Full:
+            pass
 
-    # Build pid → ws map
-    pid_to_ws: Dict[str, WebSocketServerProtocol] = {}
-    for ws, meta in socket_meta.items():
-        if meta.get('room_id') == room_id:
-            pid_to_ws[meta['pid']] = ws
+def require_json(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not request.is_json:
+            return jsonify({'error': 'Content-Type must be application/json'}), 400
+        return f(*args, **kwargs)
+    return wrapper
 
-    for event in events:
-        if event['type'] == 'hand_update':
-            # Send only to the relevant player
-            target_ws = pid_to_ws.get(event['pid'])
-            if target_ws:
-                await send(target_ws, event)
-        else:
-            # Broadcast to all
-            await broadcast(room_id, event)
+def handle_events(room_id, events):
+    """Broadcast events and return them as JSON response."""
+    broadcast(room_id, events)
+    return jsonify({'ok': True, 'events': events})
 
+# ── Room management ─────────────────────────────────────────────────────────
 
-# ══════════════════════════════════════════════════════
-# MESSAGE HANDLERS
-# ══════════════════════════════════════════════════════
-async def handle_create_room(ws, data):
-    room_id  = data.get('room_id') or str(uuid.uuid4())[:8].upper()
+@app.route('/rooms', methods=['GET'])
+def list_rooms():
+    return jsonify(rm.list_rooms())
+
+@app.route('/room/create', methods=['POST'])
+@require_json
+def create_room():
+    data       = request.get_json()
+    room_id    = data.get('room_id') or str(uuid.uuid4())[:8]
+    max_players = int(data.get('max_players', 6))
+    if rm.get_room(room_id):
+        return jsonify({'error': f'Room {room_id} already exists'}), 409
+    rm.create_room(room_id, max_players)
+    with lock:
+        event_queues[room_id] = {}
+    return jsonify({'ok': True, 'room_id': room_id, 'max_players': max_players})
+
+@app.route('/room/<room_id>', methods=['DELETE'])
+def delete_room(room_id):
+    rm.delete_room(room_id)
+    with lock:
+        event_queues.pop(room_id, None)
+    return jsonify({'ok': True})
+
+# ── Players ─────────────────────────────────────────────────────────────────
+
+@app.route('/room/<room_id>/join', methods=['POST'])
+@require_json
+def join_room(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+
+    data     = request.get_json()
     pid      = data.get('pid') or str(uuid.uuid4())[:8]
-    name     = data.get('name', 'Player')
-    ai_count = int(data.get('ai_count', 3))
-    max_pl   = 1 + ai_count   # 1 human + N AI opponents
+    name     = data.get('name', pid)
+    is_ai    = bool(data.get('is_ai', False))
+    strategy = data.get('ai_strategy', 'Balanced')
 
-    if rooms.get_room(room_id):
-        await send(ws, {'type': 'error', 'msg': 'Room already exists'})
-        return
+    result = game.add_player(pid, name, is_ai=is_ai, ai_strategy=strategy)
+    if result.get('error'):
+        return jsonify(result), 400
+    broadcast(room_id, [{'type': 'player_joined', 'pid': pid, 'name': name, 'is_ai': is_ai}])
+    return jsonify({'ok': True, 'pid': pid, 'name': name})
 
-    game = rooms.create_room(room_id, max_pl)
-    game.add_player(pid, name)
-    game.fill_with_ai(['Aggressive','Balanced','Conservative','Hoarder',
-                        'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger'][:ai_count])
+@app.route('/room/<room_id>/fill_ai', methods=['POST'])
+def fill_ai(room_id):
+    """Fill remaining seats with AI players."""
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    game.fill_with_ai()
+    broadcast(room_id, [{'type': 'room_filled'}])
+    return jsonify({'ok': True, 'players': len(game.players)})
 
-    room_sockets[room_id] = {ws}
-    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
+# ── Game flow ────────────────────────────────────────────────────────────────
 
-    await send(ws, {
-        'type': 'room_created',
-        'room_id': room_id,
-        'pid': pid,
-        'state': game.player_state(pid),
-    })
-    log.info(f"Room {room_id} created by {name} ({pid})")
-
-
-async def handle_join_room(ws, data):
-    room_id = data.get('room_id', '').upper()
-    pid     = data.get('pid') or str(uuid.uuid4())[:8]
-    name    = data.get('name', 'Player')
-
-    game = rooms.get_room(room_id)
-    if not game:
-        await send(ws, {'type': 'error', 'msg': 'Room not found'})
-        return
-
-    result = game.add_player(pid, name)
-    if not result['ok']:
-        await send(ws, {'type': 'error', 'msg': result['error']})
-        return
-
-    room_sockets.setdefault(room_id, set()).add(ws)
-    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
-
-    await send(ws, {
-        'type': 'room_joined',
-        'room_id': room_id,
-        'pid': pid,
-        'state': game.player_state(pid),
-    })
-    await broadcast(room_id, {
-        'type': 'player_joined',
-        'name': name,
-        'player_count': len(game.players),
-    }, exclude=ws)
-    log.info(f"{name} ({pid}) joined room {room_id}")
-
-
-async def handle_start_game(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game:
-        await send(ws, {'type': 'error', 'msg': 'Not in a room'})
-        return
-    if game.phase != Phase.WAITING:
-        return  # silently ignore duplicate start_game calls
-
+@app.route('/room/<room_id>/start', methods=['POST'])
+def start_game(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
     events = game.start_game()
-    await broadcast_events(meta['room_id'], events)
-    log.info(f"Game started in room {meta['room_id']}")
+    return handle_events(room_id, events)
 
+@app.route('/room/<room_id>/state', methods=['GET'])
+def get_state(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    pid = request.args.get('pid')
+    state = game.player_state(pid) if pid else game.public_state()
+    return jsonify(state)
 
-async def handle_declare(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game: return
+# ── Player actions ───────────────────────────────────────────────────────────
 
-    steps   = int(data.get('steps', 3))
-    element = data.get('element', 'Hearts')
-    events  = game.player_declare(meta['pid'], steps, element)
-    await broadcast_events(meta['room_id'], events)
+@app.route('/room/<room_id>/declare', methods=['POST'])
+@require_json
+def declare(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data    = request.get_json()
+    pid     = data['pid']
+    steps   = int(data['steps'])
+    element = data['element']           # 'Hearts' | 'Diamonds' | 'Clubs' | 'Spades'
+    events  = game.player_declare(pid, steps, element)
+    return handle_events(room_id, events)
 
+@app.route('/room/<room_id>/sleep', methods=['POST'])
+@require_json
+def sleep(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data        = request.get_json()
+    pid         = data['pid']
+    action      = data['action']        # 'sleep' | 'wake' | 'pass'
+    tamer_cid   = data.get('tamer_cid')
+    dragon_cid  = data.get('dragon_cid')
+    pair_index  = data.get('pair_index')
+    events = game.player_sleeping_choice(pid, action,
+                                         tamer_cid=tamer_cid,
+                                         dragon_cid=dragon_cid,
+                                         pair_index=pair_index)
+    return handle_events(room_id, events)
 
-async def handle_pick_cards(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game: return
+@app.route('/room/<room_id>/pick', methods=['POST'])
+@require_json
+def pick(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data      = request.get_json()
+    pid       = data['pid']
+    card_cids = data['card_cids']       # list of int card ids
+    events    = game.player_pick_cards(pid, card_cids)
+    return handle_events(room_id, events)
 
-    cids   = [int(c) for c in data.get('card_cids', [])]
-    events = game.player_pick_cards(meta['pid'], cids)
-    await broadcast_events(meta['room_id'], events)
+@app.route('/room/<room_id>/reveal', methods=['POST'])
+@require_json
+def reveal(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data   = request.get_json()
+    pid    = data.get('pid') or game._lead_pid()
+    events = game.reveal_step(pid)
 
+    # Handle any paused states (portal / love / space dragon / forced wake)
+    all_events = list(events)
+    for e in events:
+        if e['type'] == 'portal_choose_target':
+            # AI auto-resolve or return pause for human
+            if not game.players[e['portal_pid']].is_ai:
+                return handle_events(room_id, all_events)
+        elif e['type'] == 'love_choose_tamer':
+            if not game.players[e['princess_pid']].is_ai:
+                return handle_events(room_id, all_events)
+        elif e['type'] == 'space_dragon_choose_swap':
+            if not game.players[e['space_pid']].is_ai:
+                return handle_events(room_id, all_events)
+        elif e['type'] == 'forced_wake_choose':
+            if not game.players[e['pid']].is_ai:
+                return handle_events(room_id, all_events)
 
-async def handle_reveal(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game: return
+    return handle_events(room_id, all_events)
 
-    events = game.reveal_step(meta['pid'])
-    await broadcast_events(meta['room_id'], events)
+@app.route('/room/<room_id>/portal', methods=['POST'])
+@require_json
+def portal(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data       = request.get_json()
+    pid        = data['pid']            # portal owner
+    target_pid = data['target_pid']    # chosen steal target
+    events     = game.portal_target_chosen(pid, target_pid)
+    return handle_events(room_id, events)
 
+@app.route('/room/<room_id>/love', methods=['POST'])
+@require_json
+def love(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data       = request.get_json()
+    pid        = data['pid']            # princess pid
+    tamer_pid  = data['tamer_pid']     # chosen tamer
+    events     = game.princess_choose_tamer(pid, tamer_pid)
+    return handle_events(room_id, events)
 
-async def handle_joker_power(ws, data):
-    """Receives the player's joker power choice and applies it to the game state."""
-    meta = socket_meta.get(ws, {})
-    pid    = meta.get('pid', '')
-    power  = data.get('power', '')
-    choice = data.get('choice', '')
-    log.info(f"joker_power from {meta.get('name','?')}: power={power} choice={choice}")
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game:
-        return
-    if power == 'time':
-        events = game.resolve_time_dragon(pid, choice)
-        await broadcast_events(meta['room_id'], events)
-    elif power == 'space':
-        events = game.resolve_space_dragon(pid, choice)
-        await broadcast_events(meta['room_id'], events)
+@app.route('/room/<room_id>/swap', methods=['POST'])
+@require_json
+def swap(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data       = request.get_json()
+    pid        = data['pid']            # space dragon winner
+    target_pid = data.get('target_pid')  # None = pass
+    events     = game.space_dragon_swap_chosen(pid, target_pid)
+    return handle_events(room_id, events)
 
+@app.route('/room/<room_id>/wake', methods=['POST'])
+@require_json
+def wake(room_id):
+    game, err, code = get_game(room_id)
+    if err: return err, code
+    data         = request.get_json()
+    pid          = data['pid']
+    pair_indices = data['pair_indices']  # list of ints
+    events       = game.forced_wake_chosen(pid, pair_indices)
+    return handle_events(room_id, events)
 
-async def handle_get_state(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game:
-        await send(ws, {'type': 'error', 'msg': 'Not in a room'})
-        return
-    await send(ws, {'type': 'state', 'state': game.player_state(meta['pid'])})
+# ── SSE stream ───────────────────────────────────────────────────────────────
 
+@app.route('/room/<room_id>/stream', methods=['GET'])
+def stream(room_id):
+    """
+    Server-Sent Events stream.
+    Connect with:  const es = new EventSource('/room/ROOM_ID/stream?pid=PLAYER_ID')
+    Each message is a JSON array of engine events.
+    """
+    game, err, code = get_game(room_id)
+    if err: return err, code
 
-async def handle_spectate_room(ws, data):
-    room_id = data.get('room_id', '').upper()
-    name    = data.get('name', 'Spectator')
+    client_id = str(uuid.uuid4())
+    q: queue.Queue = queue.Queue(maxsize=200)
 
-    game = rooms.get_room(room_id)
-    if not game:
-        await send(ws, {'type': 'error', 'msg': 'Room not found'})
-        return
+    with lock:
+        if room_id not in event_queues:
+            event_queues[room_id] = {}
+        event_queues[room_id][client_id] = q
 
-    room_sockets.setdefault(room_id, set()).add(ws)
-    socket_meta[ws] = {'pid': None, 'room_id': room_id,
-                        'name': name, 'is_spectator': True}
+    # Send current state immediately on connect
+    pid   = request.args.get('pid')
+    state = game.player_state(pid) if pid else game.public_state()
+    q.put_nowait(json.dumps([{'type': 'connected', 'state': state}], default=str))
 
-    spec_count = _spectator_count(room_id)
-    await send(ws, {
-        'type': 'spectating',
-        'room_id': room_id,
-        'spectator_count': spec_count,
-        'state': game.public_state(),
+    def generate():
+        try:
+            while True:
+                try:
+                    data = q.get(timeout=25)
+                    yield f'data: {data}\n\n'
+                except queue.Empty:
+                    yield ': ping\n\n'   # keep-alive
+        except GeneratorExit:
+            pass
+        finally:
+            with lock:
+                event_queues.get(room_id, {}).pop(client_id, None)
+
+    return Response(
+        generate(),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+            'Access-Control-Allow-Origin': '*',
+        }
+    )
+
+# ── Health ───────────────────────────────────────────────────────────────────
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({
+        'ok': True,
+        'rooms': len(rm.rooms),
+        'win_dragons': __import__('game_engine').WIN_DRAGONS,
     })
-    await broadcast(room_id, {
-        'type': 'spectator_update',
-        'spectator_count': spec_count,
-    }, exclude=ws)
-    log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
 
-
-async def handle_rejoin(ws, data):
-    """Re-associate a reconnected WebSocket with an existing room/player."""
-    room_id = data.get('room_id', '').upper()
-    pid     = data.get('pid', '')
-    game    = rooms.get_room(room_id)
-    if not game:
-        await send(ws, {'type': 'error', 'msg': 'Room not found — game may have ended'})
-        return
-    if pid not in game.players:
-        await send(ws, {'type': 'error', 'msg': 'Player not found in room'})
-        return
-    name = game.players[pid].name
-    # Remove any old socket entry for this pid in this room
-    stale = [w for w, m in socket_meta.items()
-             if m.get('room_id') == room_id and m.get('pid') == pid and w is not ws]
-    for w in stale:
-        room_sockets.get(room_id, set()).discard(w)
-        socket_meta.pop(w, None)
-    # Register new socket
-    room_sockets.setdefault(room_id, set()).add(ws)
-    socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
-    await send(ws, {
-        'type': 'rejoined',
-        'room_id': room_id,
-        'pid': pid,
-        'state': game.player_state(pid),
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({
+        'name': 'Dragon Tamer Game Server',
+        'version': '1.0',
+        'engine': 'v3.4',
+        'routes': [r.rule for r in app.url_map.iter_rules()],
     })
-    log.info(f"Rejoined: {name} ({pid}) in room {room_id}")
 
-
-async def handle_list_rooms(ws, data):
-    room_list = rooms.list_rooms()
-    for r in room_list:
-        r['spectator_count'] = _spectator_count(r['room_id'])
-    await send(ws, {'type': 'rooms', 'rooms': room_list})
-
-
-# ══════════════════════════════════════════════════════
-# MAIN HANDLER
-# ══════════════════════════════════════════════════════
-HANDLERS = {
-    'create_room':   handle_create_room,
-    'join_room':     handle_join_room,
-    'rejoin':        handle_rejoin,
-    'spectate_room': handle_spectate_room,
-    'start_game':    handle_start_game,
-    'declare':       handle_declare,
-    'pick_cards':    handle_pick_cards,
-    'reveal':        handle_reveal,
-    'joker_power':   handle_joker_power,
-    'get_state':     handle_get_state,
-    'list_rooms':    handle_list_rooms,
-}
-
-
-async def connection_handler(ws: WebSocketServerProtocol):
-    log.info(f"New connection: {ws.remote_address}")
-    try:
-        async for raw in ws:
-            try:
-                data = json.loads(raw)
-                msg_type = data.get('type', '')
-                handler = HANDLERS.get(msg_type)
-                if handler:
-                    await handler(ws, data)
-                else:
-                    await send(ws, {'type': 'error', 'msg': f'Unknown type: {msg_type}'})
-            except json.JSONDecodeError:
-                await send(ws, {'type': 'error', 'msg': 'Invalid JSON'})
-            except Exception as e:
-                log.exception(f"Handler error: {e}")
-                await send(ws, {'type': 'error', 'msg': str(e)})
-    finally:
-        # Cleanup on disconnect
-        meta = socket_meta.pop(ws, {})
-        room_id = meta.get('room_id')
-        if room_id and room_id in room_sockets:
-            room_sockets[room_id].discard(ws)
-            if not room_sockets[room_id]:
-                room_sockets.pop(room_id, None)
-            elif meta.get('is_spectator'):
-                # Notify remaining sockets that spectator count changed
-                await broadcast(room_id, {
-                    'type': 'spectator_update',
-                    'spectator_count': _spectator_count(room_id),
-                })
-        log.info(f"Disconnected: {meta.get('name', 'unknown')} "
-                 f"({'spectator' if meta.get('is_spectator') else 'player'})")
-
-
-async def _http_handler(path, request_headers):
-    """Serve index.html for plain HTTP requests; let WS upgrades through."""
-    if request_headers.get("Upgrade", "").lower() == "websocket":
-        return None  # hand off to websocket handler
-    try:
-        with open("index.html", "rb") as f:
-            body = f.read()
-        headers = [
-            ("Content-Type", "text/html; charset=utf-8"),
-            ("Content-Length", str(len(body))),
-            ("Cache-Control", "no-cache"),
-        ]
-        return http.HTTPStatus.OK, headers, body
-    except FileNotFoundError:
-        return http.HTTPStatus.NOT_FOUND, [], b"Not found"
-
-
-async def main():
-    host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 8080))
-
-    log.info(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
-    async with websockets.serve(
-        connection_handler, host, port,
-        process_request=_http_handler
-    ):
-        await asyncio.Future()  # run forever
-
+# ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    import os
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('DEBUG', 'false').lower() == 'true'
+    print(f'Dragon Tamer Server starting on port {port}')
+    app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)
