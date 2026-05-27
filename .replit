@@ -1,13 +1,18 @@
-[deployment]
-run = ["python", "server_ws2.py"]
+run = "python3 main.py"
+entrypoint = "main.py"
+modules = ["python-3.11:v25-20250124-f1e7250"]
 
-[[ports]]
-localPort = 5000
-externalPort = 443
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["python3", "main.py"]
+deploymentTarget = "cloudrun"
 
 [[ports]]
 localPort = 8080
 externalPort = 80
 
-[agent]
-expertMode = true
+[[ports]]
+localPort = 8081
+externalPort = 3000
