@@ -992,7 +992,14 @@ function setPhase(newPhase, data) {
       declSum.classList.add('hidden');
     }
   }
-  if(newPhase!=='sleeping') hideSleepingSection();
+  // Show/hide the declare panel — hide it during sleeping so it doesn't block the sleeping UI
+  if(newPhase==='sleeping'){
+    declSec.classList.add('hidden');
+  } else {
+    declSec.classList.remove('hidden');
+    hideSleepingSection();
+  }
+
   if(isSpectator){mainBtn.disabled=true;mainBtn.textContent='👁 Spectating';return;}
   mainBtn.disabled=false;
 
@@ -1040,13 +1047,30 @@ function setPhase(newPhase, data) {
   } else if(newPhase==='sleeping'){
     banner.className='phase-bar declare';
     const isMyTurn = data.pending_pids ? data.pending_pids.includes(myPid) : true;
+
+    // Auto-pass immediately if player has nothing to sleep or wake
+    if(isMyTurn){
+      const me = gameState?.me;
+      const sleeping = me?.sleeping||[];
+      const hand = me?.hand||[];
+      const sleepingCids = new Set((sleeping).flatMap(p=>Array.isArray(p)?p.map(c=>c?.cid):[p?.cid]));
+      const dragons={}, tamers={};
+      hand.forEach(c=>{ if(!c||sleepingCids.has(c.cid)||c.is_joker||!c.suit) return; if(c.is_dragon) dragons[c.suit]=c; if(c.is_tamer) tamers[c.suit]=c; });
+      const eligible = Object.keys(dragons).filter(s=>tamers[s]);
+      if(!sleeping.length && !eligible.length){
+        // Nothing to do — skip silently
+        sendSleepingChoice('pass',null,null,null);
+        return;
+      }
+    }
+
     banner.textContent = isMyTurn
-      ? '😴 Choose: Sleep a pair, Wake a pair, or Pass'
+      ? '😴 Dragon Rest — Sleep, Wake, or Pass'
       : '⏳ Waiting for players to choose...';
-    document.getElementById('sleepingSection').classList.remove('hidden');
-    renderSleepingSection(isMyTurn);
     mainBtn.textContent = 'PASS (DO NOTHING)';
     mainBtn.disabled = !isMyTurn;
+    document.getElementById('sleepingSection').classList.remove('hidden');
+    try{ renderSleepingSection(isMyTurn); }catch(e){ console.error('renderSleepingSection error:',e); }
 
   } else if(newPhase==='end_round'){
     banner.className='phase-bar end';
