@@ -219,6 +219,22 @@ async def handle_forced_wake_chosen(ws, data):
     await broadcast_events(meta['room_id'], events)
 
 
+async def handle_portal_target(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+    events = game.portal_target_chosen(meta['pid'], data.get('target_pid', ''))
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_princess_choose_tamer(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+    events = game.princess_choose_tamer(meta['pid'], data.get('tamer_pid', ''))
+    await broadcast_events(meta['room_id'], events)
+
+
 async def handle_joker_power(ws, data):
     """Receives the player's joker power choice and applies it to the game state."""
     meta = socket_meta.get(ws, {})
@@ -325,6 +341,8 @@ HANDLERS = {
     'sleeping_choice':      handle_sleeping_choice,
     'forced_wake_chosen':   handle_forced_wake_chosen,
     'joker_power':          handle_joker_power,
+    'portal_target':        handle_portal_target,
+    'princess_choose_tamer': handle_princess_choose_tamer,
     'get_state':     handle_get_state,
     'list_rooms':    handle_list_rooms,
 }

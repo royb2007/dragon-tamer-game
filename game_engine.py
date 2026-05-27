@@ -1746,6 +1746,7 @@ class DragonTamerGame:
                     'winner_name': p.name,
                     'dragons': p.dragon_count,
                     'round': self.round,
+                    **self._game_over_payload(p.pid),
                 }, {'type': 'eliminated', 'pids': []}]
 
         # Elimination
@@ -1768,6 +1769,7 @@ class DragonTamerGame:
                     'winner_name': p.name,
                     'dragons': p.dragon_count,
                     'round': self.round,
+                    **self._game_over_payload(p.pid),
                 }, {'type': 'eliminated', 'pids': eliminated}]
 
         # ── Stalemate safeguard ──
@@ -1780,7 +1782,8 @@ class DragonTamerGame:
             return [{'type': 'eliminated', 'pids': eliminated},
                     {'type': 'game_over', 'winner_pid': winner.pid,
                      'winner_name': winner.name, 'dragons': winner.dragon_count,
-                     'round': self.round, 'reason': 'round_limit'}]
+                     'round': self.round, 'reason': 'round_limit',
+                     **self._game_over_payload(winner.pid)}]
 
         # Next leader
         active = [pid for pid in self.order if not self.players[pid].out]
@@ -1788,11 +1791,12 @@ class DragonTamerGame:
             winner = self.players[active[0]] if active else None
             self.phase = Phase.GAME_OVER
             self._capture_final_snapshot()
+            extra = self._game_over_payload(winner.pid) if winner else {}
             return [{'type': 'game_over',
                      'winner_pid': winner.pid if winner else None,
                      'winner_name': winner.name if winner else 'Nobody',
                      'dragons': winner.dragon_count if winner else 0,
-                     'round': self.round}]
+                     'round': self.round, **extra}]
 
         if self.love_right and not self.players[self.love_right].out:
             self.lead_idx = self.order.index(self.love_right)
@@ -1826,7 +1830,6 @@ class DragonTamerGame:
         """Store a snapshot of all card locations at the moment game ends."""
         self.final_snapshot = {}
         for p in self.players.values():
-            # Unclaimed battle cards = cards still in battle not yet won
             unclaimed_battle = [c for c in p.battle if c.cid not in self._claimed_cids]
             self.final_snapshot[p.pid] = {
                 'hand':    list(p.hand),
@@ -1834,6 +1837,30 @@ class DragonTamerGame:
                 'accum':   list(p.accum),
                 'sleeping': list(p.sleeping),
             }
+
+    def _game_over_payload(self, winner_pid: str) -> dict:
+        """Build all_players and all_dragons fields for game_over events."""
+        all_players = []
+        for pid, p in self.players.items():
+            snap = self.final_snapshot.get(pid, {})
+            hand    = snap.get('hand', list(p.hand))
+            sleeping = snap.get('sleeping', list(p.sleeping))
+            all_players.append({
+                'pid':     pid,
+                'name':    p.name,
+                'dragons': p.dragon_count,
+                'out':     p.out,
+                'hand':    [c.to_dict() for c in hand],
+                'sleeping': [[t.to_dict(), d.to_dict()] for t, d in sleeping],
+            })
+        winner_snap = self.final_snapshot.get(winner_pid, {})
+        w_hand    = winner_snap.get('hand', list(self.players[winner_pid].hand) if winner_pid in self.players else [])
+        w_sleeping = winner_snap.get('sleeping', list(self.players[winner_pid].sleeping) if winner_pid in self.players else [])
+        all_dragons = (
+            [c.to_dict() for c in w_hand    if c.is_dragon] +
+            [d.to_dict() for _, d in w_sleeping]
+        )
+        return {'all_players': all_players, 'all_dragons': all_dragons}
 
     def _lead_pid(self) -> str:
         return self.order[self.lead_idx % len(self.order)]
@@ -1843,44 +1870,47 @@ class DragonTamerGame:
         Assert all 54 cards appear exactly once across every location.
         Note: during mid-round, won cards sit in both battle (for rev_idx) and accum.
         _claimed_cids tracks these; we count them only from accum, skip in battle.
+        Logs errors instead of crashing in production.
         """
-        seen: Dict[int, str] = {}
+        try:
+            seen: Dict[int, str] = {}
 
-        def register(cid: int, location: str):
-            if cid in seen:
+            def register(cid: int, location: str):
+                if cid in seen:
+                    raise AssertionError(
+                        f'[{context}] DUPLICATE card cid={cid}: '
+                        f'first at {seen[cid]}, again at {location}'
+                    )
+                seen[cid] = location
+
+            for p in self.players.values():
+                label = p.name
+                for c in p.hand:
+                    register(c.cid, f'{label}.hand')
+                for c in p.battle:
+                    if c.cid not in self._claimed_cids:
+                        register(c.cid, f'{label}.battle')
+                for c in p.accum:
+                    register(c.cid, f'{label}.accum')
+                for i, pair in enumerate(p.sleeping):
+                    for c in pair:
+                        register(c.cid, f'{label}.sleeping[{i}]')
+
+            if entries:
+                for e in entries:
+                    c = e['card']
+                    register(c.cid, f'entries[pid={e["pid"]}]')
+
+            total = len(seen)
+            if total != 54:
+                all_expected = set(range(1, 55))
+                missing = all_expected - set(seen.keys())
                 raise AssertionError(
-                    f'[{context}] DUPLICATE card cid={cid}: '
-                    f'first at {seen[cid]}, again at {location}'
+                    f'[{context}] WRONG card count: expected 54, got {total}. '
+                    f'Missing cids: {sorted(missing)}'
                 )
-            seen[cid] = location
-
-        for p in self.players.values():
-            label = p.name
-            for c in p.hand:
-                register(c.cid, f'{label}.hand')
-            for c in p.battle:
-                # Skip claimed cards in battle — they're counted in accum
-                if c.cid not in self._claimed_cids:
-                    register(c.cid, f'{label}.battle')
-            for c in p.accum:
-                register(c.cid, f'{label}.accum')
-            for i, pair in enumerate(p.sleeping):
-                for c in pair:
-                    register(c.cid, f'{label}.sleeping[{i}]')
-
-        if entries:
-            for e in entries:
-                c = e['card']
-                register(c.cid, f'entries[pid={e["pid"]}]')
-
-        total = len(seen)
-        if total != 54:
-            all_expected = set(range(1, 55))
-            missing = all_expected - set(seen.keys())
-            raise AssertionError(
-                f'[{context}] WRONG card count: expected 54, got {total}. '
-                f'Missing cids: {sorted(missing)}'
-            )
+        except AssertionError as e:
+            self._log(f'⚠️ Card integrity warning: {e}')
 
     def _all_picked(self) -> bool:
         active = [p for p in self.players.values()

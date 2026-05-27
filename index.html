@@ -296,6 +296,10 @@ body::before{content:'';position:fixed;inset:0;
 #timeDragonOverlay .modal h2{color:#E8A020;}
 #spaceDragonOverlay .modal{border-color:#9B59B6;}
 #spaceDragonOverlay .modal h2{color:#C39BD3;}
+#portalOverlay .modal{border-color:#00CED1;}
+#portalOverlay .modal h2{color:#40E0D0;}
+#loveOverlay .modal{border-color:#FF69B4;}
+#loveOverlay .modal h2{color:#FFB6C1;}
 
 /* ── SLEEPING PHASE ── */
 .sleep-pair-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
@@ -550,6 +554,26 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
+<!-- ══ PORTAL OVERLAY ══ -->
+<div class="overlay hidden" id="portalOverlay">
+  <div class="modal">
+    <h2>🌀 Portal Card!</h2>
+    <div class="dragon-row">🌀</div>
+    <p id="portalText">Your Portal card lets you steal a blind card from an opponent. Choose your target:</p>
+    <div class="modal-btns" id="portalBtns"></div>
+  </div>
+</div>
+
+<!-- ══ LOVE POWER OVERLAY ══ -->
+<div class="overlay hidden" id="loveOverlay">
+  <div class="modal">
+    <h2>💕 Love Power!</h2>
+    <div class="dragon-row">💕</div>
+    <p id="loveText">Your Princess card activated Love Power! Choose which Tamer earns the next lead:</p>
+    <div class="modal-btns" id="loveBtns"></div>
+  </div>
+</div>
+
 <!-- ══ SHARE / QR MODAL ══ -->
 <div class="overlay hidden" id="shareOverlay">
   <div class="modal" style="max-width:320px;text-align:center;">
@@ -597,6 +621,7 @@ let _lastGameStartedAt=0;
 // Dedup keys — Replit's WS proxy triple-sends each outgoing message
 let _lastRevealKey='';    // prevents duplicate step_revealed renders
 let _lastActionAt=0;      // prevents rapid duplicate mainAction() sends
+let _hideBattleTimer=null;
 
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
@@ -908,11 +933,22 @@ function handleMessage(msg) {
       if(msg.pid===myPid) addLog('⏳ You return from your Time Dragon skip.');
       break;
 
+    case 'portal_choose_target':
+      if(msg.portal_pid===myPid) showPortalModal(msg);
+      else addLog(`🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`);
+      break;
+
+    case 'love_choose_tamer':
+      if(msg.princess_pid===myPid) showLoveModal(msg);
+      else addLog(`💕 ${nameOf(msg.princess_pid)} plays Princess — Love Power activated!`);
+      break;
+
     case 'round_end':
       addLog(`── Round ${msg.round} complete ──`);
       hideSleepingSection();
-      // Issue 3: delay hiding battle so player can see the last step's result
-      setTimeout(hideBattle, 3000);
+      // Cancel any pending hide timer; start a new one so player sees last step result
+      if(_hideBattleTimer) clearTimeout(_hideBattleTimer);
+      _hideBattleTimer = setTimeout(hideBattle, 3000);
       break;
 
     case 'eliminated':
@@ -1004,6 +1040,9 @@ function setPhase(newPhase, data) {
   mainBtn.disabled=false;
 
   if(newPhase==='leader_declare'){
+    // Cancel any pending battle-hide timer and hide immediately on new round
+    if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+    hideBattle();
     const leaderPid = data.leader_pid || gameState?.lead_pid;
     // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
@@ -1496,6 +1535,42 @@ function resolveSpaceDragon(choice) {
   // Re-enable main button — server will send phase_change to unblock
   const btn=document.getElementById('mainBtn');
   if(btn){btn.disabled=false; btn.textContent='REVEAL STEP';}
+}
+
+function showPortalModal(msg) {
+  const btns=document.getElementById('portalBtns');
+  btns.innerHTML='';
+  (msg.valid_target_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#00CED1;color:#40E0D0;';
+    btn.textContent=`🎯 Steal from ${nameOf(pid)}`;
+    btn.onclick=()=>{
+      document.getElementById('portalOverlay').classList.add('hidden');
+      send({type:'portal_target',target_pid:pid});
+      addLog(`🌀 Portal: stealing from ${nameOf(pid)}...`,'imp');
+    };
+    btns.appendChild(btn);
+  });
+  document.getElementById('portalOverlay').classList.remove('hidden');
+}
+
+function showLoveModal(msg) {
+  const btns=document.getElementById('loveBtns');
+  btns.innerHTML='';
+  (msg.tamer_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#FF69B4;color:#FFB6C1;';
+    btn.textContent=`💕 Give lead to ${nameOf(pid)}`;
+    btn.onclick=()=>{
+      document.getElementById('loveOverlay').classList.add('hidden');
+      send({type:'princess_choose_tamer',tamer_pid:pid});
+      addLog(`💕 Love Power: ${nameOf(pid)} earns next lead!`,'imp');
+    };
+    btns.appendChild(btn);
+  });
+  document.getElementById('loveOverlay').classList.remove('hidden');
 }
 
 // ══════════════════════════════════════════════════════
