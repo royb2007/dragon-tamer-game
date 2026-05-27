@@ -193,6 +193,32 @@ async def handle_reveal(ws, data):
     await broadcast_events(meta['room_id'], events)
 
 
+async def handle_sleeping_choice(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+    action     = data.get('action', 'pass')
+    tamer_cid  = data.get('tamer_cid')
+    dragon_cid = data.get('dragon_cid')
+    pair_index = data.get('pair_index')
+    events = game.player_sleeping_choice(
+        meta['pid'], action,
+        tamer_cid  = int(tamer_cid)  if tamer_cid  is not None else None,
+        dragon_cid = int(dragon_cid) if dragon_cid is not None else None,
+        pair_index = int(pair_index) if pair_index is not None else None,
+    )
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_forced_wake_chosen(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+    indices = [int(i) for i in data.get('pair_indices', [])]
+    events = game.forced_wake_chosen(meta['pid'], indices)
+    await broadcast_events(meta['room_id'], events)
+
+
 async def handle_joker_power(ws, data):
     """Receives the player's joker power choice and applies it to the game state."""
     meta = socket_meta.get(ws, {})
@@ -295,8 +321,10 @@ HANDLERS = {
     'start_game':    handle_start_game,
     'declare':       handle_declare,
     'pick_cards':    handle_pick_cards,
-    'reveal':        handle_reveal,
-    'joker_power':   handle_joker_power,
+    'reveal':               handle_reveal,
+    'sleeping_choice':      handle_sleeping_choice,
+    'forced_wake_chosen':   handle_forced_wake_chosen,
+    'joker_power':          handle_joker_power,
     'get_state':     handle_get_state,
     'list_rooms':    handle_list_rooms,
 }
