@@ -1,20 +1,19 @@
 """
 Dragon Tamer — WebSocket Server
-Python 3.10+ | websockets 12+
+Python 3.10+ | websockets 16+
 
 Run locally:  python server.py
-Deploy:       Railway / Render (see README)
 """
 import asyncio
 import json
 import logging
 import os
 import uuid
-import http
 from typing import Dict, Set
 
 import websockets
-from websockets.server import WebSocketServerProtocol
+from websockets.asyncio.server import ServerConnection, Request, Response
+from websockets.datastructures import Headers
 
 from game_engine import RoomManager, Phase
 
@@ -28,9 +27,9 @@ log = logging.getLogger(__name__)
 rooms  = RoomManager()
 
 # room_id → set of websockets (players + spectators)
-room_sockets: Dict[str, Set[WebSocketServerProtocol]] = {}
+room_sockets: Dict[str, Set[ServerConnection]] = {}
 # websocket → {pid, room_id, name, is_spectator}
-socket_meta:  Dict[WebSocketServerProtocol, dict] = {}
+socket_meta:  Dict[ServerConnection, dict] = {}
 
 
 def _spectator_count(room_id: str) -> int:
@@ -38,12 +37,12 @@ def _spectator_count(room_id: str) -> int:
                if m.get('room_id') == room_id and m.get('is_spectator'))
 
 
-def _get_room_sockets(room_id: str) -> Set[WebSocketServerProtocol]:
+def _get_room_sockets(room_id: str) -> Set[ServerConnection]:
     return room_sockets.get(room_id, set())
 
 
 async def broadcast(room_id: str, message: dict,
-                    exclude: WebSocketServerProtocol = None):
+                    exclude: ServerConnection = None):
     """Send a message to every socket in a room."""
     data = json.dumps(message)
     targets = {ws for ws in _get_room_sockets(room_id) if ws is not exclude}
@@ -52,7 +51,7 @@ async def broadcast(room_id: str, message: dict,
                               return_exceptions=True)
 
 
-async def send(ws: WebSocketServerProtocol, message: dict):
+async def send(ws: ServerConnection, message: dict):
     """Send a message to one socket."""
     try:
         await ws.send(json.dumps(message))
@@ -61,7 +60,7 @@ async def send(ws: WebSocketServerProtocol, message: dict):
 
 
 async def broadcast_events(room_id: str, events: list,
-                            private_ws: WebSocketServerProtocol = None):
+                            private_ws: ServerConnection = None):
     """
     Broadcast a list of engine events.
     hand_update events are sent only to the relevant player.
@@ -71,7 +70,7 @@ async def broadcast_events(room_id: str, events: list,
         return
 
     # Build pid → ws map
-    pid_to_ws: Dict[str, WebSocketServerProtocol] = {}
+    pid_to_ws: Dict[str, ServerConnection] = {}
     for ws, meta in socket_meta.items():
         if meta.get('room_id') == room_id:
             pid_to_ws[meta['pid']] = ws
@@ -303,7 +302,7 @@ HANDLERS = {
 }
 
 
-async def connection_handler(ws: WebSocketServerProtocol):
+async def connection_handler(ws: ServerConnection):
     log.info(f"New connection: {ws.remote_address}")
     try:
         async for raw in ws:
@@ -338,21 +337,21 @@ async def connection_handler(ws: WebSocketServerProtocol):
                  f"({'spectator' if meta.get('is_spectator') else 'player'})")
 
 
-async def _http_handler(path, request_headers):
+async def _http_handler(connection: ServerConnection, request: Request):
     """Serve index.html for plain HTTP requests; let WS upgrades through."""
-    if request_headers.get("Upgrade", "").lower() == "websocket":
+    if request.headers.get("Upgrade", "").lower() == "websocket":
         return None  # hand off to websocket handler
     try:
         with open("index.html", "rb") as f:
             body = f.read()
-        headers = [
+        headers = Headers([
             ("Content-Type", "text/html; charset=utf-8"),
             ("Content-Length", str(len(body))),
             ("Cache-Control", "no-cache"),
-        ]
-        return http.HTTPStatus.OK, headers, body
+        ])
+        return Response(200, "OK", headers, body)
     except FileNotFoundError:
-        return http.HTTPStatus.NOT_FOUND, [], b"Not found"
+        return Response(404, "Not Found", Headers([]), b"Not found")
 
 
 async def main():
@@ -360,9 +359,9 @@ async def main():
     port = int(os.getenv('PORT', 8080))
 
     log.info(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
-    async with websockets.serve(
+    async with websockets.asyncio.server.serve(
         connection_handler, host, port,
-        process_request=_http_handler
+        process_request=_http_handler,
     ):
         await asyncio.Future()  # run forever
 
