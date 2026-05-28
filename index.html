@@ -547,19 +547,8 @@ body::before{content:'';position:fixed;inset:0;
   <div class="modal">
     <h2>🌌 Space Dragon!</h2>
     <div class="dragon-row">🌌</div>
-    <p id="spaceDragonText">You hold the Space Dragon. Warp reality — change your seat?</p>
-    <div class="modal-btns">
-      <button class="btn btn-outline btn-full"
-              onclick="resolveSpaceDragon('change')"
-              style="border-color:#9B59B6;color:#C39BD3;">
-        🔄 Change Seat — Move to a new position
-      </button>
-      <button class="btn btn-outline btn-full"
-              onclick="resolveSpaceDragon('stay')"
-              style="border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);">
-        ✗ Stay in Current Seat
-      </button>
-    </div>
+    <p id="spaceDragonText">The Space Dragon warps reality — choose a player to swap seats with:</p>
+    <div class="modal-btns" id="spaceDragonBtns"></div>
   </div>
 </div>
 
@@ -818,7 +807,9 @@ function mainAction() {
   if (phase==='leader_declare') send({type:'declare',steps:selectedSteps,element:selectedSuit});
   else if (phase==='pick_cards') {
     if(!selectedCardCids.length){addLog('Select your cards first!','warn');return;}
-    send({type:'pick_cards',card_cids:selectedCardCids});
+    // Engine plays cards in reverse of the submitted order (rev_idx), so reverse
+    // here so that badge "1" (first selected) plays in step 1 as expected.
+    send({type:'pick_cards',card_cids:[...selectedCardCids].reverse()});
   } else if (phase==='reveal') send({type:'reveal'});
   else if (phase==='sleeping') sendSleepingChoice('pass',null,null,null);
 }
@@ -967,6 +958,17 @@ function handleMessage(msg) {
       else addLog(`🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`);
       break;
 
+    case 'space_dragon_choose_swap':
+      if(msg.space_pid===myPid) showSpaceDragonModal(msg);
+      else addLog(`🌌 ${nameOf(msg.space_pid)} plays Space Dragon — choosing a swap target...`);
+      break;
+
+    case 'seat_swap':
+      if(gameState){ gameState.order=msg.new_order; }
+      addLog(`🌌 Seats swapped: ${nameOf(msg.pid_a)} ↔ ${nameOf(msg.pid_b)}`,'imp');
+      renderTable();
+      break;
+
     case 'love_choose_tamer':
       if(msg.princess_pid===myPid) showLoveModal(msg);
       else addLog(`💕 ${nameOf(msg.princess_pid)} plays Princess — Love Power activated!`);
@@ -1014,21 +1016,9 @@ function handleMessage(msg) {
 
 // ── Joker modal: strict matching to avoid false positives ──
 function checkJokerModal(ev, msg) {
-  const myName = nameOf(myPid);
-  // Time dragon events use player name directly after ⏳
-  if (ev.includes('⏳')) {
-    const after = ev.slice(ev.indexOf('⏳')+2).trim();
-    if (after.startsWith(myName+' ') || after.startsWith(myPid+' ')) {
-      showTimeDragonModal(ev, msg);
-    }
-  }
-  // Space dragon events use pid
-  if (ev.includes('🌌')) {
-    if (ev.includes(' '+myPid+' ')||ev.includes(myPid+' ')||
-        ev.includes(' '+myName+' ')||ev.startsWith(myName+' ')||ev.startsWith(myPid+' ')) {
-      showSpaceDragonModal(ev, msg);
-    }
-  }
+  // Time Dragon is auto-resolved by the engine — just log the result, no modal.
+  // Space Dragon interactive choice comes via 'space_dragon_choose_swap' event, not here.
+  // This function is intentionally left as a no-op now.
 }
 
 // ══════════════════════════════════════════════════════
@@ -1105,12 +1095,15 @@ function setPhase(newPhase, data) {
     renderHand();
 
   } else if(newPhase==='reveal'){
+    // Rejoin gives current_step (0-based already played), so next = current_step+1
+    const nextStep = data.next_step || data.step ||
+                     (data.current_step != null ? data.current_step + 1 : 1);
     banner.className='phase-bar reveal';
-    banner.textContent=`⚔ Step ${data.next_step||data.step||1} of ${gameState?.declared_steps||'?'}`;
+    banner.textContent=`⚔ Step ${nextStep} of ${gameState?.declared_steps||'?'}`;
     document.getElementById('battleSection').classList.remove('hidden');
-    document.getElementById('stepNum').textContent=data.next_step||1;
-    renderStepDots(data.next_step||1);
-    mainBtn.textContent=`REVEAL STEP ${data.next_step||1}`;
+    document.getElementById('stepNum').textContent=nextStep;
+    renderStepDots(nextStep);
+    mainBtn.textContent=`REVEAL STEP ${nextStep}`;
 
   } else if(newPhase==='sleeping'){
     banner.className='phase-bar declare';
@@ -1558,18 +1551,31 @@ function resolveTimeDragon(choice) {
   const msgs={back:'⏳ Time Dragon: claimed previous step!',forward:'⏳ Time Dragon: skipping next round!',nothing:'⏳ Time Dragon power fades...'};
   addLog(msgs[choice]||'','imp');
 }
-function showSpaceDragonModal(ev, msg) {
-  document.getElementById('spaceDragonText').textContent=
-    'The Space Dragon warps reality. Change your seat order at the table, or stay put?';
+function showSpaceDragonModal(msg) {
+  const btns=document.getElementById('spaceDragonBtns');
+  btns.innerHTML='';
+  (msg.valid_target_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#9B59B6;color:#C39BD3;';
+    btn.textContent=`🔄 Swap seats with ${nameOf(pid)}`;
+    btn.onclick=()=>resolveSpaceDragon(pid);
+    btns.appendChild(btn);
+  });
+  if(msg.can_pass){
+    const passBtn=document.createElement('button');
+    passBtn.className='btn btn-outline btn-full';
+    passBtn.style.cssText='border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);';
+    passBtn.textContent='✗ Stay in current seat';
+    passBtn.onclick=()=>resolveSpaceDragon(null);
+    btns.appendChild(passBtn);
+  }
   document.getElementById('spaceDragonOverlay').classList.remove('hidden');
 }
-function resolveSpaceDragon(choice) {
+function resolveSpaceDragon(targetPid) {
   document.getElementById('spaceDragonOverlay').classList.add('hidden');
-  send({type:'joker_power',power:'space',choice});
-  addLog(choice==='change'?'🌌 Space Dragon: seat order changed!':'🌌 Space Dragon: held position.','imp');
-  // Re-enable main button — server will send phase_change to unblock
-  const btn=document.getElementById('mainBtn');
-  if(btn){btn.disabled=false; btn.textContent='REVEAL STEP';}
+  send({type:'space_dragon_swap', target_pid: targetPid||null});
+  addLog(targetPid?`🌌 Space Dragon: swapping with ${nameOf(targetPid)}!`:'🌌 Space Dragon: staying put.','imp');
 }
 
 // ══════════════════════════════════════════════════════

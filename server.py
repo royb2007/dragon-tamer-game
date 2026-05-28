@@ -247,11 +247,23 @@ async def handle_joker_power(ws, data):
     if not game:
         return
     if power == 'time':
-        events = game.resolve_time_dragon(pid, choice)
-        await broadcast_events(meta['room_id'], events)
+        # Time dragon is auto-resolved by the engine for both AI and human —
+        # the client modal is purely informational; no server action needed.
+        log.info(f"joker_power/time from {meta.get('name','?')} ignored (engine auto-resolved)")
     elif power == 'space':
-        events = game.resolve_space_dragon(pid, choice)
-        await broadcast_events(meta['room_id'], events)
+        # Space Dragon human choice now uses the dedicated 'space_dragon_swap' message.
+        log.info(f"joker_power/space from {meta.get('name','?')} ignored (use space_dragon_swap)")
+
+
+async def handle_space_dragon_swap(ws, data):
+    """Human Space Dragon winner chose which player to swap seats with (or None to pass)."""
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game:
+        return
+    target_pid = data.get('target_pid') or None  # None means pass
+    events = game.space_dragon_swap_chosen(meta['pid'], target_pid)
+    await broadcast_events(meta['room_id'], events)
 
 
 async def handle_get_state(ws, data):
@@ -350,6 +362,7 @@ HANDLERS = {
     'sleeping_choice':      handle_sleeping_choice,
     'forced_wake_chosen':   handle_forced_wake_chosen,
     'joker_power':          handle_joker_power,
+    'space_dragon_swap':    handle_space_dragon_swap,
     'portal_target':        handle_portal_target,
     'princess_choose_tamer': handle_princess_choose_tamer,
     'get_state':     handle_get_state,
