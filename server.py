@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 import uuid
 from typing import Dict, Set
 
@@ -289,10 +290,18 @@ async def handle_spectate_room(ws, data):
     log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
 
 
+_rejoin_ts: Dict[tuple, float] = {}   # (room_id, pid) -> last rejoin epoch
+
 async def handle_rejoin(ws, data):
     """Re-associate a reconnected WebSocket with an existing room/player."""
     room_id = data.get('room_id', '').upper()
     pid     = data.get('pid', '')
+    # BUG1: rate-limit to one rejoin per pid per room per second
+    key = (room_id, pid)
+    now = time.monotonic()
+    if now - _rejoin_ts.get(key, 0.0) < 1.0:
+        return
+    _rejoin_ts[key] = now
     game    = rooms.get_room(room_id)
     if not game:
         await send(ws, {'type': 'error', 'msg': 'Room not found — game may have ended'})

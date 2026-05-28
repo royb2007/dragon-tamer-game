@@ -300,6 +300,15 @@ body::before{content:'';position:fixed;inset:0;
 #portalOverlay .modal h2{color:#40E0D0;}
 #loveOverlay .modal{border-color:#FF69B4;}
 #loveOverlay .modal h2{color:#FFB6C1;}
+#roundEndOverlay .modal{border-color:var(--gold);max-width:360px;}
+#roundEndOverlay .modal h2{color:var(--gold);}
+.round-end-row{display:flex;align-items:center;justify-content:space-between;
+  padding:6px 10px;border-radius:7px;border:1px solid rgba(184,134,11,.15);
+  background:rgba(255,255,255,.025);margin-bottom:4px;font-size:13px;}
+.round-end-row.winner-row{border-color:rgba(255,215,0,.4);background:rgba(255,215,0,.08);}
+.round-end-name{font-family:'Cinzel',serif;font-weight:600;color:var(--gold-light);}
+.round-end-dragons{font-size:14px;letter-spacing:1px;}
+.round-end-timer{font-size:11px;color:rgba(253,246,227,.4);text-align:center;margin-top:8px;}
 
 /* ── SLEEPING PHASE ── */
 .sleep-pair-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
@@ -554,6 +563,17 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
+<!-- ══ ROUND END SUMMARY OVERLAY ══ -->
+<div class="overlay hidden" id="roundEndOverlay">
+  <div class="modal">
+    <h2 id="roundEndTitle">Round Complete!</h2>
+    <div id="roundEndRows" style="margin:14px 0;"></div>
+    <div class="round-end-timer" id="roundEndTimer"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:12px;"
+            onclick="dismissRoundEnd()">Continue ▶</button>
+  </div>
+</div>
+
 <!-- ══ PORTAL OVERLAY ══ -->
 <div class="overlay hidden" id="portalOverlay">
   <div class="modal">
@@ -622,6 +642,7 @@ let _lastGameStartedAt=0;
 let _lastRevealKey='';    // prevents duplicate step_revealed renders
 let _lastActionAt=0;      // prevents rapid duplicate mainAction() sends
 let _hideBattleTimer=null;
+let _rejoining=false;     // BUG1: blocks duplicate rejoin sends
 
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
@@ -650,13 +671,14 @@ function connect() {
   catch(e) { setConnStatus(false,'Cannot connect'); return; }
   ws.onopen  = () => {
     setConnStatus(true,'Connected');
-    if(myPid && myRoomId) {
+    if(myPid && myRoomId && !_rejoining) {
+      _rejoining=true;
       setConnStatus(true,'Reconnecting...');
       send({type:'rejoin', pid:myPid, room_id:myRoomId});
     }
   };
-  ws.onclose = () => { setConnStatus(false,'Disconnected — retrying...'); setTimeout(connect,3000); };
-  ws.onerror = () => setConnStatus(false,'Connection error');
+  ws.onclose = () => { _rejoining=false; setConnStatus(false,'Disconnected — retrying...'); setTimeout(connect,3000); };
+  ws.onerror = () => { _rejoining=false; setConnStatus(false,'Connection error'); };
   ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch(err) { console.error(err); } };
 }
 function send(obj) { if (ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
@@ -839,10 +861,17 @@ function handleMessage(msg) {
       break;
 
     case 'hand_update':
-      if(msg.pid===myPid&&gameState){gameState.me=msg;renderHand();renderTable();}
+      if(msg.pid===myPid&&gameState){
+        gameState.me=msg;
+        // BUG5: keep avatar dragon counter in sync with hand_update dragon_count
+        if(gameState.players[myPid]&&msg.dragon_count!=null)
+          gameState.players[myPid].dragon_count=msg.dragon_count;
+        renderHand();renderTable();
+      }
       break;
 
     case 'rejoined':
+      _rejoining=false;
       myPid=msg.pid; myRoomId=msg.room_id;
       applyState(msg.state);
       setConnStatus(true,'Reconnected');
@@ -946,9 +975,9 @@ function handleMessage(msg) {
     case 'round_end':
       addLog(`── Round ${msg.round} complete ──`);
       hideSleepingSection();
-      // Cancel any pending hide timer; start a new one so player sees last step result
-      if(_hideBattleTimer) clearTimeout(_hideBattleTimer);
-      _hideBattleTimer = setTimeout(hideBattle, 3000);
+      // BUG4: show round-end summary overlay; hide battle after dismiss
+      if(_hideBattleTimer) { clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      showRoundEndOverlay(msg);
       break;
 
     case 'eliminated':
@@ -1460,7 +1489,13 @@ function renderBattleStep(msg) {
   div.style.cssText='font-family:Cinzel,serif;font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin:4px 0;letter-spacing:2px;';
   div.textContent=`— STEP ${msg.step} —`; rows.appendChild(div);
 
-  (msg.entries||[]).forEach(entry=>{
+  // BUG2: sort entries by the game's seat order so rows always appear in table order
+  const _seatOrder=gameState?.order||[];
+  const _entries=[...(msg.entries||[])].sort((a,b)=>{
+    const ia=_seatOrder.indexOf(a.pid); const ib=_seatOrder.indexOf(b.pid);
+    return (ia<0?9999:ia)-(ib<0?9999:ib);
+  });
+  _entries.forEach(entry=>{
     const row=document.createElement('div');
     row.className='battle-row'+(entry.pid===msg.winner_pid?' winning':'');
     // Render the card using the same full renderCardEl (scaled via CSS) — Issue 4
@@ -1481,7 +1516,7 @@ function renderBattleStep(msg) {
       row.appendChild(wb);
     }
     rows.appendChild(row);
-  });
+  });  // end _entries.forEach
 
   const banner=document.getElementById('phaseBanner');
   const total=gameState?.declared_steps||3;
@@ -1507,8 +1542,8 @@ function hideBattle() {
 //  JOKER MODALS
 // ══════════════════════════════════════════════════════
 function showTimeDragonModal(ev, msg) {
-  // Use server-supplied flag; fall back to checking if we're past step 1
-  const hasPrev=!!(msg.has_prev_step||(gameState?.current_step>1));
+  // BUG3: "Back in Time" is only impossible on step 1 (no previous step exists)
+  const hasPrev = (msg.step||1) > 1;
   document.getElementById('timeDragonText').textContent=
     hasPrev
       ? 'The Time Dragon grants you power! Go back and claim the previous step\'s cards, or leap forward and skip your next round.'
@@ -1535,6 +1570,49 @@ function resolveSpaceDragon(choice) {
   // Re-enable main button — server will send phase_change to unblock
   const btn=document.getElementById('mainBtn');
   if(btn){btn.disabled=false; btn.textContent='REVEAL STEP';}
+}
+
+// ══════════════════════════════════════════════════════
+//  ROUND END SUMMARY  (BUG4)
+// ══════════════════════════════════════════════════════
+let _roundEndTimer=null;
+function showRoundEndOverlay(msg) {
+  const overlay=document.getElementById('roundEndOverlay');
+  const title=document.getElementById('roundEndTitle');
+  const rowsEl=document.getElementById('roundEndRows');
+  const timerEl=document.getElementById('roundEndTimer');
+  rowsEl.innerHTML='';
+
+  const winnerPid=msg.winner_pid||null;
+  title.textContent=winnerPid
+    ? `Round ${msg.round||''} — ${nameOf(winnerPid)} wins!`
+    : `Round ${msg.round||''} Complete!`;
+
+  const order=(gameState?.order)||Object.keys(gameState?.players||{});
+  order.forEach(pid=>{
+    const p=gameState?.players?.[pid]; if(!p||p.out) return;
+    const d=p.dragon_count||0;
+    const dragonStr=d>0?'🐉'.repeat(Math.min(d,5))+(d>5?`+${d-5}`:''):'—';
+    const row=document.createElement('div');
+    row.className='round-end-row'+(pid===winnerPid?' winner-row':'');
+    row.innerHTML=`<span class="round-end-name">${pid===myPid?'👤 '+p.name:p.name}${pid===winnerPid?' 🏆':''}</span>`+
+      `<span class="round-end-dragons">${dragonStr} <span style="font-size:11px;color:rgba(253,246,227,.45);">(${d})</span></span>`;
+    rowsEl.appendChild(row);
+  });
+
+  let secs=5;
+  timerEl.textContent=`Auto-closing in ${secs}s…`;
+  overlay.classList.remove('hidden');
+  _roundEndTimer=setInterval(()=>{
+    secs--;
+    if(secs<=0){ dismissRoundEnd(); }
+    else { timerEl.textContent=`Auto-closing in ${secs}s…`; }
+  },1000);
+}
+function dismissRoundEnd() {
+  if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
+  document.getElementById('roundEndOverlay').classList.add('hidden');
+  hideBattle();
 }
 
 function showPortalModal(msg) {

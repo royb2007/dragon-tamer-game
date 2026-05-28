@@ -1,0 +1,19 @@
+Fix these bugs in the Dragon Tamer game. Focus only on what's listed — do not refactor anything else.
+
+BUG 1 — Repeated rejoin loop (CRITICAL)
+The client sends multiple rapid 'rejoin' messages on reconnect, flooding the server and corrupting game state. In server.py, add a guard in handle_rejoin so the same pid cannot rejoin the same room more than once per second. Also in index.html, ensure the reconnect logic only fires once — add a flag like `let _rejoining = false` that blocks duplicate rejoin attempts while one is in progress.
+
+BUG 2 — Cards displayed in wrong step / wrong player row (CRITICAL)
+In index.html, the step_revealed entries are rendered in arrival order instead of the game's seat order. Fix the rendering of step_revealed entries to sort by the game's `order` array (player seat order) before displaying, so each player's card always appears in the correct row.
+
+BUG 3 — Time Dragon "back" option disabled even when previous step exists (HIGH)
+In the frontend (index.html), the "Back in Time" button is disabled when it should be enabled. The condition checking for prev_step_cards is wrong. Fix it so "Back in Time" is only disabled when step number is 1 (first step of the round, no previous step exists). For all other steps it should be enabled.
+
+BUG 4 — No round end summary / game jumps to next round immediately (HIGH)  
+After the final step of a round, the game jumps straight to the next round's declaration without pausing to show results. In index.html, when a round_end event is received, show a brief summary overlay (2-3 seconds or a "Continue" button) displaying: each player's dragon count, who won this round, and cards accumulated. Then proceed to next round.
+
+BUG 5 — Dragon count mismatch between hand display and avatar counter (MEDIUM)
+In index.html, the dragon count shown on each player's avatar circle uses a different data source than the hand display. Unify them — always use dragon_count from the most recent hand_update or state event for the relevant pid.
+
+Do not change game_engine.py. Only fix index.html and server.py.
+Test each fix before moving to the next.
