@@ -804,6 +804,14 @@ function mainAction() {
   if (now - _lastActionAt < 350) return;
   _lastActionAt = now;
 
+  // Round-end results take priority — show overlay first, then resume game
+  if(_pendingRoundEndMsg){
+    const m=_pendingRoundEndMsg;
+    _pendingRoundEndMsg=null;
+    showRoundEndOverlay(m);
+    return;
+  }
+
   if (phase==='leader_declare') send({type:'declare',steps:selectedSteps,element:selectedSuit});
   else if (phase==='pick_cards') {
     if(!selectedCardCids.length){addLog('Select your cards first!','warn');return;}
@@ -863,6 +871,7 @@ function handleMessage(msg) {
 
     case 'rejoined':
       _rejoining=false;
+      _pendingRoundEndMsg=null;   // stale on reconnect
       myPid=msg.pid; myRoomId=msg.room_id;
       applyState(msg.state);
       setConnStatus(true,'Reconnected');
@@ -969,9 +978,16 @@ function handleMessage(msg) {
     case 'round_end':
       addLog(`── Round ${msg.round} complete ──`);
       hideSleepingSection();
-      // BUG4: show round-end summary overlay; hide battle after dismiss
       if(_hideBattleTimer) { clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-      showRoundEndOverlay(msg);
+      // Store message and wait for player to click CONTINUE — don't hide battle yet.
+      _pendingRoundEndMsg=msg;
+      // Button will be set to "▶ CONTINUE" at the end of setPhase (which fires next
+      // via phase_change:leader_declare). If no phase_change comes, set it now.
+      if(!isSpectator){
+        const mb=document.getElementById('mainBtn');
+        mb.textContent='▶ CONTINUE — VIEW ROUND RESULTS';
+        mb.disabled=false;
+      }
       break;
 
     case 'eliminated':
@@ -1055,10 +1071,8 @@ function setPhase(newPhase, data) {
 
   if(newPhase==='leader_declare'){
     if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-    // Only hide the battle section if the round-end overlay is NOT showing.
-    // When the overlay IS showing it will call hideBattle() on dismiss — this
-    // keeps the last-step cards visible for the player to see.
-    if(document.getElementById('roundEndOverlay').classList.contains('hidden')) hideBattle();
+    // Don't hide battle while round results are pending — player hasn't seen them yet.
+    if(!_pendingRoundEndMsg) hideBattle();
     const leaderPid = data.leader_pid || gameState?.lead_pid;
     // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
@@ -1134,6 +1148,12 @@ function setPhase(newPhase, data) {
     banner.className='phase-bar end';
     banner.textContent='✅ Round complete';
     mainBtn.textContent='NEXT ROUND';
+  }
+
+  // ── Override button whenever round results are waiting for the player ──
+  if(_pendingRoundEndMsg && !isSpectator){
+    mainBtn.textContent='▶ CONTINUE — VIEW ROUND RESULTS';
+    mainBtn.disabled=false;
   }
 }
 
@@ -1384,7 +1404,10 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
   const dragonIcon = (card.is_dragon && !card.is_joker)
     ? '<span class="ace-dragon-icon">🐉</span>' : '';
 
-  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx+1}</span>`:'';
+  // Badge shows the STEP the card will play in (N for first pick, 1 for last pick).
+  // We reverse the array before sending, so badge-1 card ends up at position 0 → step 1.
+  const _N=gameState?.declared_steps||0;
+  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${_N - orderIdx}</span>`:'';
 
   // 1: blinking bolt for cards matching the declared dominant element
   const isDominant = !card.is_joker 
@@ -1588,7 +1611,8 @@ function resolveSpaceDragon(targetPid) {
 //  ROUND END SUMMARY  (BUG4)
 // ══════════════════════════════════════════════════════
 let _roundEndTimer=null;
-let _stepWins={};   // pid → wins this round, reset on each round_end call
+let _stepWins={};          // pid → wins this round, reset on each round_end call
+let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
@@ -1635,6 +1659,8 @@ function dismissRoundEnd() {
   if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
+  // Restore the button/UI for whatever phase the game is currently in
+  if(gameState?.phase) setPhase(gameState.phase, gameState);
 }
 
 function showPortalModal(msg) {
