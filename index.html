@@ -906,19 +906,11 @@ function handleMessage(msg) {
       renderBattleStep(msg);
       for(const ev of (msg.special_events||[])){
         addLog(ev,'imp');
-        if(!isSpectator) checkJokerModal(ev,msg);
       }
-      if(msg.winner_pid) addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
-      // Issue 5: server is pausing for human Time Dragon choice — show modal immediately
-      if(msg.time_dragon_prompt && msg.time_dragon_prompt===myPid && !isSpectator){
-        const btn=document.getElementById('mainBtn');
-        if(btn){btn.disabled=true; btn.textContent='Choose Time Dragon Power...';}
-        showTimeDragonModal(msg, msg);
-      }
-      if(msg.space_dragon_prompt && msg.space_dragon_prompt===myPid && !isSpectator){
-        const btn=document.getElementById('mainBtn');
-        if(btn){btn.disabled=true; btn.textContent='Choose Space Dragon Power...';}
-        showSpaceDragonModal(msg, msg);
+      if(msg.winner_pid){
+        addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
+        // Track step wins for round-end overlay
+        _stepWins[msg.winner_pid]=(_stepWins[msg.winner_pid]||0)+1;
       }
       break;
     }
@@ -983,7 +975,10 @@ function handleMessage(msg) {
       break;
 
     case 'eliminated':
-      for(const pid of (msg.pids||[])) addLog(`💀 ${nameOf(pid)} eliminated!`,'warn');
+      for(const pid of (msg.pids||[])){
+        addLog(`💀 ${nameOf(pid)} eliminated — out of cards!`,'warn');
+        if(gameState?.players?.[pid]) gameState.players[pid].out=true;
+      }
       renderTable(); break;
 
     case 'player_joined':
@@ -1059,9 +1054,11 @@ function setPhase(newPhase, data) {
   mainBtn.disabled=false;
 
   if(newPhase==='leader_declare'){
-    // Cancel any pending battle-hide timer and hide immediately on new round
     if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-    hideBattle();
+    // Only hide the battle section if the round-end overlay is NOT showing.
+    // When the overlay IS showing it will call hideBattle() on dismiss — this
+    // keeps the last-step cards visible for the player to see.
+    if(document.getElementById('roundEndOverlay').classList.contains('hidden')) hideBattle();
     const leaderPid = data.leader_pid || gameState?.lead_pid;
     // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
@@ -1482,6 +1479,15 @@ function renderBattleStep(msg) {
   div.style.cssText='font-family:Cinzel,serif;font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin:4px 0;letter-spacing:2px;';
   div.textContent=`— STEP ${msg.step} —`; rows.appendChild(div);
 
+  // Show any duel / special event as a banner in the battle section
+  const duelEvents=(msg.special_events||[]).filter(e=>e.includes('⚔️')||e.includes('🧙')||e.includes('🃏'));
+  if(duelEvents.length){
+    const duelBanner=document.createElement('div');
+    duelBanner.style.cssText='background:rgba(155,89,182,.18);border:1px solid rgba(155,89,182,.45);border-radius:6px;padding:5px 10px;margin:4px 8px;font-size:11px;color:#C39BD3;text-align:center;';
+    duelBanner.textContent=duelEvents.join(' · ');
+    rows.appendChild(duelBanner);
+  }
+
   // BUG2: sort entries by the game's seat order so rows always appear in table order
   const _seatOrder=gameState?.order||[];
   const _entries=[...(msg.entries||[])].sort((a,b)=>{
@@ -1582,17 +1588,27 @@ function resolveSpaceDragon(targetPid) {
 //  ROUND END SUMMARY  (BUG4)
 // ══════════════════════════════════════════════════════
 let _roundEndTimer=null;
+let _stepWins={};   // pid → wins this round, reset on each round_end call
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
   const rowsEl=document.getElementById('roundEndRows');
   const timerEl=document.getElementById('roundEndTimer');
+  // Clear any still-running timer from a previous overlay
+  if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
   rowsEl.innerHTML='';
 
-  const winnerPid=msg.winner_pid||null;
-  title.textContent=winnerPid
-    ? `Round ${msg.round||''} — ${nameOf(winnerPid)} wins!`
+  // Determine who won the most steps this round
+  let roundWinnerPid=msg.winner_pid||null;
+  if(!roundWinnerPid && Object.keys(_stepWins).length){
+    const maxWins=Math.max(...Object.values(_stepWins));
+    const leaders=Object.entries(_stepWins).filter(([,w])=>w===maxWins).map(([p])=>p);
+    if(leaders.length===1) roundWinnerPid=leaders[0];
+  }
+  title.textContent=roundWinnerPid
+    ? `Round ${msg.round||''} — ${nameOf(roundWinnerPid)} wins!`
     : `Round ${msg.round||''} Complete!`;
+  _stepWins={};  // reset for next round
 
   const order=(gameState?.order)||Object.keys(gameState?.players||{});
   order.forEach(pid=>{
