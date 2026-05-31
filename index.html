@@ -945,6 +945,11 @@ function handleMessage(msg) {
         // Track step wins for round-end overlay
         _stepWins[msg.winner_pid]=(_stepWins[msg.winner_pid]||0)+1;
       }
+      // If this was the last step, update button so player knows round is ending
+      if(msg.step >= msg.total_steps){
+        const mb=document.getElementById('mainBtn');
+        if(mb){ mb.textContent='Round complete…'; mb.disabled=true; }
+      }
       break;
     }
 
