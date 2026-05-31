@@ -4,6 +4,7 @@ modules = ["python-3.11:v25-20250124-f1e7250"]
 
 [nix]
 channel = "stable-24_05"
+packages = ["psmisc"]
 
 [deployment]
 run = ["python3", "main.py"]

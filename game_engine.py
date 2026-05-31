@@ -358,15 +358,27 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
         return result
 
     if has_dragon and len(combat_tamers) > 1:
-        # Tamer duel — card draw (dominant suit applies to drawn cards)
-        result['special_events'].append("⚔️ Tamer duel!")
-        if all_players:
-            winner_pid, duel_cards, pid_draws = _run_duel(combat_tamers, all_players, lead_pid,
-                                               result['special_events'], el)
-            result['all_cards'] += duel_cards
-            result['duel_draws'].update(pid_draws)
+        # Tamer duel: first compare effective rank (dominant suit applies).
+        # Only if ranks are exactly equal do we fall back to card draw.
+        best_tamer_eff = max(e['card'].effective_rank(el) for e in combat_tamers)
+        top_tamers = [e for e in combat_tamers
+                      if e['card'].effective_rank(el) == best_tamer_eff]
+        if len(top_tamers) == 1:
+            # Clear winner by effective rank — no duel needed
+            winner_pid = top_tamers[0]['pid']
+            result['special_events'].append(
+                f"⚔️ {top_tamers[0]['pid']}'s Tamer wins by higher rank "
+                f"({top_tamers[0]['card'].label} eff:{best_tamer_eff:.1f})!")
         else:
-            winner_pid = combat_tamers[0]['pid']
+            # Exact tie — card draw duel
+            result['special_events'].append("⚔️ Tamer duel — equal rank, drawing cards!")
+            if all_players:
+                winner_pid, duel_cards, pid_draws = _run_duel(top_tamers, all_players, lead_pid,
+                                                   result['special_events'], el)
+                result['all_cards'] += duel_cards
+                result['duel_draws'].update(pid_draws)
+            else:
+                winner_pid = top_tamers[0]['pid']
         result['winner_pid'] = winner_pid
         # Winning Tamer inherits joker powers
         joker_types = [j['card'].joker_type for j in jokers if j['card'].joker_type]
@@ -1732,6 +1744,18 @@ class DragonTamerGame:
                     self.prev_step_cards  = all_cards
                     self.prev_step_winner = winner_pid
                     self.current_step += 1
+                    step_event = {
+                        'type': 'step_revealed',
+                        'step': si + 1,
+                        'total_steps': self.declared_steps,
+                        'entries': [{'pid': e['pid'], 'card': e['card'].to_dict(),
+                                     'stolen': e.get('stolen', False),
+                                     'duel_cards': [c.to_dict() for c in result['duel_draws'].get(e['pid'], [])],
+                                     } for e in entries],
+                        'winner_pid': winner_pid,
+                        'special_events': result['special_events'],
+                        'love_right_pid': result['love_right_pid'],
+                    }
                     return [step_event, {
                         'type': 'joker_choose_power',
                         'pid': time_owner_pid,
@@ -1767,6 +1791,18 @@ class DragonTamerGame:
                     self.prev_step_cards  = all_cards
                     self.prev_step_winner = winner_pid
                     self.current_step += 1
+                    step_event = {
+                        'type': 'step_revealed',
+                        'step': si + 1,
+                        'total_steps': self.declared_steps,
+                        'entries': [{'pid': e['pid'], 'card': e['card'].to_dict(),
+                                     'stolen': e.get('stolen', False),
+                                     'duel_cards': [c.to_dict() for c in result['duel_draws'].get(e['pid'], [])],
+                                     } for e in entries],
+                        'winner_pid': winner_pid,
+                        'special_events': result['special_events'],
+                        'love_right_pid': result['love_right_pid'],
+                    }
                     return [step_event, {
                         'type': 'time_dragon_choose',
                         'pid': time_owner_pid,
