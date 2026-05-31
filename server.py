@@ -91,15 +91,21 @@ async def broadcast_events(room_id: str, events: list,
 # MESSAGE HANDLERS
 # ══════════════════════════════════════════════════════
 async def handle_create_room(ws, data):
-    room_id  = data.get('room_id') or str(uuid.uuid4())[:8].upper()
-    pid      = data.get('pid') or str(uuid.uuid4())[:8]
-    name     = data.get('name', 'Player')
-    ai_count = int(data.get('ai_count', 3))
-    max_pl   = 1 + ai_count   # 1 human + N AI opponents
+    room_id    = data.get('room_id') or str(uuid.uuid4())[:8].upper()
+    pid        = data.get('pid') or str(uuid.uuid4())[:8]
+    name       = data.get('name', 'Player')
+    ai_count   = int(data.get('ai_count', 3))
+    win_drag   = int(data.get('win_dragons', 5))
+    max_pl     = 1 + ai_count   # 1 human + N AI opponents
 
     if rooms.get_room(room_id):
         await send(ws, {'type': 'error', 'msg': 'Room already exists'})
         return
+
+    # Set win goal for this room (4, 5, or 6)
+    import game_engine as ge
+    if win_drag in (4, 5, 6):
+        ge.WIN_DRAGONS = win_drag
 
     game = rooms.create_room(room_id, max_pl)
     game.add_player(pid, name)
@@ -113,9 +119,10 @@ async def handle_create_room(ws, data):
         'type': 'room_created',
         'room_id': room_id,
         'pid': pid,
+        'win_dragons': ge.WIN_DRAGONS,
         'state': game.player_state(pid),
     })
-    log.info(f"Room {room_id} created by {name} ({pid})")
+    log.info(f"Room {room_id} created by {name} ({pid}), win_dragons={ge.WIN_DRAGONS}")
 
 
 async def handle_join_room(ws, data):

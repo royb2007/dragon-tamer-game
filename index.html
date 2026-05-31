@@ -376,6 +376,14 @@ body::before{content:'';position:fixed;inset:0;
         <span class="ai-count-lbl" id="aiCountLbl">3</span>
       </div>
     </div>
+    <div class="ai-row" style="margin-top:8px;">
+      <label style="white-space:nowrap;">🐉 Dragons to Win</label>
+      <div style="display:flex;gap:6px;flex:1;justify-content:flex-end;">
+        <button id="wd4" class="btn btn-outline wd-btn" onclick="setWinDragons(4)" style="padding:4px 14px;font-size:13px;">4</button>
+        <button id="wd5" class="btn btn-gold wd-btn" onclick="setWinDragons(5)" style="padding:4px 14px;font-size:13px;">5</button>
+        <button id="wd6" class="btn btn-outline wd-btn" onclick="setWinDragons(6)" style="padding:4px 14px;font-size:13px;">6</button>
+      </div>
+    </div>
     <div class="room-actions">
       <button class="btn btn-gold" onclick="createRoom()">New Room</button>
       <button class="btn btn-outline" onclick="joinRoom()">Join Room</button>
@@ -684,10 +692,21 @@ function setAI(n) {
   const l=document.getElementById('aiCountLbl'); if(l) l.textContent=aiCount;
   const s=document.getElementById('aiSlider'); if(s) s.value=aiCount;
 }
+let winDragons=5;
+function setWinDragons(n){
+  winDragons=n;
+  [4,5,6].forEach(v=>{
+    const b=document.getElementById('wd'+v);
+    if(!b) return;
+    b.className='btn wd-btn '+(v===n?'btn-gold':'btn-outline');
+    b.style.padding='4px 14px'; b.style.fontSize='13px';
+  });
+}
 function getName() { return document.getElementById('playerName').value.trim()||'Player'; }
 function createRoom() {
   send({type:'create_room',name:getName(),
-        room_id:document.getElementById('roomCode').value.trim().toUpperCase()||null,ai_count:aiCount});
+        room_id:document.getElementById('roomCode').value.trim().toUpperCase()||null,
+        ai_count:aiCount, win_dragons:winDragons});
 }
 function joinRoom() {
   const r=document.getElementById('roomCode').value.trim().toUpperCase();
@@ -804,13 +823,8 @@ function mainAction() {
   if (now - _lastActionAt < 350) return;
   _lastActionAt = now;
 
-  // Round-end results take priority — show overlay first, then resume game
-  if(_pendingRoundEndMsg){
-    const m=_pendingRoundEndMsg;
-    _pendingRoundEndMsg=null;
-    showRoundEndOverlay(m);
-    return;
-  }
+  // If round-end overlay is showing, ignore main button — CONTINUE handles dismissal
+  if(_roundEndOverlayVisible) return;
 
   if (phase==='leader_declare') send({type:'declare',steps:selectedSteps,element:selectedSuit});
   else if (phase==='pick_cards') {
@@ -830,9 +844,13 @@ function handleMessage(msg) {
   switch(msg.type) {
     case 'room_created':
       myPid=msg.pid; myRoomId=msg.room_id;
+      if(msg.win_dragons) winDragons=msg.win_dragons;
       applyState(msg.state); showGameScreen();
       document.getElementById('roomCodeDisplay').textContent=msg.room_id;
       document.getElementById('waitOverlay').classList.remove('hidden');
+      // Show dragon goal in round badge area
+      { const rb=document.getElementById('roundBadge');
+        if(rb) rb.textContent=`Goal: ${winDragons}🐉`; }
       break;
 
     case 'room_joined':
@@ -884,7 +902,13 @@ function handleMessage(msg) {
     case 'phase_change':
       // ── Sync lead_pid whenever server tells us the leader ──
       if(msg.leader_pid&&gameState) gameState.lead_pid=msg.leader_pid;
-      setPhase(msg.phase,msg);
+      // Buffer leader_declare while round-end overlay is showing
+      if(msg.phase==='leader_declare' && _roundEndOverlayVisible){
+        _bufferedLeaderDeclare=msg;
+        if(gameState){ gameState.phase=msg.phase; gameState.round=msg.round||gameState.round; }
+      } else {
+        setPhase(msg.phase,msg);
+      }
       break;
 
     case 'declaration':
@@ -978,16 +1002,10 @@ function handleMessage(msg) {
     case 'round_end':
       addLog(`── Round ${msg.round} complete ──`);
       hideSleepingSection();
-      if(_hideBattleTimer) { clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-      // Store message and wait for player to click CONTINUE — don't hide battle yet.
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      // Show round-end overlay immediately — player clicks CONTINUE to proceed
       _pendingRoundEndMsg=msg;
-      // Button will be set to "▶ CONTINUE" at the end of setPhase (which fires next
-      // via phase_change:leader_declare). If no phase_change comes, set it now.
-      if(!isSpectator){
-        const mb=document.getElementById('mainBtn');
-        mb.textContent='▶ CONTINUE — VIEW ROUND RESULTS';
-        mb.disabled=false;
-      }
+      showRoundEndOverlay(msg);
       break;
 
     case 'eliminated':
@@ -1090,7 +1108,7 @@ function setPhase(newPhase, data) {
     mainBtn.textContent = isMe ? 'DECLARE' : 'Waiting...';
     mainBtn.disabled = !isMe;
     if(data.round){
-      document.getElementById('roundBadge').textContent=`Round ${data.round}`;
+      document.getElementById('roundBadge').textContent=`Round ${data.round} · ${winDragons}🐉`;
       const rl=document.getElementById('tableRoundLbl'); if(rl) rl.textContent=`Round ${data.round}`;
     }
     renderTable();
@@ -1344,16 +1362,21 @@ function renderTable() {
     const accumCards = p.accum || [];
     let pileHTML = '';
     if(accumCards.length > 0){
-      const shown = accumCards.slice(-6); // show last 6 won cards
+      const shown = accumCards.slice(-5); // show last 5 won cards
       const pips = shown.map(c => {
         let cls = 'pile-card-mini ';
         if(c.is_joker) cls += c.joker_type==='space'?'js':'jt';
         else cls += (c.suit||'')[0].toLowerCase();
         const r = c.is_joker ? (c.joker_type==='space'?'🌌':'⏳')
                              : c.label.replace(/[♥♣♦♠]/g,'');
-        return `<div class="${cls}">${r}</div>`;
+        return `<div class="${cls}" title="${c.label}">${r}</div>`;
       }).join('');
-      pileHTML = `<div class="seat-pile">${pips}${accumCards.length>6?`<div style="font-size:8px;color:var(--gold-light);">+${accumCards.length-6}</div>`:''}</div>`;
+      const extraLabel = accumCards.length>5
+        ? `<div style="font-size:8px;color:var(--gold-light);text-align:center;">+${accumCards.length-5}</div>` : '';
+      const accumDragons = accumCards.filter(c=>c.is_dragon).length;
+      const accumDragonBadge = accumDragons>0
+        ? `<div style="font-size:8px;color:#E8A020;text-align:center;">🐉×${accumDragons}</div>` : '';
+      pileHTML = `<div class="seat-pile" title="${accumCards.length} cards won">${pips}${extraLabel}${accumDragonBadge}</div>`;
     }
     seat.innerHTML=`
       <div class="seat-avatar" style="width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize*.38)}px;">
@@ -1461,7 +1484,15 @@ function renderHand() {
   const need=gameState?.declared_steps||0;
   document.getElementById('handTitle').textContent=
     isPick?`Your Hand — select ${need}`:`Your Hand (${me.hand.length} cards)`;
-  me.hand.forEach(card=>{
+  // Sort: primary = rank ascending (2→A), secondary = suit (Hearts, Diamonds, Clubs, Spades)
+  const SUIT_ORDER={'Hearts':0,'Diamonds':1,'Clubs':2,'Spades':3};
+  const sorted=[...me.hand].sort((a,b)=>{
+    const ra=a.is_joker?99:a.orig_rank;
+    const rb=b.is_joker?99:b.orig_rank;
+    if(ra!==rb) return ra-rb;
+    return (SUIT_ORDER[a.suit]??4)-(SUIT_ORDER[b.suit]??4);
+  });
+  sorted.forEach(card=>{
     const isSelected=selectedCardCids.includes(card.cid);
     const orderIdx=selectedCardCids.indexOf(card.cid);
     const cardEl=renderCardEl(card,isPick,isSelected,orderIdx);
@@ -1520,16 +1551,25 @@ function renderBattleStep(msg) {
   _entries.forEach(entry=>{
     const row=document.createElement('div');
     row.className='battle-row'+(entry.pid===msg.winner_pid?' winning':'');
-    // Render the card using the same full renderCardEl (scaled via CSS) — Issue 4
-    const wrap=document.createElement('div');
-    wrap.className='battle-card-wrap';
-    wrap.appendChild(renderCardEl(entry.card, false, false, -1));
     const pname=document.createElement('div');
     pname.className='battle-pname';
     pname.textContent=entry.pid===myPid?'👤 You':nameOf(entry.pid);
     const cardsDiv=document.createElement('div');
     cardsDiv.className='battle-cards';
+    // Main battle card
+    const wrap=document.createElement('div');
+    wrap.className='battle-card-wrap';
+    wrap.appendChild(renderCardEl(entry.card, false, false, -1));
     cardsDiv.appendChild(wrap);
+    // Duel drawn cards (if any — from special_events parsing)
+    const duelCards = entry.duel_cards||[];
+    duelCards.forEach(dc=>{
+      const dw=document.createElement('div');
+      dw.className='battle-card-wrap';
+      dw.style.cssText='opacity:0.75;margin-left:-8px;';
+      dw.appendChild(renderCardEl(dc, false, false, -1));
+      cardsDiv.appendChild(dw);
+    });
     row.appendChild(pname);
     row.appendChild(cardsDiv);
     if(entry.pid===msg.winner_pid){
@@ -1538,7 +1578,7 @@ function renderBattleStep(msg) {
       row.appendChild(wb);
     }
     rows.appendChild(row);
-  });  // end _entries.forEach
+  });
 
   const banner=document.getElementById('phaseBanner');
   const total=gameState?.declared_steps||3;
@@ -1611,6 +1651,8 @@ function resolveSpaceDragon(targetPid) {
 //  ROUND END SUMMARY  (BUG4)
 // ══════════════════════════════════════════════════════
 let _roundEndTimer=null;
+let _roundEndOverlayVisible=false;   // true while overlay is shown
+let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
 let _stepWins={};          // pid → wins this round, reset on each round_end call
 let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
 function showRoundEndOverlay(msg) {
@@ -1647,20 +1689,24 @@ function showRoundEndOverlay(msg) {
   });
 
   let secs=5;
-  timerEl.textContent=`Auto-closing in ${secs}s…`;
+  timerEl.innerHTML='';  // clear timer area — CONTINUE button is already in HTML
   overlay.classList.remove('hidden');
-  _roundEndTimer=setInterval(()=>{
-    secs--;
-    if(secs<=0){ dismissRoundEnd(); }
-    else { timerEl.textContent=`Auto-closing in ${secs}s…`; }
-  },1000);
+  _roundEndOverlayVisible=true;
 }
 function dismissRoundEnd() {
   if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
+  _roundEndOverlayVisible=false;
+  _pendingRoundEndMsg=null;
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
-  // Restore the button/UI for whatever phase the game is currently in
-  if(gameState?.phase) setPhase(gameState.phase, gameState);
+  // Apply buffered leader_declare if it arrived while overlay was showing
+  if(_bufferedLeaderDeclare){
+    const m=_bufferedLeaderDeclare;
+    _bufferedLeaderDeclare=null;
+    setPhase(m.phase, m);
+  } else if(gameState?.phase){
+    setPhase(gameState.phase, gameState);
+  }
 }
 
 function showPortalModal(msg) {
