@@ -1681,8 +1681,8 @@ function showRoundEndOverlay(msg) {
     const d=p.dragon_count||0;
     const dragonStr=d>0?'🐉'.repeat(Math.min(d,5))+(d>5?`+${d-5}`:''):'—';
     const row=document.createElement('div');
-    row.className='round-end-row'+(pid===winnerPid?' winner-row':'');
-    row.innerHTML=`<span class="round-end-name">${pid===myPid?'👤 '+p.name:p.name}${pid===winnerPid?' 🏆':''}</span>`+
+    row.className='round-end-row'+(pid===roundWinnerPid?' winner-row':'');
+    row.innerHTML=`<span class="round-end-name">${pid===myPid?'👤 '+p.name:p.name}${pid===roundWinnerPid?' 🏆':''}</span>`+
       `<span class="round-end-dragons">${dragonStr} <span style="font-size:11px;color:rgba(253,246,227,.45);">(${d})</span></span>`;
     rowsEl.appendChild(row);
   });
