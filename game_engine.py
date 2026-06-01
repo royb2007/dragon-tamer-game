@@ -557,6 +557,56 @@ def resolve_step(
             result["portal_pid"] = portal_e["pid"]
         return result
 
+    # ── Joker equality rule ──
+    # Any Joker always enters a duel with ALL regular Dragons present.
+    # 1 Joker + 2 Dragons → 3-way duel; 2 Jokers + 1 Dragon → 3-way duel; etc.
+    # Applies only when both Jokers and regular (non-joker) Dragons are present
+    # and no Tamer/Wizard has already resolved the battle above.
+    regular_dragons = [
+        e for e in valid if e["card"].is_dragon and not e["card"].is_joker
+    ]
+    if jokers and regular_dragons:
+        duel_entries = jokers + regular_dragons
+        n_j = len(jokers)
+        n_d = len(regular_dragons)
+        result["special_events"].append(
+            f"\U0001f0cf Joker equality rule: {n_j} Joker(s) + {n_d} Dragon(s) \u2014 "
+            f"{n_j + n_d}-way duel!"
+        )
+        if all_players:
+            winner_pid, duel_cards, pid_draws = _run_duel(
+                duel_entries, all_players, lead_pid, result["special_events"], el
+            )
+            result["all_cards"] += duel_cards
+            result["duel_draws"].update(pid_draws)
+        else:
+            winner_pid = lead_pid
+        result["winner_pid"] = winner_pid
+        # Joker power fires only if a Joker wins
+        winning_entry = next((e for e in duel_entries if e["pid"] == winner_pid), None)
+        if winning_entry and winning_entry["card"].is_joker:
+            result["joker_powers"] = [winning_entry["card"].joker_type]
+            result["special_events"].append(
+                f"\U0001f0cf {winner_pid} wins duel \u2014 "
+                f"{winning_entry['card'].joker_type} Dragon power activates!"
+            )
+        else:
+            result["joker_powers"] = []
+            result["special_events"].append(
+                f"\U0001f0cf {winner_pid}'s Dragon wins duel \u2014 Joker power forfeit."
+            )
+        # Space Dragon: fires if Space Joker wins
+        space_j = next((j for j in jokers if j["card"].joker_type == "space"), None)
+        if space_j and winner_pid == space_j["pid"]:
+            result["space_dragon_pid"] = winner_pid
+            result["special_events"].append(
+                f"\U0001f30c Space Dragon! {winner_pid} wins duel \u2014 may swap seats."
+            )
+        portal_e = next((e for e in valid if e["card"].is_portal), None)
+        if portal_e:
+            result["portal_pid"] = portal_e["pid"]
+        return result
+
     # ── Normal resolution ──
     best = _best_card([e["card"] for e in valid], el)
     top_e = best.effective_rank(el)
@@ -1873,9 +1923,18 @@ class DragonTamerGame:
 
         steal_events = []
         if stealable:
-            stolen = stealable[
-                0
-            ]  # top card of Main Pile (rules: "blind from Main Pile")
+            # Steal the leftmost card as shown in the target's hand display.
+            # Frontend sorts: rank ascending (2→A), then suit Hearts<Diamonds<Clubs<Spades.
+            # Jokers (orig_rank 14) sort last. Replicate that here so "first card" is consistent.
+            _SUIT_DISPLAY_ORDER = {"Hearts": 0, "Diamonds": 1, "Clubs": 2, "Spades": 3}
+            stealable_sorted = sorted(
+                stealable,
+                key=lambda c: (
+                    99 if c.is_joker else c.orig_rank,
+                    _SUIT_DISPLAY_ORDER.get(c.suit, 4),
+                ),
+            )
+            stolen = stealable_sorted[0]
             target.hand.remove(stolen)
             # Add stolen card to entries alongside the portal card.
             # Both entries have portal_pid — resolution sees two cards for this player.

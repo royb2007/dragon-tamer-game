@@ -875,6 +875,7 @@ function handleMessage(msg) {
       if(_lastGameStartedAt&&Date.now()-_lastGameStartedAt<500) break;
       _lastGameStartedAt=Date.now();
       selectedCardCids=[];
+      _confirmedOrder=null;   // fresh game = fresh seating
       addLog(msg.first_leader_pid
         ? `── Game started! ${nameOf(msg.first_leader_pid)} won the initial deal and leads first ──`
         : '── Game started! ──','imp');
@@ -892,9 +893,11 @@ function handleMessage(msg) {
 
     case 'rejoined':
       _rejoining=false;
-      _pendingRoundEndMsg=null;   // stale on reconnect
+      _pendingRoundEndMsg=null;
       _awaitingRoundEndContinue=false;
-      _iPickedThisRound=false;    // will be restored below if needed
+      _roundEndOverlayVisible=false;   // stale overlay state must not block mainAction after rejoin
+      _iPickedThisRound=false;         // will be restored below if needed
+      document.getElementById('roundEndOverlay').classList.add('hidden');
       myPid=msg.pid; myRoomId=msg.room_id;
       applyState(msg.state);
       // Restore pick state from snapshot: if we already submitted cards this round, show waiting
@@ -905,11 +908,11 @@ function handleMessage(msg) {
           const mb=document.getElementById('mainBtn');
           if(mb){ mb.textContent='Waiting for others...'; mb.disabled=true; }
           const pb=document.getElementById('phaseBanner');
-          if(pb) pb.textContent='\U0001F3B4 Cards submitted \u2014 waiting for others';
+          if(pb) pb.textContent='\uD83C\uDCCF Cards submitted \u2014 waiting for others';
         }
       }
       setConnStatus(true,'Reconnected');
-      addLog('🔄 Reconnected to game','imp');
+      addLog('\uD83D\uDD04 Reconnected to game','imp');
       break;
 
     case 'state':
@@ -1012,7 +1015,8 @@ function handleMessage(msg) {
 
     case 'seat_swap':
       if(gameState){ gameState.order=msg.new_order; }
-      addLog(`🌌 Seats swapped: ${nameOf(msg.pid_a)} ↔ ${nameOf(msg.pid_b)}`,'imp');
+      _confirmedOrder=msg.new_order;   // survives applyState overwrites on rejoin
+      addLog(`\uD83C\uDF0C Seats swapped: ${nameOf(msg.pid_a)} \u2194 ${nameOf(msg.pid_b)}`,'imp');
       renderTable();
       break;
 
@@ -1050,8 +1054,9 @@ function handleMessage(msg) {
 
         case 'seat_changed':
       if(gameState){ gameState.order=msg.new_order; if(msg.lead_pid) gameState.lead_pid=msg.lead_pid; }
+      _confirmedOrder=msg.new_order;
       renderTable();
-      addLog('🌌 Seat order changed!','imp');
+      addLog('\uD83C\uDF0C Seat order changed!','imp');
       break;
 
     case 'game_over':
@@ -1319,7 +1324,10 @@ function showForcedWakeOverlay(msg) {
 }
 
 function applyState(state) {
-  gameState=state; renderTable(); renderHand();
+  gameState=state;
+  // If a seat_swap happened after the snapshot was taken, restore the correct order
+  if(_confirmedOrder && gameState) gameState.order=_confirmedOrder;
+  renderTable(); renderHand();
   if(state.phase) setPhase(state.phase,state);
 }
 function nameOf(pid) {
@@ -1694,6 +1702,7 @@ let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
 let _stepWins={};          // pid → wins this round, reset on each round_end call
 let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
 let _iPickedThisRound=false;   // true after myPid sends cards_picked; cleared each pick phase
+let _confirmedOrder=null;      // most recent seat order from seat_swap; survives applyState
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
