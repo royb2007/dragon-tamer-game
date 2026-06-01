@@ -894,8 +894,20 @@ function handleMessage(msg) {
       _rejoining=false;
       _pendingRoundEndMsg=null;   // stale on reconnect
       _awaitingRoundEndContinue=false;
+      _iPickedThisRound=false;    // will be restored below if needed
       myPid=msg.pid; myRoomId=msg.room_id;
       applyState(msg.state);
+      // Restore pick state from snapshot: if we already submitted cards this round, show waiting
+      if(msg.state?.phase==='pick_cards'){
+        const alreadyPicked=(msg.state?.players?.[myPid]?.battle_count||0)>0;
+        if(alreadyPicked){
+          _iPickedThisRound=true;
+          const mb=document.getElementById('mainBtn');
+          if(mb){ mb.textContent='Waiting for others...'; mb.disabled=true; }
+          const pb=document.getElementById('phaseBanner');
+          if(pb) pb.textContent='\U0001F3B4 Cards submitted \u2014 waiting for others';
+        }
+      }
       setConnStatus(true,'Reconnected');
       addLog('🔄 Reconnected to game','imp');
       break;
@@ -929,6 +941,7 @@ function handleMessage(msg) {
     case 'cards_picked':
       if(msg.pid===myPid){
         selectedCardCids=[];
+        _iPickedThisRound=true;
         const btn=document.getElementById('mainBtn');
         btn.disabled=true; btn.textContent='Waiting for others...';
       }
@@ -1050,6 +1063,7 @@ function handleMessage(msg) {
     case 'error':
       addLog(`⚠ ${msg.msg}`,'warn');
       if(phase==='pick_cards'){
+        _iPickedThisRound=false;   // allow retry after server rejection
         const need=pickNeed();
         const btn=document.getElementById('mainBtn');
         btn.disabled=selectedCardCids.length<need;
@@ -1134,20 +1148,14 @@ function setPhase(newPhase, data) {
     const n=data.steps_needed||data.declared_steps||gameState?.declared_steps||2;
     if(gameState) gameState.declared_steps=n;
     banner.className='phase-bar pick';
-    // If we already submitted this round (e.g. after rejoin), show waiting state
-    const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
-    if(alreadyPicked){
-      banner.textContent=`🎴 Cards submitted — waiting for others`;
-      mainBtn.textContent='Waiting for others...';
-      mainBtn.disabled=true;
-      selectedCardCids=[];
-    } else {
-      const need=pickNeed();
-      banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
-      mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
-      mainBtn.disabled=true;
-      selectedCardCids=[];
-    }
+    // Clear pick flag for this fresh pick phase; set it again when cards_picked fires for myPid.
+    // Do NOT use battle_count — it reflects stale state since phase_change arrives before hand_update.
+    _iPickedThisRound=false;
+    selectedCardCids=[];
+    const need=pickNeed();
+    banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
+    mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
+    mainBtn.disabled=true;
     renderHand();
 
   } else if(newPhase==='reveal'){
@@ -1499,7 +1507,7 @@ function renderHand() {
   const el=document.getElementById('handCards');
   el.innerHTML='';
   if(!me?.hand) return;
-  const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
+  const alreadyPicked=_iPickedThisRound;
   const isPick=phase==='pick_cards' && !alreadyPicked;
   const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
   document.getElementById('handTitle').textContent=
@@ -1685,6 +1693,7 @@ let _awaitingRoundEndContinue=false; // true when main button should fire dismis
 let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
 let _stepWins={};          // pid → wins this round, reset on each round_end call
 let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
+let _iPickedThisRound=false;   // true after myPid sends cards_picked; cleared each pick phase
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
@@ -1911,4 +1920,3 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
