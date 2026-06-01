@@ -1050,7 +1050,7 @@ function handleMessage(msg) {
     case 'error':
       addLog(`⚠ ${msg.msg}`,'warn');
       if(phase==='pick_cards'){
-        const need=gameState?.declared_steps||0;
+        const need=pickNeed();
         const btn=document.getElementById('mainBtn');
         btn.disabled=selectedCardCids.length<need;
         btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
@@ -1134,15 +1134,17 @@ function setPhase(newPhase, data) {
     const n=data.steps_needed||data.declared_steps||gameState?.declared_steps||2;
     if(gameState) gameState.declared_steps=n;
     banner.className='phase-bar pick';
-    banner.textContent=`🃏 Select ${n} card${n>1?'s':''} for battle`;
     // If we already submitted this round (e.g. after rejoin), show waiting state
     const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
     if(alreadyPicked){
+      banner.textContent=`🎴 Cards submitted — waiting for others`;
       mainBtn.textContent='Waiting for others...';
       mainBtn.disabled=true;
       selectedCardCids=[];
     } else {
-      mainBtn.textContent=`CONFIRM CARDS (0/${n})`;
+      const need=pickNeed();
+      banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
+      mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
       mainBtn.disabled=true;
       selectedCardCids=[];
     }
@@ -1499,7 +1501,7 @@ function renderHand() {
   if(!me?.hand) return;
   const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
   const isPick=phase==='pick_cards' && !alreadyPicked;
-  const need=gameState?.declared_steps||0;
+  const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
   document.getElementById('handTitle').textContent=
     isPick?`Your Hand — select ${need}`:`Your Hand (${me.hand.length} cards)`;
   // Sort: primary = rank ascending (2→A), secondary = suit (Hearts, Diamonds, Clubs, Spades)
@@ -1527,6 +1529,14 @@ function toggleCard(cid, need) {
   btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
   btn.disabled=selectedCardCids.length<need;
   renderHand();
+}
+
+// How many cards this player must actually submit: min(declared_steps, hand_size).
+// The engine enforces this same cap in player_pick_cards().
+function pickNeed() {
+  const declared=gameState?.declared_steps||0;
+  const handSize=gameState?.me?.hand?.length??declared;
+  return Math.min(declared, handSize);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1901,3 +1911,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
