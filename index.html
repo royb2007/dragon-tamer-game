@@ -1127,6 +1127,7 @@ function setPhase(newPhase, data) {
     if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
     // Don't hide battle while round-end overlay is showing — player hasn't seen results yet.
     if(!_roundEndOverlayVisible) hideBattle();
+    selectedCardCids=[];   // clear stale badges from previous round's card selection
     const leaderPid = data.leader_pid || gameState?.lead_pid;
     // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
