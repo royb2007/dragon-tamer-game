@@ -823,6 +823,9 @@ function mainAction() {
   if (now - _lastActionAt < 350) return;
   _lastActionAt = now;
 
+  // Round ended — main button is "CONTINUE TO NEXT ROUND"
+  if(_awaitingRoundEndContinue){ dismissRoundEnd(); return; }
+
   // If round-end overlay is showing, ignore main button — CONTINUE handles dismissal
   if(_roundEndOverlayVisible) return;
 
@@ -890,6 +893,7 @@ function handleMessage(msg) {
     case 'rejoined':
       _rejoining=false;
       _pendingRoundEndMsg=null;   // stale on reconnect
+      _awaitingRoundEndContinue=false;
       myPid=msg.pid; myRoomId=msg.room_id;
       applyState(msg.state);
       setConnStatus(true,'Reconnected');
@@ -1008,9 +1012,17 @@ function handleMessage(msg) {
       addLog(`── Round ${msg.round} complete ──`);
       hideSleepingSection();
       if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-      // Show round-end overlay immediately — overlay handles flow, no pending msg needed
+      if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
       _pendingRoundEndMsg=null;
-      showRoundEndOverlay(msg);
+      // Buffer leader_declare until player clicks CONTINUE — set flag immediately.
+      _roundEndOverlayVisible=true;
+      _awaitingRoundEndContinue=true;
+      // Arm the main button — player continues at their own pace, just like between steps.
+      { const mb=document.getElementById('mainBtn');
+        const pb=document.getElementById('phaseBanner');
+        if(mb){ mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; mb.disabled=false; }
+        if(pb){ pb.className='phase-bar end'; pb.textContent='\u2705 Round complete \u2014 continue when ready'; }
+      }
       break;
 
     case 'eliminated':
@@ -1650,7 +1662,9 @@ function resolveSpaceDragon(targetPid) {
 //  ROUND END SUMMARY  (BUG4)
 // ══════════════════════════════════════════════════════
 let _roundEndTimer=null;
+let _roundEndShowTimer=null;   // setTimeout handle for the delayed overlay display
 let _roundEndOverlayVisible=false;   // true while overlay is shown
+let _awaitingRoundEndContinue=false; // true when main button should fire dismissRoundEnd
 let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
 let _stepWins={};          // pid → wins this round, reset on each round_end call
 let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
@@ -1694,7 +1708,9 @@ function showRoundEndOverlay(msg) {
 }
 function dismissRoundEnd() {
   if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
+  if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
   _roundEndOverlayVisible=false;
+  _awaitingRoundEndContinue=false;
   _pendingRoundEndMsg=null;
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
