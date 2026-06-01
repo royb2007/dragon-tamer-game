@@ -1135,9 +1135,17 @@ function setPhase(newPhase, data) {
     if(gameState) gameState.declared_steps=n;
     banner.className='phase-bar pick';
     banner.textContent=`🃏 Select ${n} card${n>1?'s':''} for battle`;
-    mainBtn.textContent=`CONFIRM CARDS (0/${n})`;
-    mainBtn.disabled=true;
-    selectedCardCids=[];
+    // If we already submitted this round (e.g. after rejoin), show waiting state
+    const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
+    if(alreadyPicked){
+      mainBtn.textContent='Waiting for others...';
+      mainBtn.disabled=true;
+      selectedCardCids=[];
+    } else {
+      mainBtn.textContent=`CONFIRM CARDS (0/${n})`;
+      mainBtn.disabled=true;
+      selectedCardCids=[];
+    }
     renderHand();
 
   } else if(newPhase==='reveal'){
@@ -1438,10 +1446,8 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
   const dragonIcon = (card.is_dragon && !card.is_joker)
     ? '<span class="ace-dragon-icon">🐉</span>' : '';
 
-  // Badge shows the STEP the card will play in (N for first pick, 1 for last pick).
-  // We reverse the array before sending, so badge-1 card ends up at position 0 → step 1.
-  const _N=gameState?.declared_steps||0;
-  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${_N - orderIdx}</span>`:'';
+  // Badge shows which step this card will play in: pick 1 → step 1, pick 2 → step 2, etc.
+  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx + 1}</span>`:'';
 
   // 1: blinking bolt for cards matching the declared dominant element
   const isDominant = !card.is_joker 
@@ -1491,7 +1497,8 @@ function renderHand() {
   const el=document.getElementById('handCards');
   el.innerHTML='';
   if(!me?.hand) return;
-  const isPick=phase==='pick_cards';
+  const alreadyPicked=(gameState?.players?.[myPid]?.battle_count||0)>0;
+  const isPick=phase==='pick_cards' && !alreadyPicked;
   const need=gameState?.declared_steps||0;
   document.getElementById('handTitle').textContent=
     isPick?`Your Hand — select ${need}`:`Your Hand (${me.hand.length} cards)`;
