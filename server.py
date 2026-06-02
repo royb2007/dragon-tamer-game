@@ -65,6 +65,7 @@ async def broadcast_events(room_id: str, events: list,
     """
     Broadcast a list of engine events.
     hand_update events are sent only to the relevant player.
+    After broadcasting, auto-trigger AI actions if needed.
     """
     game = rooms.get_room(room_id)
     if not game:
@@ -85,6 +86,15 @@ async def broadcast_events(room_id: str, events: list,
         else:
             # Broadcast to all
             await broadcast(room_id, event)
+
+    # ── Auto-trigger AI actions ──────────────────────────────
+    # If leader_declare phase and leader is AI → auto-declare
+    if game.phase == Phase.LEADER_DECLARE:
+        lead_pid = game._lead_pid()
+        if lead_pid and lead_pid in game.players and game.players[lead_pid].is_ai:
+            ai_events = game._ai_declare()
+            if ai_events:
+                await broadcast_events(room_id, ai_events)
 
 
 # ══════════════════════════════════════════════════════
@@ -190,6 +200,18 @@ async def handle_pick_cards(ws, data):
     cids   = [int(c) for c in data.get('card_cids', [])]
     events = game.player_pick_cards(meta['pid'], cids)
     await broadcast_events(meta['room_id'], events)
+
+
+async def handle_reorder_hand(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+
+    cids   = [int(c) for c in data.get('cid_list', [])]
+    events = game.player_reorder_hand(meta['pid'], cids)
+    # hand_reordered only sent back to the player — no broadcast needed
+    for ev in events:
+        await send(ws, ev)
 
 
 async def handle_reveal(ws, data):
@@ -365,6 +387,7 @@ HANDLERS = {
     'start_game':    handle_start_game,
     'declare':       handle_declare,
     'pick_cards':    handle_pick_cards,
+    'reorder_hand':  handle_reorder_hand,
     'reveal':               handle_reveal,
     'sleeping_choice':      handle_sleeping_choice,
     'forced_wake_chosen':   handle_forced_wake_chosen,
@@ -443,3 +466,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.run(main())
+

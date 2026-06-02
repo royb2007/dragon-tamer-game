@@ -231,6 +231,8 @@ body::before{content:'';position:fixed;inset:0;
 .card-order{position:absolute;top:3px;right:4px;width:18px;height:18px;border-radius:50%;
   background:var(--gold-bright);color:var(--navy);font-size:11px;
   font-family:'Cinzel',serif;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.hand-card.drag-over{outline:2px solid var(--gold-bright);transform:scale(1.06);z-index:10;}
+.hand-card.tap-picked{outline:2px solid #00CED1;box-shadow:0 0 10px rgba(0,206,209,.5);transform:scale(1.06);z-index:10;}
 
 /* ── BATTLE ── */
 .step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:8px;}
@@ -1526,6 +1528,9 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
   return el;
 }
 
+let _dragSrcIdx = null;        // desktop drag source index
+let _tapPickedIdx = null;      // mobile tap-to-move: index of picked card
+
 function renderHand() {
   const me=gameState?.me;
   const el=document.getElementById('handCards');
@@ -1533,24 +1538,104 @@ function renderHand() {
   if(!me?.hand) return;
   const alreadyPicked=_iPickedThisRound;
   const isPick=phase==='pick_cards' && !alreadyPicked;
+  const canReorder = !alreadyPicked && phase!=='reveal';  // allow reorder outside pick too
   const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
   document.getElementById('handTitle').textContent=
     isPick?`Your Hand — select ${need}`:`Your Hand (${me.hand.length} cards)`;
-  // Sort: primary = rank ascending (2→A), secondary = suit (Hearts, Diamonds, Clubs, Spades)
-  const SUIT_ORDER={'Hearts':0,'Diamonds':1,'Clubs':2,'Spades':3};
-  const sorted=[...me.hand].sort((a,b)=>{
-    const ra=a.is_joker?99:a.orig_rank;
-    const rb=b.is_joker?99:b.orig_rank;
-    if(ra!==rb) return ra-rb;
-    return (SUIT_ORDER[a.suit]??4)-(SUIT_ORDER[b.suit]??4);
-  });
-  sorted.forEach(card=>{
+
+  // Server sends hand in display order (engine's ordered_hand). Use it directly.
+  const cards = me.hand;
+
+  cards.forEach((card, idx)=>{
     const isSelected=selectedCardCids.includes(card.cid);
     const orderIdx=selectedCardCids.indexOf(card.cid);
     const cardEl=renderCardEl(card,isPick,isSelected,orderIdx);
-    if(isPick) cardEl.onclick=()=>toggleCard(card.cid,need);
+
+    // ── Portal steal indicator: leftmost card ──
+    if(idx===0 && me.hand.length>0){
+      const dot=document.createElement('span');
+      dot.title='Portal target — leftmost card is stolen first';
+      dot.style.cssText='position:absolute;top:2px;left:50%;transform:translateX(-50%);'
+        +'font-size:8px;color:#00CED1;opacity:.7;pointer-events:none;z-index:5;';
+      dot.textContent='🌀';
+      cardEl.style.position='relative';
+      cardEl.appendChild(dot);
+    }
+
+    // ── Tap-to-move (mobile & desktop fallback) ──
+    if(canReorder){
+      cardEl.dataset.idx=idx;
+      cardEl.addEventListener('touchstart', e=>{
+        if(isPick) return;  // in pick mode, taps select cards; reorder via long-press only
+        e.preventDefault();
+        _handleTapReorder(idx);
+      }, {passive:false});
+    }
+
+    // ── Drag-and-drop (desktop) ──
+    if(canReorder){
+      cardEl.draggable=true;
+      cardEl.addEventListener('dragstart', e=>{
+        _dragSrcIdx=idx;
+        e.dataTransfer.effectAllowed='move';
+        cardEl.style.opacity='0.4';
+      });
+      cardEl.addEventListener('dragend', ()=>{
+        cardEl.style.opacity='';
+        _dragSrcIdx=null;
+        document.querySelectorAll('.hand-card').forEach(c=>c.classList.remove('drag-over'));
+      });
+      cardEl.addEventListener('dragover', e=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect='move';
+        cardEl.classList.add('drag-over');
+      });
+      cardEl.addEventListener('dragleave', ()=>{
+        cardEl.classList.remove('drag-over');
+      });
+      cardEl.addEventListener('drop', e=>{
+        e.preventDefault();
+        cardEl.classList.remove('drag-over');
+        if(_dragSrcIdx===null || _dragSrcIdx===idx) return;
+        _moveHandCard(_dragSrcIdx, idx);
+      });
+    }
+
+    // ── Pick-mode click ──
+    if(isPick) cardEl.addEventListener('click', ()=>toggleCard(card.cid,need));
+
+    // ── Tap-picked highlight ──
+    if(_tapPickedIdx===idx) cardEl.classList.add('tap-picked');
+
     el.appendChild(cardEl);
   });
+}
+
+function _handleTapReorder(idx){
+  if(_tapPickedIdx===null){
+    // First tap: pick up card
+    _tapPickedIdx=idx;
+    renderHand();
+  } else if(_tapPickedIdx===idx){
+    // Tap same card: cancel
+    _tapPickedIdx=null;
+    renderHand();
+  } else {
+    // Second tap: drop here
+    const from=_tapPickedIdx;
+    _tapPickedIdx=null;
+    _moveHandCard(from, idx);
+  }
+}
+
+function _moveHandCard(fromIdx, toIdx){
+  const hand=[...gameState.me.hand];
+  const [moved]=hand.splice(fromIdx,1);
+  hand.splice(toIdx,0,moved);
+  gameState.me.hand=hand;
+  // Send new order to server
+  send({type:'reorder_hand', cid_list: hand.map(c=>c.cid)});
+  renderHand();
 }
 
 function toggleCard(cid, need) {
