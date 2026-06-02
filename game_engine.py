@@ -47,6 +47,7 @@ class Phase(str, Enum):
     LEADER_DECLARE = "leader_declare"
     SLEEPING       = "sleeping"
     PICK_CARDS     = "pick_cards"
+    ARRANGE_HAND   = "arrange_hand"
     REVEAL         = "reveal"
     END_ROUND      = "end_round"
     GAME_OVER      = "game_over"
@@ -493,6 +494,8 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
     # 1 Joker + 2 Dragons → 3-way duel; 2 Jokers + 1 Dragon → 3-way duel; etc.
     # Applies only when both Jokers and regular (non-joker) Dragons are present
     # and no Tamer/Wizard has already resolved the battle above.
+    # NOTE: do NOT return early — fall through so Space/Time Dragon power activation
+    # and portal handling are picked up by the normal code below.
     regular_dragons = [e for e in valid if e['card'].is_dragon and not e['card'].is_joker]
     if jokers and regular_dragons:
         duel_entries = jokers + regular_dragons
@@ -520,65 +523,57 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
             result['joker_powers'] = []
             result['special_events'].append(
                 f"\U0001f0cf {winner_pid}'s Dragon wins duel \u2014 Joker power forfeit.")
-        # Space Dragon: fires if Space Joker wins
-        space_j = next((j for j in jokers if j['card'].joker_type == 'space'), None)
-        if space_j and winner_pid == space_j['pid']:
-            result['space_dragon_pid'] = winner_pid
-            result['special_events'].append(
-                f"\U0001f30c Space Dragon! {winner_pid} wins duel \u2014 may swap seats.")
-        portal_e = next((e for e in valid if e['card'].is_portal), None)
-        if portal_e:
-            result['portal_pid'] = portal_e['pid']
-        return result
+        # Fall through to portal detection and Space Dragon handling below
 
-    # ── Normal resolution ──
-    best = _best_card([e['card'] for e in valid], el)
-    top_e = best.effective_rank(el)
-    tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
+    # ── Normal resolution (skipped if Joker equality rule already set winner_pid) ──
+    if result['winner_pid'] is None:
+        best = _best_card([e['card'] for e in valid], el)
+        top_e = best.effective_rank(el)
+        tied = [e for e in valid if e['card'].effective_rank(el) == top_e]
 
-    if len(tied) == 1:
-        result['winner_pid'] = tied[0]['pid']
-    else:
-        # All tied players (dragons, jokers, or any equal-rank cards) enter a duel.
-        # Jokers and regular dragons are treated equally — whoever is highest rank
-        # among the tied group wins. Only the WINNER's joker power (if any) fires.
-        dragon_tied = [e for e in tied if e['card'].is_dragon]  # includes jokers
-        all_tied    = tied  # all tied, regardless of card type
-
-        if len(all_tied) >= 2:
-            n_drag = len(dragon_tied)
-            n_jok  = sum(1 for e in all_tied if e['card'].is_joker)
-            if n_jok >= 2:
-                result['special_events'].append(
-                    f"🃏 Dragon duel! ({n_jok} Jokers" +
-                    (f" + {n_drag - n_jok} Dragon(s)" if n_drag > n_jok else "") + ")")
-            else:
-                result['special_events'].append(
-                    f"⚔️ Dragon duel! ({n_drag} dragon(s) tied)")
-
-            if all_players:
-                winner_pid, duel_cards, pid_draws = _run_duel(all_tied, all_players, lead_pid,
-                                                   result['special_events'], el)
-                result['all_cards'] += duel_cards
-                result['duel_draws'].update(pid_draws)
-            else:
-                winner_pid = lead_pid
-            result['winner_pid'] = winner_pid
-
-            # Joker power: only applies if the WINNER played a joker
-            winning_entry = next((e for e in all_tied if e['pid'] == winner_pid), None)
-            if winning_entry and winning_entry['card'].is_joker:
-                result['joker_powers'] = [winning_entry['card'].joker_type]
-                result['special_events'].append(
-                    f"🃏 {winner_pid} wins duel with {winning_entry['card'].joker_type} Dragon — power activates!")
-            else:
-                # Winner played a regular dragon — no joker power fires
-                result['joker_powers'] = []
-                if n_jok > 0:
-                    result['special_events'].append(
-                        "🃏 Joker owner(s) lost the duel — dragon powers forfeit.")
+        if len(tied) == 1:
+            result['winner_pid'] = tied[0]['pid']
         else:
-            result['winner_pid'] = lead_pid
+            # All tied players (dragons, jokers, or any equal-rank cards) enter a duel.
+            # Jokers and regular dragons are treated equally — whoever is highest rank
+            # among the tied group wins. Only the WINNER's joker power (if any) fires.
+            dragon_tied = [e for e in tied if e['card'].is_dragon]  # includes jokers
+            all_tied    = tied  # all tied, regardless of card type
+
+            if len(all_tied) >= 2:
+                n_drag = len(dragon_tied)
+                n_jok  = sum(1 for e in all_tied if e['card'].is_joker)
+                if n_jok >= 2:
+                    result['special_events'].append(
+                        f"🃏 Dragon duel! ({n_jok} Jokers" +
+                        (f" + {n_drag - n_jok} Dragon(s)" if n_drag > n_jok else "") + ")")
+                else:
+                    result['special_events'].append(
+                        f"⚔️ Dragon duel! ({n_drag} dragon(s) tied)")
+
+                if all_players:
+                    winner_pid, duel_cards, pid_draws = _run_duel(all_tied, all_players, lead_pid,
+                                                       result['special_events'], el)
+                    result['all_cards'] += duel_cards
+                    result['duel_draws'].update(pid_draws)
+                else:
+                    winner_pid = lead_pid
+                result['winner_pid'] = winner_pid
+
+                # Joker power: only applies if the WINNER played a joker
+                winning_entry = next((e for e in all_tied if e['pid'] == winner_pid), None)
+                if winning_entry and winning_entry['card'].is_joker:
+                    result['joker_powers'] = [winning_entry['card'].joker_type]
+                    result['special_events'].append(
+                        f"🃏 {winner_pid} wins duel with {winning_entry['card'].joker_type} Dragon — power activates!")
+                else:
+                    # Winner played a regular dragon — no joker power fires
+                    result['joker_powers'] = []
+                    if n_jok > 0:
+                        result['special_events'].append(
+                            "🃏 Joker owner(s) lost the duel — dragon powers forfeit.")
+            else:
+                result['winner_pid'] = lead_pid
 
     # Space Dragon — fires if Space Dragon is in the step AND winner holds it or beat it with Tamer
     space_j = next((e for e in valid if e['card'].joker_type == 'space'), None)
@@ -1180,6 +1175,8 @@ class DragonTamerGame:
         self._claimed_cids: set = set()
         self.final_snapshot: dict = {}
         self._skipped_this_round: set = set()  # pids skipping the current round
+        # Arrange-hand phase — set of human pids still pending confirmation
+        self._pending_arrange_pids: set = set()
 
     def add_player(self, pid: str, name: str, is_ai: bool = False,
                    ai_strategy: str = 'Balanced') -> dict:
@@ -1538,7 +1535,7 @@ class DragonTamerGame:
         events = [{'type': 'cards_picked', 'pid': pid, 'count': n}]
 
         if self._all_picked():
-            events += self._start_reveal()
+            events += self._start_arrange_phase()
 
         return events
 
@@ -2374,6 +2371,58 @@ class DragonTamerGame:
             return False          # has cards but hasn't picked yet (human or AI mid-loop)
         return True
 
+    def _start_arrange_phase(self) -> List[dict]:
+        """Enter ARRANGE_HAND phase.
+        AIs sort their remaining hand immediately by strategy and are auto-ready.
+        Human players must confirm via player_ready_arrange().
+        """
+        self.phase = Phase.ARRANGE_HAND
+        events = []
+
+        # AI players: sort hand now, mark ready immediately
+        for p in self.players.values():
+            if p.is_ai and not p.out:
+                ai_sort_hand(p)
+
+        # Human players: collect who needs to confirm
+        human_pending = [
+            p.pid for p in self.players.values()
+            if not p.is_ai and not p.out
+            and p.pid not in self._skipped_this_round
+        ]
+        self._pending_arrange_pids = set(human_pending)
+
+        # Send updated hands (now in strategy order for AIs)
+        events += self._send_hands()
+
+        if not self._pending_arrange_pids:
+            # All-AI game — skip straight to reveal
+            events += self._start_reveal()
+        else:
+            events.append({
+                'type': 'phase_change',
+                'phase': Phase.ARRANGE_HAND,
+                'pending_pids': human_pending,
+            })
+
+        return events
+
+    def player_ready_arrange(self, pid: str) -> List[dict]:
+        """Human confirms hand arrangement — remove from pending, start reveal when all done."""
+        if self.phase != Phase.ARRANGE_HAND:
+            return [{'type': 'error', 'msg': 'Not in arrange_hand phase'}]
+        p = self.players.get(pid)
+        if not p or p.out:
+            return [{'type': 'error', 'msg': 'Invalid player'}]
+
+        self._pending_arrange_pids.discard(pid)
+        events = [{'type': 'arrange_ready', 'pid': pid}]
+
+        if not self._pending_arrange_pids:
+            events += self._start_reveal()
+
+        return events
+
     def _start_reveal(self) -> List[dict]:
         self.assert_card_integrity(f'round={self.round} reveal_start')
         self.phase = Phase.REVEAL
@@ -2415,13 +2464,11 @@ class DragonTamerGame:
             valid_cids = [cid for cid in deduped if cid in hand_map]
             p.battle = [hand_map[cid] for cid in valid_cids]
             p.hand   = [c for c in p.hand if c.cid not in set(valid_cids)]
-            # Sort remaining hand by strategy (affects duel draws and portal vulnerability)
-            ai_sort_hand(p)
             events.append({'type': 'cards_picked', 'pid': p.pid, 'count': len(valid_cids)})
 
         # Now check if everyone is ready
         if self._all_picked():
-            events += self._start_reveal()
+            events += self._start_arrange_phase()
 
         return events
 
@@ -2442,6 +2489,7 @@ class DragonTamerGame:
             'players': {pid: p.public_dict() for pid, p in self.players.items()},
             'order': self.order,
             'log': self.event_log[-20:],
+            'pending_arrange_pids': list(self._pending_arrange_pids),
         }
 
     def player_state(self, pid: str) -> dict:

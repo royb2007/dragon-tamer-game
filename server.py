@@ -214,6 +214,15 @@ async def handle_reorder_hand(ws, data):
         await send(ws, ev)
 
 
+async def handle_ready_arrange(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+
+    events = game.player_ready_arrange(meta['pid'])
+    await broadcast_events(meta['room_id'], events)
+
+
 async def handle_reveal(ws, data):
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
@@ -388,6 +397,7 @@ HANDLERS = {
     'declare':       handle_declare,
     'pick_cards':    handle_pick_cards,
     'reorder_hand':  handle_reorder_hand,
+    'ready_arrange': handle_ready_arrange,
     'reveal':               handle_reveal,
     'sleeping_choice':      handle_sleeping_choice,
     'forced_wake_chosen':   handle_forced_wake_chosen,

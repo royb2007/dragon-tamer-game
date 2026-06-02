@@ -651,7 +651,7 @@ let _rejoining=false;     // BUG1: blocks duplicate rejoin sends
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
 const PHASE_LABELS = {waiting:'Lobby',leader_declare:'Declaring',pick_cards:'Picking',
-                      reveal:'Reveal',end_round:'End Round',game_over:'Game Over'};
+                      arrange_hand:'Arranging',reveal:'Reveal',end_round:'End Round',game_over:'Game Over'};
 
 // ── Pip layout: [x%, y%] within pip-area for each rank ──
 const PIP_LAYOUTS = {
@@ -842,6 +842,10 @@ function mainAction() {
     // Engine plays cards in reverse of the submitted order (rev_idx), so reverse
     // here so that badge "1" (first selected) plays in step 1 as expected.
     send({type:'pick_cards',card_cids:[...selectedCardCids].reverse()});
+  } else if (phase==='arrange_hand') {
+    send({type:'ready_arrange'});
+    document.getElementById('mainBtn').disabled=true;
+    document.getElementById('mainBtn').textContent='Waiting for battle to start...';
   } else if (phase==='reveal') send({type:'reveal'});
   else if (phase==='sleeping') sendSleepingChoice('pass',null,null,null);
 }
@@ -918,6 +922,14 @@ function handleMessage(msg) {
           if(pb) pb.textContent='\uD83C\uDCCF Cards submitted \u2014 waiting for others';
         }
       }
+      // Restore arrange state: if player already sent ready_arrange, show waiting
+      if(msg.state?.phase==='arrange_hand'){
+        const pending=msg.state?.pending_arrange_pids||[];
+        if(!pending.includes(myPid)){
+          const mb=document.getElementById('mainBtn');
+          if(mb){ mb.textContent='Waiting for battle to start...'; mb.disabled=true; }
+        }
+      }
       setConnStatus(true,'Reconnected');
       addLog('\uD83D\uDD04 Reconnected to game','imp');
       break;
@@ -964,6 +976,14 @@ function handleMessage(msg) {
         }
       }
       addLog(`${nameOf(msg.pid)} is ready (${msg.count} cards)`);
+      break;
+
+    case 'arrange_ready':
+      if(msg.pid===myPid){
+        // Already handled by mainAction — button disabled there
+      } else {
+        addLog(`${nameOf(msg.pid)} is set`);
+      }
       break;
 
     case 'step_revealed': {
@@ -1179,6 +1199,14 @@ function setPhase(newPhase, data) {
     banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
     mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
     mainBtn.disabled=true;
+    renderHand();
+
+  } else if(newPhase==='arrange_hand'){
+    banner.className='phase-bar pick';
+    banner.textContent='\uD83C\uDCCF Arrange your hand — drag to reorder, then confirm';
+    mainBtn.textContent='READY \u2014 START BATTLE \u25b6';
+    mainBtn.disabled=false;
+    _tapPickedIdx=null;  // reset any in-progress tap-reorder
     renderHand();
 
   } else if(newPhase==='reveal'){
