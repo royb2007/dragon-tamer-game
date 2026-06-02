@@ -516,6 +516,11 @@ body::before{content:'';position:fixed;inset:0;
     <h2 id="goTitle">Game Over</h2>
     <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
     <p id="goText"></p>
+    <!-- Last battle snapshot -->
+    <div class="hidden" id="goLastBattle" style="margin:10px 0 4px;">
+      <div style="font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin-bottom:6px;text-align:center;">— LAST BATTLE —</div>
+      <div id="goLastBattleRows"></div>
+    </div>
     <!-- Dragon cards won (shown for winner) -->
     <div class="go-dragons-row hidden" id="goDragonCards"></div>
     <!-- All players' final hands -->
@@ -947,6 +952,14 @@ function handleMessage(msg) {
         _iPickedThisRound=true;
         const btn=document.getElementById('mainBtn');
         btn.disabled=true; btn.textContent='Waiting for others...';
+      } else if(phase==='pick_cards' && !_iPickedThisRound){
+        // Another player picked — re-assert our button state in case something disrupted it
+        const need=pickNeed();
+        const btn=document.getElementById('mainBtn');
+        if(selectedCardCids.length>=need && need>0){
+          btn.disabled=false;
+          btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+        }
       }
       addLog(`${nameOf(msg.pid)} is ready (${msg.count} cards)`);
       break;
@@ -1060,7 +1073,9 @@ function handleMessage(msg) {
       break;
 
     case 'game_over':
-      showGameOver(msg); break;
+      // Delay overlay so player sees the last step result before game-over screen appears
+      setTimeout(()=>showGameOver(msg), 1800);
+      break;
 
     case 'rooms':
       renderRoomList(msg.rooms); break;
@@ -1818,6 +1833,16 @@ function showGameOver(msg) {
   document.getElementById('goText').textContent=isMe
     ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
     :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
+  // Snapshot the current battle display into the overlay so player can review the last step
+  const battleRows=document.getElementById('battleRows');
+  const goLastBattle=document.getElementById('goLastBattle');
+  const goLastBattleRows=document.getElementById('goLastBattleRows');
+  if(battleRows && battleRows.innerHTML.trim()){
+    goLastBattleRows.innerHTML=battleRows.innerHTML;
+    goLastBattle.classList.remove('hidden');
+  } else {
+    goLastBattle.classList.add('hidden');
+  }
   // Show the winner's actual dragon cards
   const dragonRow=document.getElementById('goDragonCards');
   dragonRow.innerHTML='';
@@ -1930,3 +1955,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
