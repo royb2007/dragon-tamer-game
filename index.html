@@ -567,6 +567,32 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
+<!-- ══ JOKER POWER CHOICE (both Time + Space Dragon in same battle) ══ -->
+<div class="overlay hidden" id="jokerPowerOverlay">
+  <div class="modal">
+    <h2>🃏 Two Joker Powers!</h2>
+    <div class="dragon-row">⏳🌌</div>
+    <p>You won a battle with both Jokers. Choose which power to activate — only one takes effect:</p>
+    <div class="modal-btns">
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('time')"
+              style="border-color:#E8A020;color:#E8A020;">
+        ⏳ Time Dragon — Back, Forward, or Nothing
+      </button>
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('space')"
+              style="border-color:#9B59B6;color:#C39BD3;">
+        🌌 Space Dragon — Swap seats
+      </button>
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('nothing')"
+              style="border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);">
+        ✗ Neither — Do Nothing
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ROUND END SUMMARY OVERLAY ══ -->
 <div class="overlay hidden" id="roundEndOverlay">
   <div class="modal">
@@ -818,7 +844,10 @@ function setSteps(n) {
 }
 function setSuit(s) {
   selectedSuit=s;
-  document.querySelectorAll('.suit-btn').forEach((b,i)=>b.classList.toggle('active',['Hearts','Clubs','Diamonds','Spades'][i]===s));
+  const map={Hearts:'suitH',Clubs:'suitC',Diamonds:'suitD',Spades:'suitS'};
+  document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('active'));
+  const target=document.getElementById(map[s]);
+  if(target) target.classList.add('active');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1046,7 +1075,24 @@ function handleMessage(msg) {
 
     case 'space_dragon_choose_swap':
       if(msg.space_pid===myPid) showSpaceDragonModal(msg);
-      else addLog(`🌌 ${nameOf(msg.space_pid)} plays Space Dragon — choosing a swap target...`);
+      else addLog(`\uD83C\uDF0C ${nameOf(msg.space_pid)} plays Space Dragon \u2014 choosing a swap target...`);
+      break;
+
+    case 'time_dragon_choose':
+      if(msg.pid===myPid){
+        showTimeDragonModal(null, msg);
+      } else {
+        addLog(`\u23F3 ${nameOf(msg.pid)} holds Time Dragon power \u2014 choosing...`);
+      }
+      break;
+
+    case 'joker_choose_power':
+      // Human won a battle with BOTH Time and Space Dragon — must choose which power to use
+      if(msg.pid===myPid){
+        showJokerPowerModal(msg);
+      } else {
+        addLog(`\uD83C\uDCCF ${nameOf(msg.pid)} chooses Joker power...`);
+      }
       break;
 
     case 'seat_swap':
@@ -1771,7 +1817,7 @@ function hideBattle() {
 // ══════════════════════════════════════════════════════
 function showTimeDragonModal(ev, msg) {
   // BUG3: "Back in Time" is only impossible on step 1 (no previous step exists)
-  const hasPrev = (msg.step||1) > 1;
+  const hasPrev = msg?.has_prev !== undefined ? msg.has_prev : ((msg?.step||1) > 1);
   document.getElementById('timeDragonText').textContent=
     hasPrev
       ? 'The Time Dragon grants you power! Go back and claim the previous step\'s cards, or leap forward and skip your next round.'
@@ -1779,6 +1825,27 @@ function showTimeDragonModal(ev, msg) {
   const backBtn=document.getElementById('timeBackBtn');
   backBtn.style.opacity=hasPrev?'1':'.35'; backBtn.disabled=!hasPrev;
   document.getElementById('timeDragonOverlay').classList.remove('hidden');
+}
+
+let _pendingJokerMsg=null;  // stored joker_choose_power msg, used by resolveJokerPower
+function showJokerPowerModal(msg) {
+  _pendingJokerMsg=msg;
+  document.getElementById('jokerPowerOverlay').classList.remove('hidden');
+}
+function resolveJokerPower(power) {
+  document.getElementById('jokerPowerOverlay').classList.add('hidden');
+  if(power==='nothing'){
+    send({type:'joker_power_chosen', power:'nothing'});
+    addLog('\uD83C\uDCCF Joker powers fade — do nothing.','imp');
+  } else if(power==='time'){
+    // Show time dragon modal next
+    send({type:'joker_power_chosen', power:'time'});
+    // Time dragon choose event will arrive from server — wait for it
+  } else if(power==='space'){
+    send({type:'joker_power_chosen', power:'space'});
+    // Space dragon choose event will arrive from server — wait for it
+  }
+  _pendingJokerMsg=null;
 }
 function resolveTimeDragon(choice) {
   document.getElementById('timeDragonOverlay').classList.add('hidden');
@@ -2032,12 +2099,13 @@ function updateDeclarePanel(phase, data) {
       if(i+1 === steps) b.classList.add('display-only','active');
       else b.classList.add('inactive');
     });
-    document.querySelectorAll('.suit-btn').forEach((b,i) => {
-      const suits = ['Hearts','Clubs','Diamonds','Spades'];
+    document.querySelectorAll('.suit-btn').forEach(b => {
       b.classList.remove('active','inactive','display-only');
-      if(suits[i] === el) b.classList.add('display-only','active');
-      else b.classList.add('inactive');
+      b.classList.add('inactive');
     });
+    const suitIdMap={Hearts:'suitH',Clubs:'suitC',Diamonds:'suitD',Spades:'suitS'};
+    const activeBtn=document.getElementById(suitIdMap[el]);
+    if(activeBtn){ activeBtn.classList.remove('inactive'); activeBtn.classList.add('display-only','active'); }
     const ll = document.getElementById('declareLeaderLine');
     if(ll) ll.textContent = `👑 ${nameOf(leaderPid)} · ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
   } else if(phase === 'waiting' || phase === 'end_round') {
@@ -2061,4 +2129,5 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
 

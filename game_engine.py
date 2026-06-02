@@ -2168,13 +2168,10 @@ class DragonTamerGame:
                     p.hand.append(c); existing.add(c.cid)
             p.battle = []
             p.accum  = []
-            # Reset hand_order: keep existing relative order, new cards appended at end.
-            # AI will re-sort in _start_pick_phase; human order preserved for known cards.
-            if p.hand_order:
-                old_order = [cid for cid in p.hand_order if any(c.cid==cid for c in p.hand)]
-                new_cids  = [c.cid for c in p.hand if c.cid not in set(old_order)]
-                p.hand_order = old_order + sorted(new_cids,
-                    key=lambda cid: _default_sort_key(next(c for c in p.hand if c.cid==cid)))
+            # Reset hand_order fully each round — all cards (old + newly won) return
+            # to default sort (strongest-left) via ordered_hand's fallback.
+            # Player reorders during arrange_hand; no memory of previous custom order.
+            p.hand_order = []
 
         self._claimed_cids = set()  # reset for next round
 
