@@ -87,6 +87,9 @@ async def broadcast_events(room_id: str, events: list,
             # Broadcast to all
             await broadcast(room_id, event)
 
+    # Yield to event loop so WebSocket buffers flush before AI computation
+    await asyncio.sleep(0)
+
     # ── Auto-trigger AI actions ──────────────────────────────
     # If leader_declare phase and leader is AI → auto-declare
     if game.phase == Phase.LEADER_DECLARE:
