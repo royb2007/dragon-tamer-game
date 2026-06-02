@@ -1212,6 +1212,14 @@ function setPhase(newPhase, data) {
     // Don't hide battle while round-end overlay is showing — player hasn't seen results yet.
     if(!_roundEndOverlayVisible) hideBattle();
     selectedCardCids=[];   // clear stale badges from previous round's card selection
+
+    // Reset declaration controls to defaults each round — stale values from last round
+    // would cause wrong steps/element to be sent or wrong lightning to show.
+    selectedSteps=3; selectedSuit='Hearts';
+    setSteps(3); setSuit('Hearts');
+    // Clear stale declared_el so no lightning shows before the new declaration is made
+    if(gameState) gameState.declared_el=null;
+
     const leaderPid = data.leader_pid || gameState?.lead_pid;
     // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
@@ -2129,5 +2137,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 
