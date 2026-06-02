@@ -1566,10 +1566,10 @@ function renderHand() {
   if(!me?.hand) return;
   const alreadyPicked=_iPickedThisRound;
   const isPick=phase==='pick_cards' && !alreadyPicked;
-  const canReorder = !alreadyPicked && phase!=='reveal';  // allow reorder outside pick too
+  const canReorder = phase==='arrange_hand';  // reorder ONLY during arrange_hand phase
   const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
   document.getElementById('handTitle').textContent=
-    isPick?`Your Hand — select ${need}`:`Your Hand (${me.hand.length} cards)`;
+    isPick?`Your Hand \u2014 select ${need}`:`Your Hand (${me.hand.length} cards)`;
 
   // Server sends hand in display order (engine's ordered_hand). Use it directly.
   const cards = me.hand;
@@ -1579,29 +1579,25 @@ function renderHand() {
     const orderIdx=selectedCardCids.indexOf(card.cid);
     const cardEl=renderCardEl(card,isPick,isSelected,orderIdx);
 
-    // ── Portal steal indicator: leftmost card ──
-    if(idx===0 && me.hand.length>0){
+    // ── Portal steal indicator: leftmost card (shown during arrange_hand) ──
+    if(canReorder && idx===0 && me.hand.length>0){
       const dot=document.createElement('span');
-      dot.title='Portal target — leftmost card is stolen first';
+      dot.title='Portal target \u2014 leftmost card stolen first';
       dot.style.cssText='position:absolute;top:2px;left:50%;transform:translateX(-50%);'
-        +'font-size:8px;color:#00CED1;opacity:.7;pointer-events:none;z-index:5;';
-      dot.textContent='🌀';
+        +'font-size:8px;color:#00CED1;opacity:.8;pointer-events:none;z-index:5;';
+      dot.textContent='\uD83C\uDF00';
       cardEl.style.position='relative';
       cardEl.appendChild(dot);
     }
 
-    // ── Tap-to-move (mobile & desktop fallback) ──
     if(canReorder){
-      cardEl.dataset.idx=idx;
-      cardEl.addEventListener('touchstart', e=>{
-        if(isPick) return;  // in pick mode, taps select cards; reorder via long-press only
-        e.preventDefault();
-        _handleTapReorder(idx);
-      }, {passive:false});
-    }
+      // ── Tap-picked highlight ──
+      if(_tapPickedIdx===idx) cardEl.classList.add('tap-picked');
 
-    // ── Drag-and-drop (desktop) ──
-    if(canReorder){
+      // ── Tap-to-move: use click so it works on both mobile and desktop ──
+      cardEl.addEventListener('click', ()=>_handleTapReorder(idx));
+
+      // ── Drag-and-drop (desktop) ──
       cardEl.draggable=true;
       cardEl.addEventListener('dragstart', e=>{
         _dragSrcIdx=idx;
@@ -1618,9 +1614,7 @@ function renderHand() {
         e.dataTransfer.dropEffect='move';
         cardEl.classList.add('drag-over');
       });
-      cardEl.addEventListener('dragleave', ()=>{
-        cardEl.classList.remove('drag-over');
-      });
+      cardEl.addEventListener('dragleave', ()=>cardEl.classList.remove('drag-over'));
       cardEl.addEventListener('drop', e=>{
         e.preventDefault();
         cardEl.classList.remove('drag-over');
@@ -1631,9 +1625,6 @@ function renderHand() {
 
     // ── Pick-mode click ──
     if(isPick) cardEl.addEventListener('click', ()=>toggleCard(card.cid,need));
-
-    // ── Tap-picked highlight ──
-    if(_tapPickedIdx===idx) cardEl.classList.add('tap-picked');
 
     el.appendChild(cardEl);
   });
@@ -2068,4 +2059,5 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
 

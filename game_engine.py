@@ -968,9 +968,9 @@ def ai_sleeping_choice(player: PlayerState) -> dict:
 _SUIT_DISPLAY_ORDER = {'Hearts': 0, 'Diamonds': 1, 'Clubs': 2, 'Spades': 3}
 
 def _default_sort_key(c: Card) -> tuple:
-    """Default hand display sort: rank ascending (2→A), then suit Hearts→Spades.
-    Jokers (orig_rank 14) sort last."""
-    return (99 if c.is_joker else c.orig_rank,
+    """Default hand display sort: rank descending (A→2), strongest card leftmost.
+    Jokers (orig_rank 14) sort first (strongest). Suit is secondary tiebreaker."""
+    return (-(99 if c.is_joker else c.orig_rank),
             _SUIT_DISPLAY_ORDER.get(c.suit, 4))
 
 
