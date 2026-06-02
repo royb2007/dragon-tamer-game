@@ -1219,8 +1219,7 @@ function setPhase(newPhase, data) {
     document.getElementById('stepNum').textContent=nextStep;
     renderStepDots(nextStep);
     mainBtn.textContent=`REVEAL STEP ${nextStep}`;
-
-  } else if(newPhase==='sleeping'){
+    mainBtn.disabled=false;
     banner.className='phase-bar declare';
     const isMyTurn = data.pending_pids ? data.pending_pids.includes(myPid) : true;
 
@@ -1749,7 +1748,9 @@ function renderBattleStep(msg) {
   if(msg.step<total){
     const next=msg.step+1;
     banner.textContent=`⚔ Step ${next} of ${total}`;
-    document.getElementById('mainBtn').textContent=`REVEAL STEP ${next}`;
+    const mb=document.getElementById('mainBtn');
+    mb.textContent=`REVEAL STEP ${next}`;
+    mb.disabled=false;
     renderStepDots(next);
   } else {
     banner.className='phase-bar end';
@@ -2059,5 +2060,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 
