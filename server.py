@@ -77,7 +77,7 @@ async def broadcast_events(room_id: str, events: list,
         if meta.get('room_id') == room_id:
             pid_to_ws[meta['pid']] = ws
 
-    for event in events:
+    for i, event in enumerate(events):
         if event['type'] == 'hand_update':
             # Send only to the relevant player
             target_ws = pid_to_ws.get(event['pid'])
@@ -86,6 +86,9 @@ async def broadcast_events(room_id: str, events: list,
         else:
             # Broadcast to all
             await broadcast(room_id, event)
+        # Yield every 5 events so WebSocket buffers can flush during large batches
+        if i % 5 == 4:
+            await asyncio.sleep(0)
 
     # Yield to event loop so WebSocket buffers flush before AI computation
     await asyncio.sleep(0)
@@ -278,22 +281,25 @@ async def handle_princess_choose_tamer(ws, data):
 
 
 async def handle_joker_power(ws, data):
-    """Receives the player's joker power choice and applies it to the game state."""
+    """Human player's Time Dragon choice (back/forward/nothing)."""
     meta = socket_meta.get(ws, {})
-    pid    = meta.get('pid', '')
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
     power  = data.get('power', '')
     choice = data.get('choice', '')
-    log.info(f"joker_power from {meta.get('name','?')}: power={power} choice={choice}")
+    if power == 'time' and choice in ('back', 'forward', 'nothing'):
+        events = game.time_dragon_choice(meta['pid'], choice)
+        await broadcast_events(meta['room_id'], events)
+
+
+async def handle_joker_power_chosen(ws, data):
+    """Human player chose which Joker power to use when both Time and Space Dragon present."""
+    meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
-    if not game:
-        return
-    if power == 'time':
-        # Time dragon is auto-resolved by the engine for both AI and human —
-        # the client modal is purely informational; no server action needed.
-        log.info(f"joker_power/time from {meta.get('name','?')} ignored (engine auto-resolved)")
-    elif power == 'space':
-        # Space Dragon human choice now uses the dedicated 'space_dragon_swap' message.
-        log.info(f"joker_power/space from {meta.get('name','?')} ignored (use space_dragon_swap)")
+    if not game: return
+    power = data.get('power', '')
+    events = game.joker_power_chosen(meta['pid'], power)
+    await broadcast_events(meta['room_id'], events)
 
 
 async def handle_space_dragon_swap(ws, data):
@@ -405,6 +411,7 @@ HANDLERS = {
     'sleeping_choice':      handle_sleeping_choice,
     'forced_wake_chosen':   handle_forced_wake_chosen,
     'joker_power':          handle_joker_power,
+    'joker_power_chosen':   handle_joker_power_chosen,
     'space_dragon_swap':    handle_space_dragon_swap,
     'portal_target':        handle_portal_target,
     'princess_choose_tamer': handle_princess_choose_tamer,

@@ -1275,6 +1275,9 @@ function setPhase(newPhase, data) {
     // Rejoin gives current_step (0-based already played), so next = current_step+1
     const nextStep = data.next_step || data.step ||
                      (data.current_step != null ? data.current_step + 1 : 1);
+    // If starting from step 1, clear any leftover battle content from previous round
+    // (e.g. when Time Dragon "Forward" skips leader_declare so hideBattle never ran)
+    if(nextStep===1) hideBattle();
     banner.className='phase-bar reveal';
     banner.textContent=`⚔ Step ${nextStep} of ${gameState?.declared_steps||'?'}`;
     document.getElementById('battleSection').classList.remove('hidden');
@@ -2144,5 +2147,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 
