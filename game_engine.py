@@ -238,13 +238,23 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
         pid_entries.setdefault(e['pid'], []).append(e)
 
     resolved_valid = []
+    # Pre-check: is there a Dragon in the step (from ANY player)?
+    step_has_dragon = any(e['card'].is_dragon for e in valid)
+
     for pid, player_entries in pid_entries.items():
         if len(player_entries) == 1:
             resolved_valid.append(player_entries[0])
         else:
-            # Player has multiple cards (portal + stolen) — use best-ranked for competition
-            best_entry = max(player_entries,
-                             key=lambda e: e['card'].effective_rank(el or 'Hearts'))
+            # Player has multiple cards (portal + stolen).
+            # Best card for resolution uses GAME PRIORITY, not just rank:
+            # If a Dragon is present in the step and player has a Tamer among their cards,
+            # the Tamer is their best card (Tamer beats all Dragons — highest priority).
+            tamer_entries = [e for e in player_entries if e['card'].is_tamer]
+            if step_has_dragon and tamer_entries:
+                best_entry = tamer_entries[0]  # Tamer wins by rule, rank irrelevant
+            else:
+                best_entry = max(player_entries,
+                                 key=lambda e: e['card'].effective_rank(el or 'Hearts'))
             other_entries = [e for e in player_entries if e is not best_entry]
             combined = dict(best_entry)
             combined['portal_extras'] = [e['card'] for e in other_entries]
@@ -2488,6 +2498,7 @@ class DragonTamerGame:
             'order': self.order,
             'log': self.event_log[-20:],
             'pending_arrange_pids': list(self._pending_arrange_pids),
+            'pending_sleeping_pids': list(getattr(self, '_sleeping_pending', [])),
         }
 
     def player_state(self, pid: str) -> dict:
