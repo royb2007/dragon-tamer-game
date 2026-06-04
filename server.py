@@ -355,10 +355,10 @@ async def handle_rejoin(ws, data):
     """Re-associate a reconnected WebSocket with an existing room/player."""
     room_id = data.get('room_id', '').upper()
     pid     = data.get('pid', '')
-    # BUG1: rate-limit to one rejoin per pid per room per second
+    # Rate-limit to one rejoin per pid per room per 3 seconds
     key = (room_id, pid)
     now = time.monotonic()
-    if now - _rejoin_ts.get(key, 0.0) < 1.0:
+    if now - _rejoin_ts.get(key, 0.0) < 3.0:
         return
     _rejoin_ts[key] = now
     game    = rooms.get_room(room_id)

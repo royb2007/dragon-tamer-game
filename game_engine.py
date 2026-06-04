@@ -452,10 +452,14 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
 
     # ── Wizard normal power (no dragon present, no tamer) ──
     # Wizard beats all cards of its own suit up to King (rank ≤ 13).
-    # Two Wizards: higher effective rank wins; equal → duel.
+    # If a Wizard beats a King of its own suit, it INHERITS the King's cross-suit power:
+    # the Wizard-as-King beats ALL remaining cards — just as a King would — except
+    # another King-inheriting Wizard of a different suit (→ duel between them).
     if wizards and not has_dragon and not combat_tamers:
-        # Find the best non-wizard non-dragon cards
         non_wizard_entries = [e for e in valid if not e['card'].is_wizard]
+
+        # Track which wizards absorbed a same-suit King
+        king_inheriting_wizards = []
         for w_entry in wizards:
             w = w_entry['card']
             same_suit_losers = [
@@ -463,12 +467,38 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
                 if e['card'].suit == w.suit and not e['card'].is_dragon
                 and e['card'].orig_rank <= 13
             ]
-            # Remove all cards this wizard beats from competition
-            non_wizard_entries = [
-                e for e in non_wizard_entries if e not in same_suit_losers
-            ]
+            absorbed_king = any(e['card'].orig_rank == 13 for e in same_suit_losers)
+            if absorbed_king:
+                king_inheriting_wizards.append(w_entry)
+            non_wizard_entries = [e for e in non_wizard_entries if e not in same_suit_losers]
 
-        # Now resolve among wizards + any remaining non-wizard cards
+        if king_inheriting_wizards:
+            # King-inheriting Wizard(s) beat all remaining non-wizard cards.
+            # If multiple King-inheriting Wizards → duel among them.
+            # If one King-inheriting Wizard remains → it wins outright.
+            contenders = king_inheriting_wizards
+            if len(contenders) == 1:
+                result['winner_pid'] = contenders[0]['pid']
+                result['special_events'].append(
+                    f"\U0001f9d9 Wizard absorbed King's power — "
+                    f"{contenders[0]['pid']} dominates all!")
+            else:
+                result['special_events'].append(
+                    "\U0001f9d9 Multiple King-powered Wizards — duel!")
+                if all_players:
+                    winner_pid, duel_cards, pid_draws = _run_duel(
+                        contenders, all_players, lead_pid, result['special_events'], el)
+                    result['all_cards'] += duel_cards
+                    result['duel_draws'].update(pid_draws)
+                else:
+                    winner_pid = lead_pid
+                result['winner_pid'] = winner_pid
+            portal_e = next((e for e in valid if e['card'].is_portal), None)
+            if portal_e:
+                result['portal_pid'] = portal_e['pid']
+            return result
+
+        # No King inheritance — resolve among wizards + remaining non-wizard cards
         contenders = wizards + non_wizard_entries
         best_rank = max(e['card'].effective_rank(el) for e in contenders)
         top = [e for e in contenders if e['card'].effective_rank(el) == best_rank]
@@ -478,13 +508,13 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
             winner_card = top[0]['card']
             if winner_card.is_wizard:
                 result['special_events'].append(
-                    f"🧙 Wizard wins: {top[0]['pid']}!")
+                    f"\U0001f9d9 Wizard wins: {top[0]['pid']}!")
             else:
                 result['special_events'].append(
-                    f"🧙 Wizard cleared same-suit cards — {top[0]['pid']} wins with {winner_card.label}!")
+                    f"\U0001f9d9 Wizard cleared same-suit cards — "
+                    f"{top[0]['pid']} wins with {winner_card.label}!")
         else:
-            # Tied wizards (or wizard tied with another card) → duel
-            result['special_events'].append("🧙 Wizard tie — duel!")
+            result['special_events'].append("\U0001f9d9 Wizard tie — duel!")
             if all_players:
                 winner_pid, duel_cards, pid_draws = _run_duel(top, all_players, lead_pid,
                                                    result['special_events'], el)

@@ -703,10 +703,21 @@ const PIP_LAYOUTS = {
 // ══════════════════════════════════════════════════════
 //  WEBSOCKET
 // ══════════════════════════════════════════════════════
+let _reconnectTimer=null;
+let _reconnectAttempts=0;
+
 function connect() {
+  // Cancel any pending reconnect timer
+  if(_reconnectTimer){ clearTimeout(_reconnectTimer); _reconnectTimer=null; }
+  // Close stale socket if open
+  if(ws && ws.readyState !== WebSocket.CLOSED){
+    ws.onclose=null; ws.onerror=null; ws.onmessage=null;
+    try{ ws.close(); }catch(e){}
+  }
   try { ws = new WebSocket(WS_URL); }
-  catch(e) { setConnStatus(false,'Cannot connect'); return; }
+  catch(e) { setConnStatus(false,'Cannot connect'); scheduleReconnect(); return; }
   ws.onopen  = () => {
+    _reconnectAttempts=0;
     setConnStatus(true,'Connected');
     if(myPid && myRoomId && !_rejoining) {
       _rejoining=true;
@@ -714,9 +725,25 @@ function connect() {
       send({type:'rejoin', pid:myPid, room_id:myRoomId});
     }
   };
-  ws.onclose = () => { _rejoining=false; setConnStatus(false,'Disconnected — retrying...'); setTimeout(connect,3000); };
-  ws.onerror = () => { _rejoining=false; setConnStatus(false,'Connection error'); };
+  ws.onclose = () => {
+    _rejoining=false;
+    setConnStatus(false,'Disconnected \u2014 retrying...');
+    scheduleReconnect();
+  };
+  ws.onerror = () => {
+    _rejoining=false;
+    setConnStatus(false,'Connection error');
+  };
   ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch(err) { console.error(err); } };
+}
+
+function scheduleReconnect() {
+  if(_reconnectTimer) return;  // already scheduled
+  _reconnectAttempts++;
+  // Exponential backoff: 3s, 5s, 8s, 12s... capped at 20s, with jitter
+  const base = Math.min(3000 + (_reconnectAttempts - 1) * 2000, 20000);
+  const jitter = Math.random() * 1000;
+  _reconnectTimer = setTimeout(()=>{ _reconnectTimer=null; connect(); }, base + jitter);
 }
 function send(obj) { if (ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 function setConnStatus(ok,text) {
@@ -2158,4 +2185,5 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
 
