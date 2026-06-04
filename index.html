@@ -705,8 +705,11 @@ const PIP_LAYOUTS = {
 // ══════════════════════════════════════════════════════
 let _reconnectTimer=null;
 let _reconnectAttempts=0;
+let _connecting=false;  // true while WebSocket is being established
 
 function connect() {
+  if(_connecting) return;  // already connecting — don't create a second socket
+  _connecting=true;
   // Cancel any pending reconnect timer
   if(_reconnectTimer){ clearTimeout(_reconnectTimer); _reconnectTimer=null; }
   // Close stale socket if open
@@ -715,8 +718,9 @@ function connect() {
     try{ ws.close(); }catch(e){}
   }
   try { ws = new WebSocket(WS_URL); }
-  catch(e) { setConnStatus(false,'Cannot connect'); scheduleReconnect(); return; }
+  catch(e) { _connecting=false; setConnStatus(false,'Cannot connect'); scheduleReconnect(); return; }
   ws.onopen  = () => {
+    _connecting=false;
     _reconnectAttempts=0;
     setConnStatus(true,'Connected');
     if(myPid && myRoomId && !_rejoining) {
@@ -726,11 +730,13 @@ function connect() {
     }
   };
   ws.onclose = () => {
+    _connecting=false;
     _rejoining=false;
     setConnStatus(false,'Disconnected \u2014 retrying...');
     scheduleReconnect();
   };
   ws.onerror = () => {
+    _connecting=false;
     _rejoining=false;
     setConnStatus(false,'Connection error');
   };
@@ -750,8 +756,8 @@ function send(obj) {
     ws.send(JSON.stringify(obj));
   } else {
     console.warn('send() dropped — ws not open:', obj.type, 'readyState:', ws?.readyState);
-    // If connection dropped, trigger reconnect immediately
-    if(!_reconnectTimer) scheduleReconnect();
+    // Only trigger reconnect if not already in progress
+    if(!_connecting && !_reconnectTimer) scheduleReconnect();
   }
 }
 function setConnStatus(ok,text) {
@@ -1250,6 +1256,9 @@ function setPhase(newPhase, data) {
   // Show/hide the declare panel — hide it during sleeping so it doesn't block the sleeping UI
   if(newPhase==='sleeping'){
     declSec.classList.add('hidden');
+    // Always hide battle section during sleeping — prevents stale previous round display
+    if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+    hideBattle();
   } else {
     declSec.classList.remove('hidden');
     hideSleepingSection();
