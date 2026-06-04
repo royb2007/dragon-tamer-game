@@ -908,6 +908,7 @@ function mainAction() {
   _lastActionAt = now;
 
   // Round ended — main button is "CONTINUE TO NEXT ROUND"
+  if(phase==='game_over' || gameState?.phase==='game_over') return;
   if(_awaitingRoundEndContinue){ dismissRoundEnd(); return; }
 
   // If round-end overlay is showing, ignore main button — CONTINUE handles dismissal
@@ -988,6 +989,8 @@ function handleMessage(msg) {
       _iPickedThisRound=false;
       document.getElementById('roundEndOverlay').classList.add('hidden');
       myPid=msg.pid; myRoomId=msg.room_id;
+      // Don't override game_over state with a stale snapshot
+      if(phase==='game_over') break;
       applyState(msg.state);
       // ── Sleeping phase: if player already acted, hide sleeping UI immediately ──
       if(msg.state?.phase==='sleeping'){
@@ -1199,8 +1202,14 @@ function handleMessage(msg) {
       break;
 
     case 'game_over':
-      // Delay overlay so player sees the last step result before game-over screen appears
-      setTimeout(()=>showGameOver(msg), 1800);
+      phase='game_over';
+      if(gameState) gameState.phase='game_over';
+      // Disable button immediately to prevent stray REVEAL clicks during the delay
+      { const mb=document.getElementById('mainBtn');
+        if(mb){ mb.disabled=true; mb.textContent='Game Over...'; }
+      }
+      // Short delay so player sees the last step, then show overlay
+      setTimeout(()=>showGameOver(msg), 600);
       break;
 
     case 'rooms':
