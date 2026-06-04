@@ -745,7 +745,15 @@ function scheduleReconnect() {
   const jitter = Math.random() * 1000;
   _reconnectTimer = setTimeout(()=>{ _reconnectTimer=null; connect(); }, base + jitter);
 }
-function send(obj) { if (ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
+function send(obj) {
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify(obj));
+  } else {
+    console.warn('send() dropped — ws not open:', obj.type, 'readyState:', ws?.readyState);
+    // If connection dropped, trigger reconnect immediately
+    if(!_reconnectTimer) scheduleReconnect();
+  }
+}
 function setConnStatus(ok,text) {
   document.getElementById('connDot').className='conn-dot'+(ok?' connected':' error');
   document.getElementById('connText').textContent=text;
@@ -1322,7 +1330,8 @@ function setPhase(newPhase, data) {
     mainBtn.textContent=`REVEAL STEP ${nextStep}`;
     mainBtn.disabled=false;
     banner.className='phase-bar declare';
-    const isMyTurn = data.pending_pids ? data.pending_pids.includes(myPid) : true;
+    const pendingPids = data.pending_pids || data.pending_sleeping_pids || null;
+    const isMyTurn = pendingPids ? pendingPids.includes(myPid) : true;
 
     // Auto-pass immediately if player has nothing to sleep or wake
     if(isMyTurn){
