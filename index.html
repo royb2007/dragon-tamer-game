@@ -1473,6 +1473,9 @@ function showForcedWakeOverlay(msg) {
 
 function applyState(state) {
   gameState=state;
+  // Sync declared_el from state — prevents stale lightning showing wrong suit
+  if(gameState && state.declared_el !== undefined)
+    gameState.declared_el = state.declared_el || null;
   // If a seat_swap happened after the snapshot was taken, restore the correct order
   if(_confirmedOrder && gameState) gameState.order=_confirmedOrder;
   renderTable(); renderHand();
@@ -2185,5 +2188,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 

@@ -552,7 +552,7 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
         else:
             winner_pid = lead_pid
         result['winner_pid'] = winner_pid
-        # Joker power fires only if a Joker wins
+        # Winner inherits power of any Joker in the duel (whether or not they played a Joker)
         winning_entry = next((e for e in duel_entries if e['pid'] == winner_pid), None)
         if winning_entry and winning_entry['card'].is_joker:
             result['joker_powers'] = [winning_entry['card'].joker_type]
@@ -560,10 +560,14 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
                 f"\U0001f0cf {winner_pid} wins duel \u2014 "
                 f"{winning_entry['card'].joker_type} Dragon power activates!")
         else:
-            result['joker_powers'] = []
+            joker_types = [j['card'].joker_type for j in jokers]
+            result['joker_powers'] = joker_types
             result['special_events'].append(
-                f"\U0001f0cf {winner_pid}'s Dragon wins duel \u2014 Joker power forfeit.")
-        # Fall through to portal detection and Space Dragon handling below
+                f"\U0001f0cf {winner_pid}'s Dragon wins duel \u2014 inherits Joker power(s): {joker_types}!")
+        # Space Dragon power goes to winner if Space Joker was in duel
+        space_j_in_duel = next((j for j in jokers if j['card'].joker_type == 'space'), None)
+        if space_j_in_duel:
+            result['space_dragon_pid'] = winner_pid
 
     # ── Normal resolution (skipped if Joker equality rule already set winner_pid) ──
     if result['winner_pid'] is None:
@@ -600,18 +604,21 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
                     winner_pid = lead_pid
                 result['winner_pid'] = winner_pid
 
-                # Joker power: only applies if the WINNER played a joker
-                winning_entry = next((e for e in all_tied if e['pid'] == winner_pid), None)
-                if winning_entry and winning_entry['card'].is_joker:
-                    result['joker_powers'] = [winning_entry['card'].joker_type]
-                    result['special_events'].append(
-                        f"🃏 {winner_pid} wins duel with {winning_entry['card'].joker_type} Dragon — power activates!")
-                else:
-                    # Winner played a regular dragon — no joker power fires
-                    result['joker_powers'] = []
-                    if n_jok > 0:
+                # Joker power: winner inherits power of any Joker in the tied group
+                jokers_in_duel = [e for e in all_tied if e['card'].is_joker]
+                if jokers_in_duel:
+                    winning_entry = next((e for e in all_tied if e['pid'] == winner_pid), None)
+                    joker_types = [j['card'].joker_type for j in jokers_in_duel]
+                    result['joker_powers'] = joker_types
+                    if winning_entry and winning_entry['card'].is_joker:
                         result['special_events'].append(
-                            "🃏 Joker owner(s) lost the duel — dragon powers forfeit.")
+                            f"\U0001f0cf {winner_pid} wins duel with {winning_entry['card'].joker_type} Dragon \u2014 power activates!")
+                    else:
+                        result['special_events'].append(
+                            f"\U0001f0cf {winner_pid}'s Dragon wins duel \u2014 inherits Joker power(s): {joker_types}!")
+                    # Space Dragon power goes to winner
+                    if any(j['card'].joker_type == 'space' for j in jokers_in_duel):
+                        result['space_dragon_pid'] = winner_pid
             else:
                 result['winner_pid'] = lead_pid
 
@@ -1141,15 +1148,17 @@ def ai_space_dragon_swap(player, active_players):
 def ai_time_dragon_choice(player, prev_step_cards, prev_step_winner_pid):
     strat = player.ai_strategy
     has_prev = bool(prev_step_cards)
-    prev_has_dragon = has_prev and any(c.is_dragon for c in prev_step_cards)
-    prev_big = has_prev and len(prev_step_cards) >= 3
-    if strat in ("Aggressive", "DragonHunter"): return "back" if has_prev else "forward"
-    elif strat in ("Hoarder", "Conservative"): return "back" if has_prev else "nothing"
+    # Never choose "back" if the AI itself won the previous step — already owns those cards
+    prev_useful = has_prev and prev_step_winner_pid != player.pid
+    prev_has_dragon = prev_useful and any(c.is_dragon for c in prev_step_cards)
+    prev_big = prev_useful and len(prev_step_cards) >= 3
+    if strat in ("Aggressive", "DragonHunter"): return "back" if prev_useful else "forward"
+    elif strat in ("Hoarder", "Conservative"): return "back" if prev_useful else "nothing"
     elif strat == "Maximalist": return "back" if prev_big else "forward"
     elif strat == "Minimalist": return "forward"
     elif strat == "Opportunist": return "back" if prev_has_dragon else "forward"
-    elif strat in ("Balanced", "Adaptive", "Purist"): return "back" if has_prev else "forward"
-    else: return "back" if has_prev else "nothing"
+    elif strat in ("Balanced", "Adaptive", "Purist"): return "back" if prev_useful else "forward"
+    else: return "back" if prev_useful else "nothing"
 
 
 def ai_love_tamer_choice(princess_player, tamer_pids, all_players):
@@ -1857,21 +1866,17 @@ class DragonTamerGame:
         winner_pid = result['winner_pid']
         all_cards  = result['all_cards']  # includes stolen card if portal fired
 
-        # Time dragon logic — fires if Time Dragon is in step AND winner holds it or beat it with Tamer
+        # Time Dragon logic — whoever wins the battle gets the power if Time Dragon is present.
+        # This covers: Joker winning its own duel, regular Dragon winning duel, Tamer beating
+        # Dragon(s), Wizard-as-Tamer, Wizard-as-King, or any other winner.
         time_j = next((e for e in entries if e['card'].joker_type == 'time'), None)
-        has_tamer_winner = time_j and any(
-            e['pid'] == winner_pid and e['card'].is_tamer for e in entries
-        )
 
         time_owner_pid = None
-        if time_j:
-            if winner_pid == time_j['pid']:
-                # Time Dragon card owner won directly
-                time_owner_pid = winner_pid
-            elif has_tamer_winner:
-                # A Tamer beat the Time Dragon — Tamer winner gets the power
-                time_owner_pid = winner_pid
-        # else: Time Dragon is in step but its owner lost and no Tamer won — power forfeit
+        if time_j and winner_pid:
+            time_owner_pid = winner_pid
+            if winner_pid != time_j['pid']:
+                result['special_events'].append(
+                    f"\u23f3 {winner_pid} wins battle containing Time Dragon \u2014 inherits power!")
 
         if time_owner_pid:
             time_player = self.players[time_owner_pid]
@@ -2004,6 +2009,16 @@ class DragonTamerGame:
             'special_events': result['special_events'],
             'love_right_pid': result['love_right_pid'],
         }
+
+        # ── Space Dragon: whoever wins gets the power ──
+        space_j = next((e for e in entries if e['card'].joker_type == 'space'), None)
+        if space_j and winner_pid:
+            # Override only if not already set (resolve_step may have set it via Tamer/Wizard)
+            if not result.get('space_dragon_pid'):
+                result['space_dragon_pid'] = winner_pid
+                if winner_pid != space_j['pid']:
+                    result['special_events'].append(
+                        f"\U0001f30c {winner_pid} wins battle containing Space Dragon \u2014 inherits power!")
 
         # ── Space Dragon: pause immediately for seat-swap choice ──
         space_pid = result.get('space_dragon_pid')
