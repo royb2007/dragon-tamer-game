@@ -1204,12 +1204,11 @@ function handleMessage(msg) {
     case 'game_over':
       phase='game_over';
       if(gameState) gameState.phase='game_over';
-      // Disable button immediately to prevent stray REVEAL clicks during the delay
       { const mb=document.getElementById('mainBtn');
         if(mb){ mb.disabled=true; mb.textContent='Game Over...'; }
       }
-      // Short delay so player sees the last step, then show overlay
-      setTimeout(()=>showGameOver(msg), 600);
+      // Show immediately — no delay to avoid race with reconnect/applyState
+      showGameOver(msg);
       break;
 
     case 'rooms':
@@ -2215,4 +2214,6 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
+
 
