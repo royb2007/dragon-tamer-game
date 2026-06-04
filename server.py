@@ -291,7 +291,7 @@ async def handle_joker_power(ws, data):
     power  = data.get('power', '')
     choice = data.get('choice', '')
     if power == 'time' and choice in ('back', 'forward', 'nothing'):
-        events = game.time_dragon_choice(meta['pid'], choice)
+        events = game.time_dragon_chosen(meta['pid'], choice)
         await broadcast_events(meta['room_id'], events)
 
 

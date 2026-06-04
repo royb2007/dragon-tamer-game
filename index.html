@@ -179,8 +179,8 @@ body::before{content:'';position:fixed;inset:0;
 .card-corner{display:flex;flex-direction:column;align-items:center;line-height:1.1;gap:0px;}
 .card-tl{align-self:flex-start;}
 .card-br{align-self:flex-end;transform:rotate(180deg);}
-.corner-rank{font-family:'Cinzel',serif;font-size:14px;font-weight:700;line-height:1;}
-.corner-sym {font-size:11px;line-height:1;}
+.corner-rank{font-family:'Cinzel',serif;font-size:16px;font-weight:700;line-height:1;}
+.corner-sym {font-size:14px;line-height:1;}
 .card.hearts .corner-rank,.card.hearts .corner-sym{color:#8B1515;}
 .card.diamonds .corner-rank,.card.diamonds .corner-sym{color:#8B1515;}
 .card.clubs  .corner-rank,.card.clubs  .corner-sym{color:#e8e0d0;}
@@ -203,14 +203,14 @@ body::before{content:'';position:fixed;inset:0;
 /* Joker special display */
 .joker-inner{position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:3px;}
-.joker-big-sym{font-size:26px;line-height:1;}
-.joker-label{font-family:'Cinzel',serif;font-size:10px;font-weight:700;letter-spacing:2px;}
-.joker-sub{font-family:'Cinzel',serif;font-size:8px;letter-spacing:1px;opacity:.7;}
+.joker-big-sym{font-size:32px;line-height:1;}
+.joker-label{font-family:'Cinzel',serif;font-size:12px;font-weight:700;letter-spacing:2px;}
+.joker-sub{font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;opacity:.7;}
 .card.joker-space .joker-label,.card.joker-space .joker-sub{color:#C39BD3;}
 .card.joker-time  .joker-label,.card.joker-time  .joker-sub{color:#E8A020;}
 
 /* Badge (TAMER / PRINCESS / PORTAL / WIZARD) */
-.card-badge{position:absolute;bottom:18px;font-size:7px;letter-spacing:.8px;
+.card-badge{position:absolute;bottom:18px;font-size:9px;letter-spacing:.8px;
   font-family:'Cinzel',serif;text-align:center;width:100%;padding:0 3px;}
 .card.hearts  .card-badge,.card.diamonds .card-badge{color:rgba(139,21,21,.75);}
 .card.clubs   .card-badge,.card.spades  .card-badge{color:rgba(232,224,208,.6);}
@@ -413,6 +413,12 @@ body::before{content:'';position:fixed;inset:0;
   <div class="top-bar">
     <span class="game-title">DRAGON TAMER</span>
     <span class="round-badge" id="roundBadge">Round 1</span>
+  </div>
+  <!-- Reconnect bar — shown when connection drops -->
+  <div id="reconnectBar" class="hidden" style="background:#8B0000;color:#FFD700;padding:8px 14px;
+    text-align:center;font-family:Cinzel,serif;font-size:13px;font-weight:700;
+    letter-spacing:.5px;cursor:pointer;flex-shrink:0;" onclick="connect()">
+    ⚡ Connection lost — tap here to reconnect
   </div>
   <div class="phase-bar" id="phaseBanner">Waiting...</div>
 
@@ -763,6 +769,9 @@ function send(obj) {
 function setConnStatus(ok,text) {
   document.getElementById('connDot').className='conn-dot'+(ok?' connected':' error');
   document.getElementById('connText').textContent=text;
+  // Show/hide the in-game reconnect bar
+  const bar=document.getElementById('reconnectBar');
+  if(bar) bar.classList.toggle('hidden', ok);
 }
 
 // ══════════════════════════════════════════════════════
@@ -1270,6 +1279,11 @@ function setPhase(newPhase, data) {
   } else {
     declSec.classList.remove('hidden');
     hideSleepingSection();
+    // Hide battle during phases that precede battle — prevents stale display
+    if(newPhase==='leader_declare'||newPhase==='pick_cards'||newPhase==='arrange_hand'){
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      hideBattle();
+    }
   }
 
   if(isSpectator){mainBtn.disabled=true;mainBtn.textContent='👁 Spectating';return;}
@@ -2214,6 +2228,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
-
 
