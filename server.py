@@ -226,6 +226,7 @@ async def handle_ready_arrange(ws, data):
     if not game: return
 
     events = game.player_ready_arrange(meta['pid'])
+    await asyncio.sleep(0)
     await broadcast_events(meta['room_id'], events)
 
 
@@ -252,6 +253,8 @@ async def handle_sleeping_choice(ws, data):
         dragon_cid = int(dragon_cid) if dragon_cid is not None else None,
         pair_index = int(pair_index) if pair_index is not None else None,
     )
+    # Yield before broadcasting so client gets the sleeping_choice ack quickly
+    await asyncio.sleep(0)
     await broadcast_events(meta['room_id'], events)
 
 

@@ -2068,76 +2068,76 @@ function addLog(msg,type='') {
 //  GAME OVER
 // ══════════════════════════════════════════════════════
 function showGameOver(msg) {
-  const isMe=msg.winner_pid===myPid;
-  document.getElementById('goTitle').textContent=isMe?'🏆 You Win!':`${msg.winner_name} Wins!`;
-  document.getElementById('goDragons').textContent='🐉'.repeat(msg.dragons||4);
-  document.getElementById('goText').textContent=isMe
-    ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
-    :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
-  // Snapshot the current battle display into the overlay so player can review the last step
-  const battleRows=document.getElementById('battleRows');
-  const goLastBattle=document.getElementById('goLastBattle');
-  const goLastBattleRows=document.getElementById('goLastBattleRows');
-  if(battleRows && battleRows.innerHTML.trim()){
-    goLastBattleRows.innerHTML=battleRows.innerHTML;
-    goLastBattle.classList.remove('hidden');
-  } else {
-    goLastBattle.classList.add('hidden');
-  }
-  // Show the winner's actual dragon cards
-  const dragonRow=document.getElementById('goDragonCards');
-  dragonRow.innerHTML='';
-  const dragons=msg.all_dragons||[];
-  if(isMe && dragons.length){
-    dragons.forEach(card=>{
-      const wrap=document.createElement('div');
-      wrap.className='battle-card-wrap';
-      wrap.appendChild(renderCardEl(card,false,false,-1));
-      dragonRow.appendChild(wrap);
-    });
-    dragonRow.classList.remove('hidden');
-  } else {
-    dragonRow.classList.add('hidden');
-  }
-  // Show all players' final hands
-  const allHandsEl=document.getElementById('goAllHands');
-  allHandsEl.innerHTML='';
-  const allPlayers=msg.all_players||[];
-  if(allPlayers.length){
-    const hdr=document.createElement('div');
-    hdr.style.cssText='font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin:10px 0 6px;text-align:center;';
-    hdr.textContent='— FINAL HANDS —';
-    allHandsEl.appendChild(hdr);
-    allPlayers.forEach(p=>{
-      const row=document.createElement('div');
-      row.className='go-player-row';
-      const nameEl=document.createElement('div');
-      nameEl.className='go-player-name';
-      const prefix=p.pid===msg.winner_pid?'🏆 ': p.out?'💀 ':'';
-      nameEl.textContent=`${prefix}${p.name}  ·  ${p.dragons}🐉`;
-      const cardsDiv=document.createElement('div');
-      cardsDiv.className='go-player-cards';
-      // hand cards
-      (p.hand||[]).forEach(card=>{
-        const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
-        wrap.appendChild(renderCardEl(card,false,false,-1));
-        cardsDiv.appendChild(wrap);
-      });
-      // sleeping pairs (tamer+dragon shown as the dragon card)
-      (p.sleeping||[]).forEach(pair=>{
-        const d=pair[1];
-        const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
-        wrap.appendChild(renderCardEl(d,false,false,-1));
-        cardsDiv.appendChild(wrap);
-      });
-      row.appendChild(nameEl);
-      row.appendChild(cardsDiv);
-      allHandsEl.appendChild(row);
-    });
-    allHandsEl.classList.remove('hidden');
-  } else {
-    allHandsEl.classList.add('hidden');
-  }
+  try {
+    const isMe=msg.winner_pid===myPid;
+    document.getElementById('goTitle').textContent=isMe?'🏆 You Win!':`${msg.winner_name} Wins!`;
+    document.getElementById('goDragons').textContent='🐉'.repeat(msg.dragons||4);
+    document.getElementById('goText').textContent=isMe
+      ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
+      :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
+    // Snapshot the current battle display into the overlay so player can review the last step
+    try {
+      const battleRows=document.getElementById('battleRows');
+      const goLastBattle=document.getElementById('goLastBattle');
+      const goLastBattleRows=document.getElementById('goLastBattleRows');
+      if(battleRows && battleRows.innerHTML.trim()){
+        goLastBattleRows.innerHTML=battleRows.innerHTML;
+        goLastBattle.classList.remove('hidden');
+      } else { goLastBattle.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver last battle error:',e); }
+    // Show the winner's actual dragon cards
+    try {
+      const dragonRow=document.getElementById('goDragonCards');
+      dragonRow.innerHTML='';
+      const dragons=msg.all_dragons||[];
+      if(isMe && dragons.length){
+        dragons.forEach(card=>{
+          const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+          wrap.appendChild(renderCardEl(card,false,false,-1));
+          dragonRow.appendChild(wrap);
+        });
+        dragonRow.classList.remove('hidden');
+      } else { dragonRow.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver dragons error:',e); }
+    // Show all players' final hands
+    try {
+      const allHandsEl=document.getElementById('goAllHands');
+      allHandsEl.innerHTML='';
+      const allPlayers=msg.all_players||[];
+      if(allPlayers.length){
+        const hdr=document.createElement('div');
+        hdr.style.cssText='font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin:10px 0 6px;text-align:center;';
+        hdr.textContent='— FINAL HANDS —';
+        allHandsEl.appendChild(hdr);
+        allPlayers.forEach(p=>{
+          const row=document.createElement('div'); row.className='go-player-row';
+          const nameEl=document.createElement('div'); nameEl.className='go-player-name';
+          const prefix=p.pid===msg.winner_pid?'🏆 ': p.out?'💀 ':'';
+          nameEl.textContent=`${prefix}${p.name}  ·  ${p.dragons}🐉`;
+          const cardsDiv=document.createElement('div'); cardsDiv.className='go-player-cards';
+          (p.hand||[]).forEach(card=>{
+            try {
+              const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+              wrap.appendChild(renderCardEl(card,false,false,-1));
+              cardsDiv.appendChild(wrap);
+            } catch(e){}
+          });
+          (p.sleeping||[]).forEach(pair=>{
+            try {
+              const d=pair[1];
+              const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+              wrap.appendChild(renderCardEl(d,false,false,-1));
+              cardsDiv.appendChild(wrap);
+            } catch(e){}
+          });
+          row.appendChild(nameEl); row.appendChild(cardsDiv);
+          allHandsEl.appendChild(row);
+        });
+        allHandsEl.classList.remove('hidden');
+      } else { allHandsEl.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver allHands error:',e); }
+  } catch(e){ console.error('showGameOver error:',e); }
+  // Always show the overlay — even if rendering failed above
   document.getElementById('gameOverOverlay').classList.remove('hidden');
 }
 
