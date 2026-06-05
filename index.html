@@ -1151,6 +1151,19 @@ function handleMessage(msg) {
       else addLog(`🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`);
       break;
 
+    case 'time_dragon_applied':
+      { const choice=msg.choice;
+        const icon='\u23F3';
+        if(choice==='back')
+          addLog(`${icon} ${nameOf(msg.pid)} claims previous step's cards!`,'imp');
+        else if(choice==='forward')
+          addLog(`${icon} ${nameOf(msg.pid)} leaps forward — skipping next round!`,'imp');
+        else
+          addLog(`${icon} ${nameOf(msg.pid)} lets the Time Dragon power fade.`);
+        if(msg.msg) addLog(msg.msg,'imp');
+      }
+      break;
+
     case 'space_dragon_choose_swap':
       if(msg.space_pid===myPid) showSpaceDragonModal(msg);
       else addLog(`\uD83C\uDF0C ${nameOf(msg.space_pid)} plays Space Dragon \u2014 choosing a swap target...`);
@@ -1282,14 +1295,18 @@ function setPhase(newPhase, data) {
   // Show/hide the declare panel — hide it during sleeping so it doesn't block the sleeping UI
   if(newPhase==='sleeping'){
     declSec.classList.add('hidden');
-    // Always hide battle section during sleeping — prevents stale previous round display
-    if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-    hideBattle();
+    // Hide battle section during sleeping — but only if not in round-end review
+    // (round_end sets _awaitingRoundEndContinue; player should still see last battle)
+    if(!_awaitingRoundEndContinue){
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      hideBattle();
+    }
   } else {
     declSec.classList.remove('hidden');
     hideSleepingSection();
     // Hide battle during phases that precede battle — prevents stale display
-    if(newPhase==='leader_declare'||newPhase==='pick_cards'||newPhase==='arrange_hand'){
+    if(!_awaitingRoundEndContinue &&
+       (newPhase==='leader_declare'||newPhase==='pick_cards'||newPhase==='arrange_hand')){
       if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
       hideBattle();
     }
@@ -2246,4 +2263,5 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
 
