@@ -2203,8 +2203,14 @@ function showGameOver(msg) {
       } else { allHandsEl.classList.add('hidden'); }
     } catch(e){ console.error('showGameOver allHands error:',e); }
   } catch(e){ console.error('showGameOver error:',e); }
-  // Always show the overlay — even if rendering failed above
-  document.getElementById('gameOverOverlay').classList.remove('hidden');
+  // Always show the overlay — force with both class removal and inline style
+  const goOverlay = document.getElementById('gameOverOverlay');
+  console.log('showGameOver: showing overlay, element=', goOverlay);
+  if(goOverlay){
+    goOverlay.classList.remove('hidden');
+    goOverlay.style.display='flex';
+    goOverlay.style.zIndex='9999';
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2263,5 +2269,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 
