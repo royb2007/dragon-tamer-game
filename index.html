@@ -1010,6 +1010,30 @@ function handleMessage(msg) {
       myPid=msg.pid; myRoomId=msg.room_id;
       // Don't override game_over state with a stale snapshot
       if(phase==='game_over') break;
+      // Don't regress to an earlier phase — if client is already further along than
+      // the snapshot, the snapshot is stale (reconnect happened mid-round).
+      // Phase order: sleeping < pick_cards < arrange_hand < reveal < leader_declare (next round)
+      { const PHASE_ORDER={waiting:0,leader_declare:1,sleeping:2,pick_cards:3,
+                            arrange_hand:4,reveal:5,end_round:6,game_over:7};
+        const snapPhase=msg.state?.phase||'waiting';
+        const snapRound=msg.state?.round||1;
+        const curRound=gameState?.round||1;
+        const curRank=PHASE_ORDER[phase]??0;
+        const snapRank=PHASE_ORDER[snapPhase]??0;
+        // Snapshot is stale if: same round but earlier phase, OR earlier round
+        const snapIsStale = (snapRound < curRound) ||
+                            (snapRound === curRound && snapRank < curRank);
+        if(snapIsStale){
+          addLog('\uD83D\uDD04 Reconnected','imp');
+          if(msg.state && gameState){
+            if(msg.state.players) gameState.players=msg.state.players;
+            const snap_me=msg.state.me||msg.state.players?.[myPid];
+            if(snap_me && !_pendingHandUpdate){ gameState.me=snap_me; renderHand(); }
+          }
+          setConnStatus(true,'Reconnected');
+          break;
+        }
+      }
       applyState(msg.state);
       // ── Sleeping phase: if player already acted, hide sleeping UI immediately ──
       if(msg.state?.phase==='sleeping'){
@@ -2270,5 +2294,4 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
-
 
