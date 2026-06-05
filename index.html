@@ -1459,6 +1459,14 @@ function setPhase(newPhase, data) {
     banner.textContent='✅ Round complete';
     mainBtn.textContent='NEXT ROUND';
   }
+
+  // If the player still needs to click "Continue" after the previous round, always
+  // restore that button regardless of what phase just arrived (sleeping, pick_cards, etc.)
+  // The sleeping auto-pass path returns early above, so its button is already correct.
+  if(_awaitingRoundEndContinue && !isSpectator) {
+    mainBtn.textContent = 'CONTINUE TO NEXT ROUND \u25b6';
+    mainBtn.disabled = false;
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -2110,14 +2118,11 @@ function dismissRoundEnd() {
     _pendingHandUpdate=null;
     renderHand();
   }
-  // Apply buffered leader_declare if it arrived while overlay was showing
-  if(_bufferedLeaderDeclare){
-    const m=_bufferedLeaderDeclare;
-    _bufferedLeaderDeclare=null;
-    setPhase(m.phase, m);
-  } else if(gameState?.phase){
-    setPhase(gameState.phase, gameState);
-  }
+  // Always apply the CURRENT game phase (game may have advanced past leader_declare
+  // during the round-end review window — using the buffered leader_declare would
+  // rewind the UI and leave the player unable to pick cards).
+  _bufferedLeaderDeclare=null;
+  if(gameState?.phase) setPhase(gameState.phase, gameState);
 }
 
 function showPortalModal(msg) {
