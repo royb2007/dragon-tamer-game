@@ -526,11 +526,12 @@ body::before{content:'';position:fixed;inset:0;
 </div>
 
 <!-- ══ GAME OVER MODAL ══ -->
-<div class="overlay hidden" id="gameOverOverlay">
-  <div class="modal">
+<div class="overlay hidden" id="gameOverOverlay" style="align-items:stretch;overflow-y:auto;padding:16px;">
+  <div class="modal" style="max-width:420px;width:100%;margin:auto;max-height:none;">
     <h2 id="goTitle">Game Over</h2>
     <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
     <p id="goText"></p>
+    <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-bottom:16px;">▶ PLAY AGAIN</button>
     <!-- Last battle snapshot -->
     <div class="hidden" id="goLastBattle" style="margin:10px 0 4px;">
       <div style="font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin-bottom:6px;text-align:center;">— LAST BATTLE —</div>
@@ -540,7 +541,7 @@ body::before{content:'';position:fixed;inset:0;
     <div class="go-dragons-row hidden" id="goDragonCards"></div>
     <!-- All players' final hands -->
     <div class="go-all-hands hidden" id="goAllHands"></div>
-    <button class="btn btn-gold btn-full" onclick="location.reload()">Play Again</button>
+    <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-top:16px;">▶ PLAY AGAIN</button>
   </div>
 </div>
 
@@ -2269,4 +2270,5 @@ window.addEventListener('resize',()=>{if(gameState) renderTable();});
 </script>
 </body>
 </html>
+
 
