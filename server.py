@@ -102,6 +102,46 @@ async def broadcast_events(room_id: str, events: list,
             if ai_events:
                 await broadcast_events(room_id, ai_events)
 
+    # If reveal phase and no human players are connected → auto-advance
+    # (handles case where human disconnected mid-battle)
+    if game.phase == Phase.REVEAL:
+        connected_human_pids = {
+            meta['pid'] for ws, meta in socket_meta.items()
+            if meta.get('room_id') == room_id
+            and meta.get('pid')
+            and not meta.get('is_spectator')
+            and meta['pid'] in game.players
+            and not game.players[meta['pid']].out
+        }
+        active_players = [p for p in game.players.values() if not p.out]
+        all_disconnected = all(p.pid not in connected_human_pids and not p.is_ai
+                               for p in active_players
+                               if not p.is_ai)
+        if all_disconnected and active_players:
+            # Use any active player's pid to advance the reveal
+            reveal_pid = active_players[0].pid
+            await asyncio.sleep(1)  # Brief pause so clients can reconnect
+            if game.phase == Phase.REVEAL:  # Re-check in case state changed
+                rev_events = game.reveal_step(reveal_pid)
+                for ev in (rev_events or []):
+                    t = ev.get('type')
+                    if t == 'portal_choose_target':
+                        tgts = ev.get('valid_target_pids', [])
+                        if tgts:
+                            rev_events2 = game.portal_target_chosen(ev['portal_pid'], tgts[0])
+                    elif t == 'time_dragon_choose':
+                        game.time_dragon_choice(ev['pid'], 'nothing')
+                    elif t == 'space_dragon_choose_swap':
+                        game.space_dragon_swap_chosen(ev['space_pid'], None)
+                    elif t == 'joker_choose_power':
+                        game.joker_power_chosen(ev['pid'], 'nothing')
+                    elif t == 'love_choose_tamer':
+                        tpids = ev.get('tamer_pids', [])
+                        if tpids:
+                            game.princess_choose_tamer(ev['princess_pid'], tpids[0])
+                if rev_events:
+                    await broadcast_events(room_id, rev_events)
+
 
 # ══════════════════════════════════════════════════════
 # MESSAGE HANDLERS
