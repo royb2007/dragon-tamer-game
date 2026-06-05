@@ -2249,9 +2249,11 @@ function updateDeclarePanel(phase, data) {
   // Buttons: active only if I'm leader in declare phase
   document.querySelectorAll('.step-btn').forEach(b => {
     b.classList.toggle('inactive', !isActive);
+    if(isActive) b.classList.remove('display-only');
   });
   document.querySelectorAll('.suit-btn').forEach(b => {
     b.classList.toggle('inactive', !isActive);
+    if(isActive) b.classList.remove('display-only');
   });
 
   // If AI declared or game not started — show declared values greyed
