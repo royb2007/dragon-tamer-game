@@ -448,7 +448,6 @@ body::before{content:'';position:fixed;inset:0;
             <button class="step-btn" id="step2" onclick="setSteps(2)">2</button>
             <button class="step-btn" id="step3" onclick="setSteps(3)">3</button>
             <button class="step-btn" id="step4" onclick="setSteps(4)">4</button>
-            <button class="step-btn" id="step5" onclick="setSteps(5)">5</button>
           </div>
         </div>
         <div class="control-row">
@@ -713,6 +712,7 @@ const PIP_LAYOUTS = {
 let _reconnectTimer=null;
 let _reconnectAttempts=0;
 let _connecting=false;  // true while WebSocket is being established
+let _heartbeatTimer=null;  // interval for WS keep-alive pings
 
 function connect() {
   if(_connecting) return;  // already connecting — don't create a second socket
@@ -735,10 +735,20 @@ function connect() {
       setConnStatus(true,'Reconnecting...');
       send({type:'rejoin', pid:myPid, room_id:myRoomId});
     }
+    // Keep-alive: ping every 25s so the connection doesn't silently drop
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
+    _heartbeatTimer=setInterval(()=>{
+      if(ws && ws.readyState===WebSocket.OPEN){
+        try{ ws.send(JSON.stringify({type:'ping'})); }catch(e){}
+      } else {
+        clearInterval(_heartbeatTimer); _heartbeatTimer=null;
+      }
+    }, 25000);
   };
   ws.onclose = () => {
     _connecting=false;
     _rejoining=false;
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
     setConnStatus(false,'Disconnected \u2014 retrying...');
     scheduleReconnect();
   };
@@ -897,6 +907,7 @@ function copyRoomCode(btn) {
 //  DECLARE CONTROLS
 // ══════════════════════════════════════════════════════
 function setSteps(n) {
+  if(n<1||n>4) return;
   selectedSteps=n;
   document.querySelectorAll('.step-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===n));
 }
@@ -1411,6 +1422,8 @@ function setPhase(newPhase, data) {
     renderStepDots(nextStep);
     mainBtn.textContent=`REVEAL STEP ${nextStep}`;
     mainBtn.disabled=false;
+
+  } else if(newPhase==='sleeping'){
     banner.className='phase-bar declare';
     const pendingPids = data.pending_pids || data.pending_sleeping_pids || null;
     const isMyTurn = pendingPids ? pendingPids.includes(myPid) : true;
@@ -1425,7 +1438,7 @@ function setPhase(newPhase, data) {
       hand.forEach(c=>{ if(!c||sleepingCids.has(c.cid)||c.is_joker||!c.suit) return; if(c.is_dragon) dragons[c.suit]=c; if(c.is_tamer) tamers[c.suit]=c; });
       const eligible = Object.keys(dragons).filter(s=>tamers[s]);
       if(!sleeping.length && !eligible.length){
-        // Nothing to do — defer to ensure phase var is settled, guard against stale reconnect calls
+        // Nothing to do — defer to ensure phase var is settled
         setTimeout(()=>{
           if(phase==='sleeping') sendSleepingChoice('pass',null,null,null);
         }, 200);
@@ -1707,7 +1720,7 @@ function renderCardEl(card, isPick, isSelected, orderIdx) {
     ? '<span class="ace-dragon-icon">🐉</span>' : '';
 
   // Badge shows which step this card will play in: pick 1 → step 1, pick 2 → step 2, etc.
-  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx + 1}</span>`:'';
+  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${pickNeed()-orderIdx}</span>`:'';
 
   // 1: blinking bolt for cards matching the declared dominant element
   const isDominant = !card.is_joker 
@@ -2010,7 +2023,7 @@ function showSpaceDragonModal(msg) {
     const btn=document.createElement('button');
     btn.className='btn btn-outline btn-full';
     btn.style.cssText='border-color:#9B59B6;color:#C39BD3;';
-    btn.textContent=`🔄 Swap seats with ${nameOf(pid)}`;
+    btn.textContent=`🔄 Swap seats with ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
     btn.onclick=()=>resolveSpaceDragon(pid);
     btns.appendChild(btn);
   });
@@ -2114,7 +2127,7 @@ function showPortalModal(msg) {
     const btn=document.createElement('button');
     btn.className='btn btn-outline btn-full';
     btn.style.cssText='border-color:#00CED1;color:#40E0D0;';
-    btn.textContent=`🎯 Steal from ${nameOf(pid)}`;
+    btn.textContent=`🎯 Steal from ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
     btn.onclick=()=>{
       document.getElementById('portalOverlay').classList.add('hidden');
       send({type:'portal_target',target_pid:pid});
@@ -2132,7 +2145,7 @@ function showLoveModal(msg) {
     const btn=document.createElement('button');
     btn.className='btn btn-outline btn-full';
     btn.style.cssText='border-color:#FF69B4;color:#FFB6C1;';
-    btn.textContent=`💕 Give lead to ${nameOf(pid)}`;
+    btn.textContent=`💕 Give lead to ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
     btn.onclick=()=>{
       document.getElementById('loveOverlay').classList.add('hidden');
       send({type:'princess_choose_tamer',tamer_pid:pid});

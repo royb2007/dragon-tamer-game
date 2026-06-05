@@ -440,7 +440,11 @@ async def handle_list_rooms(ws, data):
 # ══════════════════════════════════════════════════════
 # MAIN HANDLER
 # ══════════════════════════════════════════════════════
+async def handle_ping(ws, data):
+    await send(ws, {'type': 'pong'})
+
 HANDLERS = {
+    'ping':          handle_ping,
     'create_room':   handle_create_room,
     'join_room':     handle_join_room,
     'rejoin':        handle_rejoin,
@@ -523,6 +527,8 @@ async def main():
     async with websockets.asyncio.server.serve(
         connection_handler, host, port,
         process_request=_http_handler,
+        ping_interval=None,  # disable built-in ping; Replit proxy drops pong frames → spurious timeouts
+        ping_timeout=None,
     ):
         await asyncio.Future()  # run forever
 
