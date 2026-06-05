@@ -981,9 +981,17 @@ function handleMessage(msg) {
 
     case 'hand_update':
       if(msg.pid===myPid){
-        if(!gameState) break;  // can't update without a game state
+        if(!gameState) break;
+        // Buffer hand_update during round-end review — apply after player clicks CONTINUE
+        if(_awaitingRoundEndContinue){
+          _pendingHandUpdate=msg;
+          // Still update dragon count for the table display
+          if(gameState.players?.[myPid]&&msg.dragon_count!=null)
+            gameState.players[myPid].dragon_count=msg.dragon_count;
+          renderTable();
+          break;
+        }
         gameState.me=msg;
-        // BUG5: keep avatar dragon counter in sync with hand_update dragon_count
         if(gameState.players?.[myPid]&&msg.dragon_count!=null)
           gameState.players[myPid].dragon_count=msg.dragon_count;
         renderHand();renderTable();
@@ -996,6 +1004,7 @@ function handleMessage(msg) {
       _awaitingRoundEndContinue=false;
       _roundEndOverlayVisible=false;
       _iPickedThisRound=false;
+      _pendingHandUpdate=null;
       document.getElementById('roundEndOverlay').classList.add('hidden');
       myPid=msg.pid; myRoomId=msg.room_id;
       // Don't override game_over state with a stale snapshot
@@ -1991,6 +2000,7 @@ let _stepWins={};          // pid → wins this round, reset on each round_end c
 let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
 let _iPickedThisRound=false;   // true after myPid sends cards_picked; cleared each pick phase
 let _confirmedOrder=null;      // most recent seat order from seat_swap; survives applyState
+let _pendingHandUpdate=null;   // hand_update buffered during round-end review
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
@@ -2037,6 +2047,14 @@ function dismissRoundEnd() {
   _pendingRoundEndMsg=null;
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
+  // Apply buffered hand_update (new round's hand) now that player has reviewed last step
+  if(_pendingHandUpdate && gameState){
+    gameState.me=_pendingHandUpdate;
+    if(gameState.players?.[myPid]&&_pendingHandUpdate.dragon_count!=null)
+      gameState.players[myPid].dragon_count=_pendingHandUpdate.dragon_count;
+    _pendingHandUpdate=null;
+    renderHand();
+  }
   // Apply buffered leader_declare if it arrived while overlay was showing
   if(_bufferedLeaderDeclare){
     const m=_bufferedLeaderDeclare;
