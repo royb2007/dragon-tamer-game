@@ -153,6 +153,15 @@ body::before{content:'';position:fixed;inset:0;
 .step-btn.display-only,.suit-btn.display-only{opacity:.6;cursor:default;pointer-events:none;}
 .suit-btn{width:42px;height:38px;display:flex;align-items:center;justify-content:center;font-size:19px;padding:0;}
 .waiting-declare{font-size:14px;color:rgba(253,246,227,.5);text-align:center;padding:8px 0;font-style:italic;}
+/* Suit flush preview */
+#suitFlushPreview{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-height:0;padding:0;margin-top:0;transition:all .2s;}
+#suitFlushPreview.flush-visible{margin-top:8px;padding:4px 2px;}
+#suitFlushPreview.hidden{display:none;}
+.flush-chip{display:inline-flex;align-items:center;background:rgba(255,255,255,.07);border:1px solid rgba(200,160,80,.3);border-radius:5px;padding:2px 7px;font-size:12px;font-family:'Cinzel',serif;color:#f0e0a0;white-space:nowrap;}
+.flush-chip.fc-r{color:#ff9090;border-color:rgba(255,100,100,.35);}
+.flush-chip.fc-dragon{color:#E8A020;border-color:rgba(232,160,32,.6);font-weight:700;}
+.flush-chip.fc-tamer{color:#A8D8A8;border-color:rgba(168,216,168,.5);font-weight:700;}
+.flush-label{font-size:10px;color:rgba(200,180,100,.55);font-family:'Cinzel',serif;margin-right:2px;white-space:nowrap;}
 
 /* ══════════════════════════════════
    CLASSIC CARDS
@@ -459,6 +468,7 @@ body::before{content:'';position:fixed;inset:0;
             <button class="suit-btn" id="suitS" onclick="setSuit('Spades')" title="Earth">♠</button>
           </div>
         </div>
+        <div id="suitFlushPreview" class="hidden"></div>
       </div>
       <div id="declareWait" class="waiting-declare hidden"></div>
     </div>
@@ -917,6 +927,31 @@ function setSuit(s) {
   document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('active'));
   const target=document.getElementById(map[s]);
   if(target) target.classList.add('active');
+  if(phase==='leader_declare' && gameState?.lead_pid===myPid) renderSuitFlush(s);
+}
+function renderSuitFlush(suit) {
+  const el=document.getElementById('suitFlushPreview');
+  if(!el) return;
+  const hand=gameState?.me?.hand||[];
+  const isRed=suit==='Hearts'||suit==='Diamonds';
+  const cards=hand.filter(c=>c&&!c.is_joker&&c.suit===suit);
+  cards.sort((a,b)=>(b.rank||0)-(a.rank||0));
+  if(!cards.length){
+    el.innerHTML=`<span class="flush-label">No ${SUIT_SYM[suit]||suit} cards in hand</span>`;
+    el.classList.remove('hidden'); el.classList.add('flush-visible'); return;
+  }
+  const sym=SUIT_SYM[suit]||'';
+  const chips=cards.map(c=>{
+    const rankStr=(c.label||'').replace(/[♥♣♦♠]/g,'');
+    let cls='flush-chip';
+    if(c.is_dragon) cls+=' fc-dragon';
+    else if(c.is_tamer) cls+=' fc-tamer';
+    else if(isRed) cls+=' fc-r';
+    const badge=c.is_dragon?' 🐉':c.is_tamer?' 🧙':'';
+    return `<span class="${cls}">${rankStr}${sym}${badge}</span>`;
+  }).join('');
+  el.innerHTML=`<span class="flush-label">${cards.length}×${sym}</span>${chips}`;
+  el.classList.remove('hidden'); el.classList.add('flush-visible');
 }
 
 // ══════════════════════════════════════════════════════
@@ -1380,6 +1415,7 @@ function setPhase(newPhase, data) {
       : `⏳ Waiting for ${nameOf(leaderPid)} to declare...`;
     mainBtn.textContent = isMe ? 'DECLARE' : 'Waiting...';
     mainBtn.disabled = !isMe;
+    if(isMe) renderSuitFlush(selectedSuit); else { const fp=document.getElementById('suitFlushPreview'); if(fp){fp.classList.add('hidden');fp.classList.remove('flush-visible');} }
     if(data.round){
       document.getElementById('roundBadge').textContent=`Round ${data.round} · ${winDragons}🐉`;
       const rl=document.getElementById('tableRoundLbl'); if(rl) rl.textContent=`Round ${data.round}`;
@@ -2273,6 +2309,8 @@ function updateDeclarePanel(phase, data) {
     b.classList.toggle('inactive', !isActive);
     if(isActive) b.classList.remove('display-only');
   });
+  // Hide flush preview when not actively declaring
+  if(!isActive){ const fp=document.getElementById('suitFlushPreview'); if(fp){fp.classList.add('hidden');fp.classList.remove('flush-visible');} }
 
   // If AI declared or game not started — show declared values greyed
   if(phase === 'pick_cards' || phase === 'reveal') {
