@@ -1031,6 +1031,7 @@ function handleMessage(msg) {
     case 'rejoined':
       _rejoining=false;
       _pendingRoundEndMsg=null;
+      const _wasAwaitingContinue=_awaitingRoundEndContinue;
       _awaitingRoundEndContinue=false;
       _roundEndOverlayVisible=false;
       _iPickedThisRound=false;
@@ -1039,6 +1040,29 @@ function handleMessage(msg) {
       myPid=msg.pid; myRoomId=msg.room_id;
       // Don't override game_over state with a stale snapshot
       if(phase==='game_over') break;
+      // ── If player was mid-round-review (Continue button showing), sync gameState from
+      //    the snapshot so dismissRoundEnd() advances to the right next phase, then
+      //    restore the Continue overlay rather than jumping into the new phase directly. ──
+      if(_wasAwaitingContinue && msg.state){
+        if(gameState){
+          if(msg.state.players) gameState.players=msg.state.players;
+          if(msg.state.phase)   gameState.phase=msg.state.phase;
+          if(msg.state.round!=null) gameState.round=msg.state.round;
+          if(msg.state.declared_steps!=null) gameState.declared_steps=msg.state.declared_steps;
+          if(msg.state.declared_el)  gameState.declared_el=msg.state.declared_el;
+          if(msg.state.lead_pid)     gameState.lead_pid=msg.state.lead_pid;
+          const snap_me=msg.state.me||msg.state.players?.[myPid];
+          if(snap_me) gameState.me=snap_me;
+        }
+        _awaitingRoundEndContinue=true;
+        _roundEndOverlayVisible=true;
+        document.getElementById('roundEndOverlay').classList.remove('hidden');
+        const _mb=document.getElementById('mainBtn');
+        if(_mb){ _mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; _mb.disabled=false; }
+        setConnStatus(true,'Reconnected');
+        addLog('\uD83D\uDD04 Reconnected to game','imp');
+        break;
+      }
       // Don't regress to an earlier phase — if client is already further along than
       // the snapshot, the snapshot is stale (reconnect happened mid-round).
       // Phase order: sleeping < pick_cards < arrange_hand < reveal < leader_declare (next round)
