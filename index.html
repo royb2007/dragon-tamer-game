@@ -1031,7 +1031,7 @@ function handleMessage(msg) {
     case 'rejoined':
       _rejoining=false;
       _pendingRoundEndMsg=null;
-      const _wasAwaitingContinue=_awaitingRoundEndContinue;
+      var _wasAwaitingContinue=_awaitingRoundEndContinue;
       _awaitingRoundEndContinue=false;
       _roundEndOverlayVisible=false;
       _iPickedThisRound=false;
@@ -1695,8 +1695,25 @@ function renderTable() {
     const isMe=pid===myPid, isLeader=pid===leadPid, isTurn=pid===isTurnPid;
     const initials=(p.name||'?').slice(0,2).toUpperCase();
     const d=p.dragon_count||0;
-    const dragonStr=d>0?'🐉'.repeat(Math.min(d,4))+(d>4?`+${d-4}`:''):'';
+    const dragonStr='';
     const metaStr=p.out?'❌':`${p.hand_count||0}🃏`;
+    const SUIT_COLOR_T={'Hearts':'#C0392B','Diamonds':'#C0392B','Clubs':'#e8e0d0','Spades':'#e8e0d0'};
+    const SUIT_BG_T={'Hearts':'#fffaf0','Diamonds':'#fffaf0','Clubs':'#1a1e30','Spades':'#1a1e30'};
+    const SUIT_SYM_T={'Hearts':'♥','Clubs':'♣','Diamonds':'♦','Spades':'♠'};
+    const sleeping_pairs=p.sleeping_pairs||[];
+    let sleepingHTML='';
+    if(sleeping_pairs.length>0){
+      const pairsHTML=sleeping_pairs.map(pair=>{
+        const t=pair[0],d2=pair[1];
+        const bg=SUIT_BG_T[d2.suit]||'#1a1e30';
+        const col=SUIT_COLOR_T[d2.suit]||'#e8e0d0';
+        const sym=SUIT_SYM_T[d2.suit]||'';
+        const tRank=t.label.replace(/[♥♣♦♠]/g,'');
+        const dRank=d2.label.replace(/[♥♣♦♠]/g,'');
+        return `<span style="background:rgba(0,0,0,.35);border:1px solid ${col};border-radius:4px;padding:1px 3px;display:inline-flex;gap:2px;align-items:center;"><span style="background:${bg};color:${col};border-radius:2px;font-size:9px;font-family:Cinzel,serif;font-weight:700;padding:1px 3px;">${tRank}${sym}</span><span style="font-size:8px;color:rgba(253,246,227,.5);">😴</span><span style="background:${bg};color:${col};border-radius:2px;font-size:9px;font-family:Cinzel,serif;font-weight:700;padding:1px 3px;">${dRank}${sym}</span></span>`;
+      }).join(' ');
+      sleepingHTML=`<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin-top:2px;">${pairsHTML}</div>`;
+    }
 
     const seat=document.createElement('div');
     seat.className='player-seat'+(isMe?' is-me':'')+(isLeader?' is-leader':'')+(p.out?' is-out':'')+(isTurn?' is-turn':'');
@@ -1726,7 +1743,7 @@ function renderTable() {
         ${isLeader?'<span class="seat-crown">👑</span>':''}${initials}
       </div>
       <div class="seat-name">${p.name}</div>
-      ${dragonStr?`<div class="seat-dragons">${dragonStr}</div>`:''}
+      ${sleepingHTML}
       ${pileHTML}
       <div class="seat-meta">${metaStr}</div>`;
     container.appendChild(seat);
@@ -2354,11 +2371,29 @@ function updateDeclarePanel(phase, data) {
 // ══════════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════════
-connect();
-setSteps(3);
-setSuit('Hearts');
-window.addEventListener('resize',()=>{if(gameState) renderTable();});
-</script>
-</body>
-</html>
+  connect();
+  setSteps(3);
+  setSuit('Hearts');
+  window.addEventListener('resize',()=>{if(gameState) renderTable();});
+
+  // ── Anti-freeze: if stuck on AI declare for >4s, request state ──
+  let _stuckTimer=null;
+  function resetStuckTimer(){
+    if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
+    if(phase==='leader_declare' && gameState?.lead_pid && gameState.players?.[gameState.lead_pid]?.is_ai){
+      _stuckTimer=setTimeout(()=>{
+        if(phase==='leader_declare' && gameState?.players?.[gameState.lead_pid]?.is_ai){
+          console.warn('Stuck on AI declare — requesting state');
+          send({type:'get_state'});
+          resetStuckTimer(); // keep retrying every 4s
+        }
+      }, 4000);
+    }
+  }
+  const _origSetPhase=setPhase;
+  setPhase=function(p,d){ _origSetPhase(p,d); resetStuckTimer(); };
+
+  
+
+
 
