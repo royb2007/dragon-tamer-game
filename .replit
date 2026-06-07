@@ -1,6 +1,6 @@
 run = "python3 main.py"
 entrypoint = "main.py"
-modules = ["python-3.11:v25-20250124-f1e7250"]
+modules = ["python-3.11", "nodejs-20"]
 
 [nix]
 channel = "stable-24_05"
