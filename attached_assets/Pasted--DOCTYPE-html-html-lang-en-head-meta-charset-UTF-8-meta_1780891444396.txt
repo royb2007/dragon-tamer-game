@@ -1,0 +1,2506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🐉 Dragon Tamer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+:root {
+  --navy:       #0A1628;
+  --navy2:      #0f1f3d;
+  --gold:       #B8860B;
+  --gold-light: #DAA520;
+  --gold-bright:#FFD700;
+  --crimson:    #8B0000;
+  --crimson-l:  #C0392B;
+  --ivory:      #FDF6E3;
+  --card-w:     88px;
+  --card-h:     126px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;}
+body{background:var(--navy);color:var(--ivory);font-family:'Crimson Text',serif;display:flex;flex-direction:column;}
+body::before{content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse at 20% 20%,rgba(184,134,11,.09) 0%,transparent 55%),
+             radial-gradient(ellipse at 80% 85%,rgba(139,0,0,.07) 0%,transparent 55%);
+  pointer-events:none;z-index:0;}
+
+/* ── SCREENS ── */
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;z-index:1;overflow:hidden;}
+.screen.hidden{display:none!important;}
+.hidden{display:none!important;}
+
+/* ── LOBBY ── */
+#lobbyScreen{align-items:center;justify-content:center;padding:24px;gap:20px;}
+.logo-area{text-align:center;}
+.logo-area h1{font-family:'Cinzel',serif;font-size:clamp(28px,7vw,42px);color:var(--gold-bright);
+  text-shadow:0 0 30px rgba(255,215,0,.5);letter-spacing:4px;}
+.logo-area .subtitle{font-size:15px;color:rgba(253,246,227,.55);letter-spacing:2px;margin-top:4px;}
+.logo-dragon{font-size:52px;margin:8px 0;filter:drop-shadow(0 0 12px rgba(255,215,0,.4));}
+.lobby-card{background:rgba(255,255,255,.04);border:1px solid rgba(184,134,11,.3);
+  border-radius:16px;padding:20px;width:100%;max-width:400px;display:flex;flex-direction:column;gap:14px;}
+.field-label{font-family:'Cinzel',serif;font-size:11px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;}
+.field-input{width:100%;padding:12px 14px;border-radius:8px;border:1px solid rgba(184,134,11,.4);
+  background:rgba(255,255,255,.06);color:var(--ivory);font-family:'Crimson Text',serif;font-size:17px;
+  outline:none;transition:border-color .2s;}
+.field-input:focus{border-color:var(--gold);}
+.field-input::placeholder{color:rgba(253,246,227,.3);}
+.room-actions{display:flex;gap:8px;}
+
+/* ── BUTTONS ── */
+.btn{flex:1;padding:13px;border:none;border-radius:10px;cursor:pointer;font-family:'Cinzel',serif;
+  font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;transition:all .2s;}
+.btn:active{transform:scale(.97);}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--navy);}
+.btn-outline{background:transparent;color:var(--gold-light);border:1px solid rgba(184,134,11,.5);}
+.btn-outline:active{background:rgba(184,134,11,.1);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-full{flex:none;width:100%;}
+
+/* ── AI SLIDER ── */
+.ai-row{display:flex;align-items:center;gap:10px;}
+.ai-row label{font-size:14px;color:rgba(253,246,227,.65);flex:1;}
+.ai-slider-wrap{display:flex;align-items:center;gap:8px;flex:1;}
+.ai-slider{flex:1;-webkit-appearance:none;height:4px;border-radius:2px;background:rgba(184,134,11,.3);outline:none;cursor:pointer;}
+.ai-slider::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--gold);cursor:pointer;border:2px solid var(--navy);}
+.ai-count-lbl{font-family:'Cinzel',serif;font-size:15px;font-weight:700;color:var(--gold-bright);min-width:22px;text-align:center;}
+.conn-status{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(253,246,227,.45);justify-content:center;}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#555;flex-shrink:0;}
+.conn-dot.connected{background:#2ecc71;box-shadow:0 0 6px rgba(46,204,113,.6);}
+.conn-dot.error{background:var(--crimson-l);}
+
+/* ── GAME SCREEN ── */
+#gameScreen{display:flex;flex-direction:column;height:100%;}
+.top-bar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;
+  border-bottom:1px solid rgba(184,134,11,.2);background:rgba(10,22,40,.85);backdrop-filter:blur(4px);flex-shrink:0;}
+.top-bar .game-title{font-family:'Cinzel',serif;font-size:15px;color:var(--gold);letter-spacing:2px;}
+.top-bar .round-badge{font-size:13px;color:rgba(253,246,227,.55);}
+.phase-bar{padding:9px 16px;text-align:center;font-family:'Cinzel',serif;
+  font-size:14px;font-weight:700;letter-spacing:1px;flex-shrink:0;}
+.phase-bar.declare{background:linear-gradient(90deg,rgba(26,107,60,.8),rgba(26,107,60,.4));}
+.phase-bar.pick   {background:linear-gradient(90deg,rgba(74,26,107,.8),rgba(74,26,107,.4));}
+.phase-bar.reveal {background:linear-gradient(90deg,rgba(139,0,0,.7),rgba(139,0,0,.3));}
+.phase-bar.end    {background:linear-gradient(90deg,rgba(184,134,11,.5),rgba(184,134,11,.2));}
+
+.game-body{flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px;}
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-thumb{background:rgba(184,134,11,.3);border-radius:2px;}
+
+.section{background:rgba(255,255,255,.03);border:1px solid rgba(184,134,11,.18);border-radius:12px;padding:10px;}
+.section-title{font-family:'Cinzel',serif;font-size:11px;color:var(--gold);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+
+/* ══════════════════════════════════
+   ROUND TABLE
+══════════════════════════════════ */
+.round-table-wrap{position:relative;width:100%;height:260px;flex-shrink:0;}
+.round-table-felt{position:absolute;border-radius:50%;
+  background:radial-gradient(ellipse at 38% 35%,#1d5932,#0d2b18);
+  border:3px solid var(--gold);
+  box-shadow:0 0 22px rgba(184,134,11,.35),inset 0 0 30px rgba(0,0,0,.6);
+  transform:translate(-50%,-50%);}
+.table-center-info{position:absolute;transform:translate(-50%,-50%);text-align:center;pointer-events:none;}
+.table-round-lbl{font-family:'Cinzel',serif;font-size:12px;color:var(--gold-light);letter-spacing:2px;display:block;}
+.table-phase-lbl{font-size:10px;color:rgba(253,246,227,.4);letter-spacing:1px;display:block;margin-top:3px;}
+
+.player-seat{position:absolute;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;gap:2px;transition:all .35s;}
+.seat-avatar{border-radius:50%;border:2px solid rgba(184,134,11,.4);
+  background:rgba(15,31,61,.95);display:flex;align-items:center;justify-content:center;
+  font-family:'Cinzel',serif;font-weight:700;color:var(--ivory);
+  position:relative;flex-shrink:0;transition:all .25s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
+.player-seat.is-me .seat-avatar{border-color:var(--gold-bright);background:rgba(184,134,11,.22);
+  box-shadow:0 0 12px rgba(255,215,0,.35);}
+.player-seat.is-leader .seat-avatar{border-color:var(--gold-bright);box-shadow:0 0 18px rgba(255,215,0,.6);}
+.player-seat.is-out .seat-avatar{opacity:.3;filter:grayscale(1);}
+.seat-crown{position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:14px;line-height:1;pointer-events:none;}
+.seat-name{font-size:10px;font-family:'Cinzel',serif;color:rgba(253,246,227,.8);
+  max-width:60px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.4px;}
+.player-seat.is-me .seat-name{color:var(--gold-light);}
+.seat-dragons{font-size:9px;line-height:1;text-align:center;}
+.seat-meta{font-size:9px;color:rgba(253,246,227,.38);font-family:'Cinzel',serif;}
+.seat-pile{display:flex;flex-wrap:wrap;gap:1px;max-width:80px;margin-top:2px;justify-content:center;}
+.pile-card-mini{width:14px;height:20px;border-radius:2px;border:1px solid rgba(184,134,11,.5);
+  font-size:6px;display:flex;align-items:center;justify-content:center;
+  font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
+.pile-card-mini.h,.pile-card-mini.d{background:#f0e4c0;color:#7B1515;}
+.pile-card-mini.c,.pile-card-mini.s{background:#1A1E2E;color:#e8e0d0;}
+.pile-card-mini.js{background:#2A1A4E;color:#C39BD3;}
+.pile-card-mini.jt{background:#2E1600;color:#E8A020;}
+
+@keyframes pulse-ring{
+  0%  {box-shadow:0 0 0 0 rgba(255,215,0,.7);}
+  70% {box-shadow:0 0 0 12px rgba(255,215,0,0);}
+  100%{box-shadow:0 0 0 0 rgba(255,215,0,0);}
+}
+.player-seat.is-turn .seat-avatar{animation:pulse-ring 1.5s ease-out infinite;}
+
+/* ── DECLARE SECTION ── */
+.declare-grid{display:flex;flex-direction:column;gap:10px;}
+.declare-leader-line{font-size:13px;color:var(--gold-light);
+  font-family:'Cinzel',serif;text-align:center;margin-bottom:6px;letter-spacing:1px;}
+.control-row{display:flex;align-items:center;gap:10px;}
+.control-row label{font-size:13px;color:rgba(253,246,227,.6);min-width:58px;font-family:'Cinzel',serif;letter-spacing:1px;}
+.btn-group{display:flex;gap:5px;flex-wrap:wrap;}
+.step-btn,.suit-btn{padding:8px 13px;border-radius:6px;border:1px solid rgba(184,134,11,.4);
+  background:rgba(184,134,11,.08);color:var(--gold-light);
+  font-family:'Cinzel',serif;font-size:13px;cursor:pointer;transition:all .18s;}
+.step-btn.active,.suit-btn.active{background:var(--gold);color:var(--navy);border-color:var(--gold);}
+.step-btn.inactive,.suit-btn.inactive{opacity:.28;cursor:not-allowed;pointer-events:none;}
+.step-btn.display-only,.suit-btn.display-only{opacity:.6;cursor:default;pointer-events:none;}
+.suit-btn{width:42px;height:38px;display:flex;align-items:center;justify-content:center;font-size:19px;padding:0;}
+.waiting-declare{font-size:14px;color:rgba(253,246,227,.5);text-align:center;padding:8px 0;font-style:italic;}
+/* Suit highlight in hand during leader_declare */
+.card.suit-match{filter:brightness(1.25);box-shadow:0 0 14px 4px rgba(255,210,60,.55);transform:translateY(-6px);transition:filter .18s,box-shadow .18s,transform .18s;z-index:3;position:relative;}
+.card.suit-dim{filter:brightness(0.32) saturate(0.2);opacity:.5;transition:filter .18s,opacity .18s;}
+
+/* ══════════════════════════════════
+   CLASSIC CARDS
+══════════════════════════════════ */
+.hand-scroll{display:flex;gap:7px;overflow-x:auto;padding:6px 2px;scrollbar-width:thin;}
+.hand-scroll::-webkit-scrollbar{height:3px;}
+
+.card{
+  width:var(--card-w);height:var(--card-h);border-radius:8px;
+  border:1.5px solid rgba(184,134,11,.45);
+  display:flex;flex-direction:column;padding:5px 4px;
+  cursor:pointer;transition:all .18s;position:relative;flex-shrink:0;user-select:none;
+}
+.card.selected{border-color:var(--gold-bright)!important;background:rgba(255,215,0,.18)!important;
+  transform:translateY(-7px);box-shadow:0 6px 20px rgba(255,215,0,.5);}
+
+/* Suit colours */
+.card.hearts,.card.diamonds{background:linear-gradient(155deg,#fffaf0,#f0e6c8);}
+.card.clubs,.card.spades   {background:linear-gradient(155deg,#1a1e30,#22283c);}
+.card.joker-space{background:linear-gradient(155deg,#160a2e,#22144a);border-color:#9B59B6;}
+.card.joker-time {background:linear-gradient(155deg,#1a0a0a,#2e1600);border-color:#E8A020;}
+
+/* Corners */
+.card-corner{display:flex;flex-direction:column;align-items:center;line-height:1.1;gap:0px;}
+.card-tl{align-self:flex-start;}
+.card-br{align-self:flex-end;transform:rotate(180deg);}
+.corner-rank{font-family:'Cinzel',serif;font-size:16px;font-weight:700;line-height:1;}
+.corner-sym {font-size:14px;line-height:1;}
+.card.hearts .corner-rank,.card.hearts .corner-sym{color:#8B1515;}
+.card.diamonds .corner-rank,.card.diamonds .corner-sym{color:#8B1515;}
+.card.clubs  .corner-rank,.card.clubs  .corner-sym{color:#e8e0d0;}
+.card.spades .corner-rank,.card.spades .corner-sym{color:#e8e0d0;}
+.card.joker-space .corner-rank{color:#C39BD3;}
+.card.joker-time  .corner-rank{color:#E8A020;}
+
+/* Pip area */
+.pip-area{flex:1;position:relative;width:100%;overflow:hidden;}
+.pip{position:absolute;transform:translate(-50%,-50%);line-height:1;user-select:none;pointer-events:none;}
+.card.hearts .pip,.card.diamonds .pip{color:#8B1515;}
+.card.clubs  .pip,.card.spades  .pip{color:#e8e0d0;}
+
+/* Face cards */
+.face-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:'Cinzel',serif;font-weight:700;color:inherit;line-height:1;}
+.card.hearts  .face-center,.card.diamonds .face-center{color:#8B1515;}
+.card.clubs   .face-center,.card.spades  .face-center{color:#e8e0d0;}
+
+/* Joker special display */
+.joker-inner{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;}
+.joker-big-sym{font-size:32px;line-height:1;}
+.joker-label{font-family:'Cinzel',serif;font-size:12px;font-weight:700;letter-spacing:2px;}
+.joker-sub{font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;opacity:.7;}
+.card.joker-space .joker-label,.card.joker-space .joker-sub{color:#C39BD3;}
+.card.joker-time  .joker-label,.card.joker-time  .joker-sub{color:#E8A020;}
+
+/* Badge (TAMER / PRINCESS / PORTAL / WIZARD) */
+.card-badge{position:absolute;bottom:18px;font-size:9px;letter-spacing:.8px;
+  font-family:'Cinzel',serif;text-align:center;width:100%;padding:0 3px;}
+.card.hearts  .card-badge,.card.diamonds .card-badge{color:rgba(139,21,21,.75);}
+.card.clubs   .card-badge,.card.spades  .card-badge{color:rgba(232,224,208,.6);}
+.card.joker-space .card-badge{color:rgba(195,155,211,.8);}
+.card.joker-time  .card-badge{color:rgba(232,160,32,.8);}
+
+/* Dragon icon overlay on Ace cards */
+/* Dominant-element bolt badge */
+.dominant-bolt{position:absolute;top:3px;right:4px;font-size:22px;line-height:1;z-index:2;
+  animation:boltBlink 1.6s ease-in-out infinite;pointer-events:none;}
+@keyframes boltBlink{0%,100%{opacity:1;filter:drop-shadow(0 0 3px #ffe066);}
+  50%{opacity:.2;filter:none;}}
+.ace-dragon-icon{position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%) translateY(6px);
+  font-size:26px;line-height:1;pointer-events:none;
+  filter:drop-shadow(0 0 4px rgba(0,0,0,.5));opacity:.85;}
+
+.card-order{position:absolute;top:3px;right:4px;width:18px;height:18px;border-radius:50%;
+  background:var(--gold-bright);color:var(--navy);font-size:11px;
+  font-family:'Cinzel',serif;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;}
+.hand-card.drag-over{outline:2px solid var(--gold-bright);transform:scale(1.06);z-index:10;}
+.hand-card.tap-picked{outline:2px solid #00CED1;box-shadow:0 0 10px rgba(0,206,209,.5);transform:scale(1.06);z-index:10;}
+
+/* ── BATTLE ── */
+.step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:8px;}
+.sdot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.15);transition:all .3s;}
+.sdot.done{background:var(--gold);}
+.sdot.cur {background:var(--gold-bright);box-shadow:0 0 8px rgba(255,215,0,.6);}
+.battle-row{display:flex;align-items:center;gap:8px;padding:7px 9px;
+  border-radius:7px;margin-bottom:4px;background:rgba(255,255,255,.025);border:1px solid transparent;}
+.battle-row.winning{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.3);}
+.battle-pname{font-size:13px;font-weight:600;min-width:80px;}
+.battle-cards{display:flex;gap:6px;flex:1;flex-wrap:wrap;align-items:flex-start;}
+/* Full-size card wrapper for battle results — issue 1: was 0.5× scale, now 1× */
+.battle-card-wrap{width:88px;height:126px;position:relative;flex-shrink:0;overflow:visible;}
+.battle-card-wrap .card{transform:none;pointer-events:none;}
+.win-badge{font-size:11px;background:var(--gold);color:var(--navy);
+  padding:2px 7px;border-radius:3px;font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
+/* Declaration summary bar */
+.decl-summary{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.8px;color:var(--gold);
+  background:rgba(184,134,11,.12);border:1px solid rgba(184,134,11,.25);
+  border-radius:6px;padding:5px 10px;margin:0 0 6px;text-align:center;}
+/* Win-screen dragon cards row */
+.go-dragons-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0;}
+.go-dragons-row .battle-card-wrap{width:88px;height:126px;}
+/* Win-screen all-players final hand grid */
+.go-all-hands{margin-top:10px;text-align:left;max-height:320px;overflow-y:auto;}
+.go-player-row{margin-bottom:10px;}
+.go-player-name{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;
+  font-family:'Cinzel',serif;letter-spacing:.6px;}
+.go-player-cards{display:flex;gap:5px;flex-wrap:wrap;}
+
+/* ── LOG ── */
+.log-list{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;}
+.log-entry{font-size:12px;color:rgba(253,246,227,.55);padding:2px 0;
+  border-bottom:1px solid rgba(255,255,255,.04);line-height:1.5;}
+.log-entry.imp    {color:var(--gold-light);font-weight:600;}
+.log-entry.warn   {color:var(--crimson-l);}
+.log-entry.victory{color:var(--gold-bright);text-align:center;font-family:'Cinzel',serif;font-size:14px;}
+
+/* ── ACTION BAR ── */
+.action-bar{position:sticky;bottom:0;
+  background:linear-gradient(transparent,rgba(10,22,40,.97) 30%);
+  padding:10px 10px 14px;display:flex;flex-direction:column;gap:7px;flex-shrink:0;}
+/* On mobile, use fixed positioning so the button is never clipped by overflow:hidden */
+@media(max-width:600px){
+  .action-bar{position:fixed;bottom:0;left:0;right:0;z-index:50;
+    padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+    background:linear-gradient(transparent,rgba(10,22,40,.99) 28%);}
+  .game-body{padding-bottom:80px;}
+}
+.btn-main{width:100%;padding:15px;border:none;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold),var(--gold-light));
+  color:var(--navy);font-family:'Cinzel',serif;font-size:15px;
+  font-weight:700;letter-spacing:1.5px;cursor:pointer;transition:all .2s;text-transform:uppercase;}
+.btn-main:active{transform:scale(.98);opacity:.9;}
+.btn-main:disabled{background:rgba(184,134,11,.25);color:rgba(253,246,227,.3);cursor:not-allowed;}
+
+/* ── OVERLAYS ── */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:200;
+  display:flex;align-items:center;justify-content:center;padding:20px;}
+.overlay.hidden{display:none!important;}
+.modal{background:linear-gradient(160deg,#0f1f3d,#0A1628);border:2px solid var(--gold);
+  border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;max-height:90vh;overflow-y:auto;}
+.modal h2{font-family:'Cinzel',serif;font-size:20px;color:var(--gold-bright);
+  margin-bottom:10px;text-shadow:0 0 15px rgba(255,215,0,.4);}
+.modal p {font-size:15px;color:rgba(253,246,227,.75);margin-bottom:18px;line-height:1.7;}
+.modal .dragon-row{font-size:36px;margin:10px 0;}
+.modal-btns{display:flex;flex-direction:column;gap:9px;}
+.modal-btns .btn{flex:none;padding:13px;text-align:left;font-size:12px;letter-spacing:.5px;}
+#timeDragonOverlay .modal{border-color:#E8A020;}
+#timeDragonOverlay .modal h2{color:#E8A020;}
+#spaceDragonOverlay .modal{border-color:#9B59B6;}
+#spaceDragonOverlay .modal h2{color:#C39BD3;}
+#portalOverlay .modal{border-color:#00CED1;}
+#portalOverlay .modal h2{color:#40E0D0;}
+#loveOverlay .modal{border-color:#FF69B4;}
+#loveOverlay .modal h2{color:#FFB6C1;}
+#roundEndOverlay .modal{border-color:var(--gold);max-width:360px;}
+#roundEndOverlay .modal h2{color:var(--gold);}
+.round-end-row{display:flex;align-items:center;justify-content:space-between;
+  padding:6px 10px;border-radius:7px;border:1px solid rgba(184,134,11,.15);
+  background:rgba(255,255,255,.025);margin-bottom:4px;font-size:13px;}
+.round-end-row.winner-row{border-color:rgba(255,215,0,.4);background:rgba(255,215,0,.08);}
+.round-end-name{font-family:'Cinzel',serif;font-weight:600;color:var(--gold-light);}
+.round-end-dragons{font-size:14px;letter-spacing:1px;}
+.round-end-timer{font-size:11px;color:rgba(253,246,227,.4);text-align:center;margin-top:8px;}
+
+/* ── SLEEPING PHASE ── */
+.sleep-pair-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
+  border:1px solid rgba(184,134,11,.2);background:rgba(255,255,255,.025);margin-bottom:5px;}
+.sleep-pair-cards{display:flex;gap:5px;}
+.sleep-pair-cards .card{width:66px;height:95px;pointer-events:none;}
+.sleep-pair-label{font-family:'Cinzel',serif;font-size:10px;color:rgba(253,246,227,.5);
+  letter-spacing:1px;flex:1;text-align:center;}
+.sleep-pair-btn{font-family:'Cinzel',serif;font-size:11px;font-weight:700;letter-spacing:.8px;
+  padding:6px 12px;border-radius:6px;border:none;cursor:pointer;flex-shrink:0;}
+.btn-sleep{background:rgba(74,26,107,.6);color:#C39BD3;border:1px solid rgba(195,155,211,.4);}
+.btn-wake{background:rgba(26,107,60,.5);color:#8fdb8f;border:1px solid rgba(143,219,143,.4);}
+.sleep-hint{font-size:11px;color:rgba(253,246,227,.35);text-align:center;padding:4px 0;
+  font-style:italic;letter-spacing:.5px;}
+.sleep-section-lbl{font-family:'Cinzel',serif;font-size:10px;color:var(--gold);
+  letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px;opacity:.7;}
+
+/* ── ROOM BROWSER ── */
+.browser-modal{background:linear-gradient(160deg,#0f1f3d,#0A1628);
+  border:2px solid rgba(195,155,211,.5);border-radius:16px;padding:20px;max-width:380px;width:100%;}
+.browser-modal h2{font-family:'Cinzel',serif;font-size:18px;color:#C39BD3;margin-bottom:4px;letter-spacing:2px;}
+.browser-subtitle{font-size:12px;color:rgba(253,246,227,.4);letter-spacing:1px;margin-bottom:14px;}
+.room-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;margin-bottom:14px;}
+.room-card{background:rgba(255,255,255,.04);border:1px solid rgba(195,155,211,.25);
+  border-radius:10px;padding:12px 14px;cursor:pointer;transition:all .2s;
+  text-align:left;display:flex;flex-direction:column;gap:5px;}
+.room-card:hover{background:rgba(195,155,211,.1);border-color:rgba(195,155,211,.5);}
+.room-card-top{display:flex;align-items:center;justify-content:space-between;}
+.room-code{font-family:'Cinzel',serif;font-size:16px;color:#C39BD3;letter-spacing:3px;font-weight:700;}
+.room-phase-badge{font-size:10px;font-family:'Cinzel',serif;letter-spacing:1px;
+  padding:2px 7px;border-radius:4px;text-transform:uppercase;}
+.phase-waiting{background:rgba(184,134,11,.2);color:var(--gold-light);}
+.phase-playing{background:rgba(139,0,0,.3);color:#E87070;}
+.room-stat{font-size:12px;color:rgba(253,246,227,.5);display:flex;align-items:center;gap:3px;}
+.room-stat span{color:rgba(253,246,227,.8);}
+.room-card-stats{display:flex;gap:10px;align-items:center;}
+.no-rooms{text-align:center;padding:28px 0;color:rgba(253,246,227,.35);font-size:14px;}
+.browser-refresh{font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin-bottom:10px;letter-spacing:1px;}
+</style>
+</head>
+<body>
+
+<!-- ══ LOBBY ══ -->
+<div class="screen" id="lobbyScreen">
+  <div class="logo-area">
+    <div class="logo-dragon">🐉</div>
+    <h1>DRAGON TAMER</h1>
+    <div class="subtitle">Multiplayer Card Game</div>
+  </div>
+  <div class="lobby-card">
+    <div>
+      <div class="field-label">Your Name</div>
+      <input class="field-input" id="playerName" placeholder="Enter your name" maxlength="20">
+    </div>
+    <div>
+      <div class="field-label">Room Code</div>
+      <input class="field-input" id="roomCode" placeholder="Leave empty to create new room"
+             maxlength="8" style="text-transform:uppercase">
+    </div>
+    <div class="ai-row">
+      <label>AI Opponents</label>
+      <div class="ai-slider-wrap">
+        <input class="ai-slider" type="range" min="1" max="9" value="3" id="aiSlider"
+               oninput="setAI(parseInt(this.value))">
+        <span class="ai-count-lbl" id="aiCountLbl">3</span>
+      </div>
+    </div>
+    <div class="ai-row" style="margin-top:8px;">
+      <label style="white-space:nowrap;">🐉 Dragons to Win</label>
+      <div style="display:flex;gap:6px;flex:1;justify-content:flex-end;">
+        <button id="wd4" class="btn btn-outline wd-btn" onclick="setWinDragons(4)" style="padding:4px 14px;font-size:13px;">4</button>
+        <button id="wd5" class="btn btn-gold wd-btn" onclick="setWinDragons(5)" style="padding:4px 14px;font-size:13px;">5</button>
+        <button id="wd6" class="btn btn-outline wd-btn" onclick="setWinDragons(6)" style="padding:4px 14px;font-size:13px;">6</button>
+      </div>
+    </div>
+    <div class="room-actions">
+      <button class="btn btn-gold" onclick="createRoom()">New Room</button>
+      <button class="btn btn-outline" onclick="joinRoom()">Join Room</button>
+    </div>
+    <button class="btn btn-outline btn-full" onclick="spectateRoom()"
+            style="border-color:rgba(195,155,211,.5);color:#C39BD3;">👁 Watch a Game</button>
+    <button class="btn btn-outline btn-full" onclick="showShareModal()"
+            style="border-color:rgba(100,200,100,.4);color:#8fdb8f;margin-top:2px;">📱 Share / QR Code</button>
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connText">Connecting to server...</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GAME SCREEN ══ -->
+<div class="screen hidden" id="gameScreen">
+  <div class="top-bar">
+    <span class="game-title">DRAGON TAMER</span>
+    <span class="round-badge" id="roundBadge">Round 1</span>
+    <button id="rejoinBtn" class="hidden" onclick="doRejoin()"
+      style="font-family:Cinzel,serif;font-size:11px;font-weight:700;letter-spacing:1px;
+      padding:5px 10px;border-radius:6px;border:1px solid rgba(184,134,11,.5);
+      background:rgba(184,134,11,.15);color:var(--gold-light);cursor:pointer;">
+      🔄 REJOIN
+    </button>
+  </div>
+  <!-- Reconnect bar — shown when connection drops -->
+  <div id="reconnectBar" class="hidden" style="background:#8B0000;color:#FFD700;padding:8px 14px;
+    text-align:center;font-family:Cinzel,serif;font-size:13px;font-weight:700;
+    letter-spacing:.5px;cursor:pointer;flex-shrink:0;" onclick="connect()">
+    ⚡ Connection lost — tap here to reconnect
+  </div>
+  <div class="phase-bar" id="phaseBanner">Waiting...</div>
+
+  <div class="game-body">
+
+    <!-- Round Table -->
+    <div class="section" style="padding:8px 6px 10px;">
+      <div class="section-title" id="tableTitle">⚔ Round Table</div>
+      <div class="round-table-wrap" id="tableContainer">
+        <div class="round-table-felt" id="tableFelt"></div>
+        <div class="table-center-info" id="tableCenterInfo">
+          <span class="table-round-lbl" id="tableRoundLbl">Round 1</span>
+          <span class="table-phase-lbl" id="tablePhaseLbl">Lobby</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Player Declaration — always visible -->
+    <div class="section" id="declareSection">
+      <div class="section-title">👑 Player Declaration</div>
+      <div class="declare-leader-line" id="declareLeaderLine">— Waiting for game to start —</div>
+      <div class="declare-grid">
+        <div class="control-row">
+          <label>Steps</label>
+          <div class="btn-group" id="stepsGroup">
+            <button class="step-btn" id="step1" onclick="setSteps(1)">1</button>
+            <button class="step-btn" id="step2" onclick="setSteps(2)">2</button>
+            <button class="step-btn" id="step3" onclick="setSteps(3)">3</button>
+            <button class="step-btn" id="step4" onclick="setSteps(4)">4</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <label>Element</label>
+          <div class="btn-group" id="suitGroup">
+            <button class="suit-btn" id="suitH" onclick="setSuit('Hearts')" title="Fire">♥</button>
+            <button class="suit-btn" id="suitC" onclick="setSuit('Clubs')" title="Water">♣</button>
+            <button class="suit-btn" id="suitD" onclick="setSuit('Diamonds')" title="Air">♦</button>
+            <button class="suit-btn" id="suitS" onclick="setSuit('Spades')" title="Earth">♠</button>
+          </div>
+        </div>
+      </div>
+      <div id="declareWait" class="waiting-declare hidden"></div>
+      <div id="declareSleepingWake" class="hidden" style="margin-top:8px;"></div>
+    </div>
+
+    <!-- Sleeping Phase -->
+    <div class="section hidden" id="sleepingSection">
+      <div class="section-title">😴 Dragon Rest</div>
+      <div id="sleepingContent"></div>
+    </div>
+
+    <!-- Hand -->
+    <div class="section">
+      <div class="section-title" id="handTitle">Your Hand</div>
+      <div class="hand-scroll" id="handCards"></div>
+    </div>
+
+    <!-- Declaration summary (visible during pick/reveal so everyone knows what was declared) -->
+    <div class="decl-summary hidden" id="declSummary"></div>
+
+    <!-- Battle -->
+    <div class="section hidden" id="battleSection">
+      <div class="section-title">⚔ Battle — Step <span id="stepNum">1</span></div>
+      <div class="step-dots" id="stepDots"></div>
+      <div id="battleRows"></div>
+    </div>
+
+    <!-- Chronicle -->
+    <div class="section">
+      <div class="section-title">📜 Chronicle</div>
+      <div class="log-list" id="logList"></div>
+    </div>
+
+    <div style="height:80px"></div>
+  </div>
+
+  <div class="action-bar">
+    <button class="btn-main" id="mainBtn" onclick="mainAction()" disabled>—</button>
+  </div>
+</div>
+
+<!-- ══ FORCED WAKE OVERLAY ══ -->
+<div class="overlay hidden" id="forcedWakeOverlay">
+  <div class="modal">
+    <h2>⏰ Must Wake Pairs!</h2>
+    <div class="dragon-row">😴→⚔</div>
+    <p id="forcedWakeText">You need more cards for battle. Select pairs to wake.</p>
+    <div id="forcedWakePairs" class="modal-btns"></div>
+  </div>
+</div>
+
+<!-- ══ WAITING MODAL ══ -->
+<div class="overlay hidden" id="waitOverlay" style="align-items:flex-end;padding-bottom:0;">
+  <div class="modal" style="max-width:420px;width:100%;border-radius:16px 16px 0 0;padding:20px 20px 28px;">
+    <h2>Room Ready</h2>
+    <div class="dragon-row">🐉</div>
+    <p>Room Code: <strong id="roomCodeDisplay"
+       style="color:var(--gold-bright);font-family:Cinzel,serif;font-size:22px;letter-spacing:3px;"></strong><br>
+    Share this code with friends or start now.</p>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-outline" onclick="copyRoomCode(this)" style="flex:1;padding:10px 6px;font-size:11px;letter-spacing:.5px;">Copy Code</button>
+      <button class="btn btn-gold" onclick="startGame()" style="flex:1;padding:10px 6px;font-size:11px;letter-spacing:.5px;">Start Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GAME OVER MODAL ══ -->
+<div class="overlay hidden" id="gameOverOverlay" style="align-items:stretch;overflow-y:auto;padding:16px;">
+  <div class="modal" style="max-width:420px;width:100%;margin:auto;max-height:none;">
+    <h2 id="goTitle">Game Over</h2>
+    <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
+    <p id="goText"></p>
+    <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-bottom:16px;">▶ PLAY AGAIN</button>
+    <!-- Last battle snapshot -->
+    <div class="hidden" id="goLastBattle" style="margin:10px 0 4px;">
+      <div style="font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin-bottom:6px;text-align:center;">— LAST BATTLE —</div>
+      <div id="goLastBattleRows"></div>
+    </div>
+    <!-- Dragon cards won (shown for winner) -->
+    <div class="go-dragons-row hidden" id="goDragonCards"></div>
+    <!-- All players' final hands -->
+    <div class="go-all-hands hidden" id="goAllHands"></div>
+    <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-top:16px;">▶ PLAY AGAIN</button>
+  </div>
+</div>
+
+<!-- ══ TIME DRAGON MODAL ══ -->
+<div class="overlay hidden" id="timeDragonOverlay">
+  <div class="modal">
+    <h2>⏳ Time Dragon!</h2>
+    <div class="dragon-row">⏳</div>
+    <p id="timeDragonText">You hold the Time Dragon. Choose its power:</p>
+    <div class="modal-btns">
+      <button class="btn btn-outline btn-full" id="timeBackBtn"
+              onclick="resolveTimeDragon('back')"
+              style="border-color:#E8A020;color:#E8A020;">
+        ⬅ Back in Time — Claim the previous step's cards
+      </button>
+      <button class="btn btn-outline btn-full" id="timeForwardBtn"
+              onclick="resolveTimeDragon('forward')"
+              style="border-color:#E8A020;color:#E8A020;">
+        ⏭ Forward in Time — Skip your next round
+      </button>
+      <button class="btn btn-outline btn-full"
+              onclick="resolveTimeDragon('nothing')"
+              style="border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);">
+        ✗ Do Nothing
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SPACE DRAGON MODAL ══ -->
+<div class="overlay hidden" id="spaceDragonOverlay">
+  <div class="modal">
+    <h2>🌌 Space Dragon!</h2>
+    <div class="dragon-row">🌌</div>
+    <p id="spaceDragonText">The Space Dragon warps reality — choose a player to swap seats with:</p>
+    <div class="modal-btns" id="spaceDragonBtns"></div>
+  </div>
+</div>
+
+<!-- ══ JOKER POWER CHOICE (both Time + Space Dragon in same battle) ══ -->
+<div class="overlay hidden" id="jokerPowerOverlay">
+  <div class="modal">
+    <h2>🃏 Two Joker Powers!</h2>
+    <div class="dragon-row">⏳🌌</div>
+    <p>You won a battle with both Jokers. Choose which power to activate — only one takes effect:</p>
+    <div class="modal-btns">
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('time')"
+              style="border-color:#E8A020;color:#E8A020;">
+        ⏳ Time Dragon — Back, Forward, or Nothing
+      </button>
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('space')"
+              style="border-color:#9B59B6;color:#C39BD3;">
+        🌌 Space Dragon — Swap seats
+      </button>
+      <button class="btn btn-outline btn-full"
+              onclick="resolveJokerPower('nothing')"
+              style="border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);">
+        ✗ Neither — Do Nothing
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ ROUND END SUMMARY OVERLAY ══ -->
+<div class="overlay hidden" id="roundEndOverlay">
+  <div class="modal">
+    <h2 id="roundEndTitle">Round Complete!</h2>
+    <div id="roundEndRows" style="margin:14px 0;"></div>
+    <div class="round-end-timer" id="roundEndTimer"></div>
+    <button class="btn btn-primary btn-full" style="margin-top:12px;"
+            onclick="dismissRoundEnd()">Continue ▶</button>
+  </div>
+</div>
+
+<!-- ══ PORTAL OVERLAY ══ -->
+<div class="overlay hidden" id="portalOverlay">
+  <div class="modal">
+    <h2>🌀 Portal Card!</h2>
+    <div class="dragon-row">🌀</div>
+    <p id="portalText">Your Portal card lets you steal a blind card from an opponent. Choose your target:</p>
+    <div class="modal-btns" id="portalBtns"></div>
+  </div>
+</div>
+
+<!-- ══ LOVE POWER OVERLAY ══ -->
+<div class="overlay hidden" id="loveOverlay">
+  <div class="modal">
+    <h2>💕 Love Power!</h2>
+    <div class="dragon-row">💕</div>
+    <p id="loveText">Your Princess card activated Love Power! Choose which Tamer earns the next lead:</p>
+    <div class="modal-btns" id="loveBtns"></div>
+  </div>
+</div>
+
+<!-- ══ SHARE / QR MODAL ══ -->
+<div class="overlay hidden" id="shareOverlay">
+  <div class="modal" style="max-width:320px;text-align:center;">
+    <h2>📱 שחק מהטלפון</h2>
+    <p style="font-size:13px;color:rgba(253,246,227,.7);margin:4px 0 12px;">סרוק את הקוד או שלח את הקישור לחברים</p>
+    <div id="qrCanvas" style="display:flex;justify-content:center;margin:0 auto 14px;"></div>
+    <div id="shareUrl" style="font-size:10px;word-break:break-all;color:rgba(253,246,227,.5);
+         background:rgba(255,255,255,.05);border-radius:6px;padding:7px 10px;margin-bottom:12px;
+         font-family:monospace;cursor:pointer;" onclick="copyShareUrl(this)" title="Click to copy"></div>
+    <button class="btn btn-gold btn-full" onclick="copyShareUrl(document.getElementById('shareUrl'))">
+      📋 Copy Link
+    </button>
+    <button class="btn btn-outline btn-full" onclick="document.getElementById('shareOverlay').classList.add('hidden')"
+            style="margin-top:8px;">Close</button>
+  </div>
+</div>
+
+<!-- ══ ROOM BROWSER ══ -->
+<div class="overlay hidden" id="roomBrowserOverlay">
+  <div class="browser-modal">
+    <h2>👁 Live Games</h2>
+    <div class="browser-subtitle">CLICK A ROOM TO SPECTATE</div>
+    <div class="room-list" id="roomListEl"></div>
+    <div class="browser-refresh" id="refreshLabel">Refreshing every 5s…</div>
+    <button class="btn btn-outline btn-full" onclick="closeRoomBrowser()"
+            style="border-color:rgba(195,155,211,.4);color:#C39BD3;">Close</button>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  CONFIG
+// ══════════════════════════════════════════════════════
+const WS_URL = (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
+  ? `ws://${window.location.hostname}:${window.location.port||5000}`
+  : `wss://${window.location.host}`;
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+let ws=null, myPid=null, myRoomId=null, gameState=null;
+let selectedSteps=3, selectedSuit='Hearts', selectedCardCids=[];
+let aiCount=3, phase='', isSpectator=false, spectatorCount=0;
+let _lastGameStartedAt=0;
+// Dedup keys — Replit's WS proxy triple-sends each outgoing message
+let _lastRevealKey='';    // prevents duplicate step_revealed renders
+let _lastActionAt=0;      // prevents rapid duplicate mainAction() sends
+let _hideBattleTimer=null;
+let _rejoining=false;     // BUG1: blocks duplicate rejoin sends
+
+const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
+const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
+const PHASE_LABELS = {waiting:'Lobby',leader_declare:'Declaring',pick_cards:'Picking',
+                      arrange_hand:'Arranging',reveal:'Reveal',end_round:'End Round',game_over:'Game Over'};
+
+// ── Pip layout: [x%, y%] within pip-area for each rank ──
+const PIP_LAYOUTS = {
+  1 : [[50,48]],
+  2 : [[50,12],[50,88]],
+  3 : [[50,12],[50,50],[50,88]],
+  4 : [[25,13],[75,13],[25,87],[75,87]],
+  5 : [[25,13],[75,13],[50,50],[25,87],[75,87]],
+  6 : [[25,15],[75,15],[25,50],[75,50],[25,85],[75,85]],
+  7 : [[25,13],[75,13],[50,28],[25,48],[75,48],[25,85],[75,85]],
+  8 : [[25,13],[75,13],[25,43],[75,43],[50,28],[50,72],[25,87],[75,87]],
+  9 : [[25,13],[75,13],[25,37],[75,37],[50,50],[25,63],[75,63],[25,87],[75,87]],
+  10: [[25,13],[75,13],[50,24],[25,38],[75,38],[25,62],[75,62],[50,76],[25,87],[75,87]],
+};
+
+// ══════════════════════════════════════════════════════
+//  WEBSOCKET
+// ══════════════════════════════════════════════════════
+let _reconnectTimer=null;
+let _reconnectAttempts=0;
+let _connecting=false;  // true while WebSocket is being established
+let _heartbeatTimer=null;  // interval for WS keep-alive pings
+
+function connect() {
+  if(_connecting) return;  // already connecting — don't create a second socket
+  _connecting=true;
+  // Cancel any pending reconnect timer
+  if(_reconnectTimer){ clearTimeout(_reconnectTimer); _reconnectTimer=null; }
+  // Close stale socket if open
+  if(ws && ws.readyState !== WebSocket.CLOSED){
+    ws.onclose=null; ws.onerror=null; ws.onmessage=null;
+    try{ ws.close(); }catch(e){}
+  }
+  try { ws = new WebSocket(WS_URL); }
+  catch(e) { _connecting=false; setConnStatus(false,'Cannot connect'); scheduleReconnect(); return; }
+  ws.onopen  = () => {
+    _connecting=false;
+    _reconnectAttempts=0;
+    setConnStatus(true,'Connected');
+    if(myPid && myRoomId && !_rejoining) {
+      _rejoining=true;
+      setConnStatus(true,'Reconnecting...');
+      send({type:'rejoin', pid:myPid, room_id:myRoomId});
+    }
+    // Keep-alive: ping every 25s so the connection doesn't silently drop
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
+    _heartbeatTimer=setInterval(()=>{
+      if(ws && ws.readyState===WebSocket.OPEN){
+        try{ ws.send(JSON.stringify({type:'ping'})); }catch(e){}
+      } else {
+        clearInterval(_heartbeatTimer); _heartbeatTimer=null;
+      }
+    }, 25000);
+  };
+  ws.onclose = () => {
+    _connecting=false;
+    _rejoining=false;
+    if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
+    setConnStatus(false,'Disconnected \u2014 retrying...');
+    scheduleReconnect();
+  };
+  ws.onerror = () => {
+    _connecting=false;
+    _rejoining=false;
+    setConnStatus(false,'Connection error');
+  };
+  ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch(err) { console.error(err); } };
+}
+
+function scheduleReconnect() {
+  if(_reconnectTimer) return;  // already scheduled
+  _reconnectAttempts++;
+  // Exponential backoff: 3s, 5s, 8s, 12s... capped at 20s, with jitter
+  const base = Math.min(3000 + (_reconnectAttempts - 1) * 2000, 20000);
+  const jitter = Math.random() * 1000;
+  _reconnectTimer = setTimeout(()=>{ _reconnectTimer=null; connect(); }, base + jitter);
+}
+function send(obj) {
+  if(ws && ws.readyState===WebSocket.OPEN){
+    ws.send(JSON.stringify(obj));
+  } else {
+    console.warn('send() dropped — ws not open:', obj.type, 'readyState:', ws?.readyState);
+    // Only trigger reconnect if not already in progress
+    if(!_connecting && !_reconnectTimer) scheduleReconnect();
+  }
+}
+function setConnStatus(ok,text) {
+  document.getElementById('connDot').className='conn-dot'+(ok?' connected':' error');
+  document.getElementById('connText').textContent=text;
+  // Show/hide the in-game reconnect bar
+  const bar=document.getElementById('reconnectBar');
+  if(bar) bar.classList.toggle('hidden', ok);
+  // Show/hide rejoin button
+  const rb=document.getElementById('rejoinBtn');
+  if(rb && myPid && myRoomId) rb.classList.toggle('hidden', ok);
+}
+function doRejoin(){
+  if(myPid && myRoomId){
+    _rejoining=false;
+    connect();
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  LOBBY
+// ══════════════════════════════════════════════════════
+function setAI(n) {
+  aiCount=Math.max(1,Math.min(9,n||3));
+  const l=document.getElementById('aiCountLbl'); if(l) l.textContent=aiCount;
+  const s=document.getElementById('aiSlider'); if(s) s.value=aiCount;
+}
+let winDragons=5;
+function setWinDragons(n){
+  winDragons=n;
+  [4,5,6].forEach(v=>{
+    const b=document.getElementById('wd'+v);
+    if(!b) return;
+    b.className='btn wd-btn '+(v===n?'btn-gold':'btn-outline');
+    b.style.padding='4px 14px'; b.style.fontSize='13px';
+  });
+}
+function getName() { return document.getElementById('playerName').value.trim()||'Player'; }
+function createRoom() {
+  send({type:'create_room',name:getName(),
+        room_id:document.getElementById('roomCode').value.trim().toUpperCase()||null,
+        ai_count:aiCount, win_dragons:winDragons});
+}
+function joinRoom() {
+  const r=document.getElementById('roomCode').value.trim().toUpperCase();
+  if(!r){alert('Enter a room code to join');return;}
+  send({type:'join_room',name:getName(),room_id:r});
+}
+function spectateRoom() {
+  const r=document.getElementById('roomCode').value.trim().toUpperCase();
+  if(!r){openRoomBrowser();return;}
+  send({type:'spectate_room',name:getName(),room_id:r});
+}
+
+// ══════════════════════════════════════════════════════
+//  ROOM BROWSER
+// ══════════════════════════════════════════════════════
+let _browserTimer=null;
+function openRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.remove('hidden');
+  fetchRooms(); _browserTimer=setInterval(fetchRooms,5000);
+}
+// ── SHARE / QR ──────────────────────────────────────────
+let _qrInstance = null;
+function showShareModal() {
+  // Use the public-facing URL (strips any Replit iframe wrapper path)
+  const url = window.location.origin + window.location.pathname.replace('/__replco/workspace_iframe.html','') ;
+  const cleanUrl = url.endsWith('/') ? url : url + '/';
+  document.getElementById('shareUrl').textContent = cleanUrl;
+  const canvas = document.getElementById('qrCanvas');
+  canvas.innerHTML = '';
+  try {
+    _qrInstance = new QRCode(canvas, {
+      text: cleanUrl,
+      width: 200, height: 200,
+      colorDark: '#1a1228',
+      colorLight: '#fdf6e3',
+      correctLevel: QRCode.CorrectLevel.M,
+    });
+  } catch(e) {
+    canvas.textContent = '(QR not available)';
+  }
+  document.getElementById('shareOverlay').classList.remove('hidden');
+}
+function copyShareUrl(el) {
+  const txt = el.textContent.trim();
+  navigator.clipboard?.writeText(txt).then(()=>{
+    const orig = el.textContent;
+    el.textContent = '✅ Copied!';
+    setTimeout(()=>{ el.textContent = orig; }, 1800);
+  }).catch(()=>{
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+    const orig = el.textContent;
+    el.textContent = '✅ Copied!';
+    setTimeout(()=>{ el.textContent = orig; }, 1800);
+  });
+}
+
+function closeRoomBrowser() {
+  document.getElementById('roomBrowserOverlay').classList.add('hidden');
+  clearInterval(_browserTimer); _browserTimer=null;
+}
+function fetchRooms() {
+  send({type:'list_rooms'});
+  const l=document.getElementById('refreshLabel');
+  if(l) l.textContent='Updated just now · refreshing every 5s';
+}
+function spectateFromBrowser(roomId) {
+  closeRoomBrowser();
+  document.getElementById('roomCode').value=roomId;
+  send({type:'spectate_room',name:getName(),room_id:roomId});
+}
+function renderRoomList(rooms) {
+  const el=document.getElementById('roomListEl'); if(!el) return;
+  if(!rooms||!rooms.length){el.innerHTML='<div class="no-rooms">🐉 No active games right now.</div>';return;}
+  el.innerHTML='';
+  rooms.forEach(r=>{
+    const cls=r.phase==='waiting'?'phase-waiting':'phase-playing';
+    const lbl=PHASE_LABELS[r.phase]||r.phase;
+    const spec=r.spectator_count>0?`<div class="room-stat">👁 <span>${r.spectator_count}</span></div>`:'';
+    const c=document.createElement('div');c.className='room-card';
+    c.onclick=()=>spectateFromBrowser(r.room_id);
+    c.innerHTML=`<div class="room-card-top"><div class="room-code">${r.room_id}</div>
+      <div class="room-phase-badge ${cls}">${lbl}</div></div>
+      <div class="room-card-stats"><div class="room-stat">⚔ <span>${r.players}/${r.max_players}</span> players</div>${spec}</div>`;
+    el.appendChild(c);
+  });
+}
+function startGame() { document.getElementById('waitOverlay').classList.add('hidden'); send({type:'start_game'}); }
+function _positionWaitModal() {
+  const ov=document.getElementById('waitOverlay');
+  const modal=ov?.querySelector('.modal');
+  if(!modal) return;
+  // Center vertically but ensure it fits in viewport
+  const vh=window.innerHeight;
+  const mh=modal.scrollHeight;
+  if(mh>=vh*0.9){
+    ov.style.alignItems='flex-start';
+    ov.style.overflowY='auto';
+    modal.style.marginTop='16px';
+    modal.style.marginBottom='16px';
+  } else {
+    ov.style.alignItems='center';
+  }
+}
+function copyRoomCode(btn) {
+  navigator.clipboard.writeText(myRoomId).then(()=>{
+    if(btn){btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy Code',1500);}
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  DECLARE CONTROLS
+// ══════════════════════════════════════════════════════
+function setSteps(n) {
+  if(n<1||n>4) return;
+  selectedSteps=n;
+  document.querySelectorAll('.step-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===n));
+}
+let _highlightSuit=null;
+function setSuit(s) {
+  selectedSuit=s;
+  const map={Hearts:'suitH',Clubs:'suitC',Diamonds:'suitD',Spades:'suitS'};
+  document.querySelectorAll('.suit-btn').forEach(b=>b.classList.remove('active'));
+  const target=document.getElementById(map[s]);
+  if(target) target.classList.add('active');
+  if(phase==='leader_declare' && gameState?.lead_pid===myPid){
+    _highlightSuit=s; applyHandSuitHighlight();
+  }
+}
+function applyHandSuitHighlight() {
+  const handEl=document.getElementById('handCards');
+  if(!handEl) return;
+  const suitCls=_highlightSuit ? _highlightSuit.toLowerCase() : null;
+  handEl.querySelectorAll('.card').forEach(el=>{
+    el.classList.remove('suit-match','suit-dim');
+    if(!suitCls) return;
+    if(el.classList.contains(suitCls)) el.classList.add('suit-match');
+    else el.classList.add('suit-dim');
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  MAIN ACTION
+// ══════════════════════════════════════════════════════
+function mainAction() {
+  // Debounce: prevent Replit triple-send from firing 3 actions
+  const now = Date.now();
+  if (now - _lastActionAt < 350) return;
+  _lastActionAt = now;
+
+  // Round ended — main button is "CONTINUE TO NEXT ROUND"
+  if(phase==='game_over' || gameState?.phase==='game_over') return;
+  if(_awaitingRoundEndContinue){ dismissRoundEnd(); return; }
+
+  // If round-end overlay is showing, ignore main button — CONTINUE handles dismissal
+  if(_roundEndOverlayVisible) return;
+
+  if (phase==='leader_declare') send({type:'declare',steps:selectedSteps,element:selectedSuit});
+  else if (phase==='pick_cards') {
+    if(!selectedCardCids.length){addLog('Select your cards first!','warn');return;}
+    send({type:'pick_cards',card_cids:[...selectedCardCids]});
+  } else if (phase==='arrange_hand') {
+    send({type:'ready_arrange'});
+    document.getElementById('mainBtn').disabled=true;
+    document.getElementById('mainBtn').textContent='Waiting for battle to start...';
+  } else if (phase==='reveal') send({type:'reveal'});
+  else if (phase==='sleeping') sendSleepingChoice('pass',null,null,null);
+}
+
+// ══════════════════════════════════════════════════════
+//  MESSAGE HANDLER
+// ══════════════════════════════════════════════════════
+function handleMessage(msg) {
+  console.log('←',msg.type,msg);
+  switch(msg.type) {
+    case 'room_created':
+      myPid=msg.pid; myRoomId=msg.room_id;
+      if(msg.win_dragons) winDragons=msg.win_dragons;
+      applyState(msg.state); showGameScreen();
+      document.getElementById('roomCodeDisplay').textContent=msg.room_id;
+      document.getElementById('waitOverlay').classList.remove('hidden');
+      setTimeout(_positionWaitModal, 50);
+      // Show dragon goal in round badge area
+      { const rb=document.getElementById('roundBadge');
+        if(rb) rb.textContent=`Goal: ${winDragons}🐉`; }
+      break;
+
+    case 'room_joined':
+      myPid=msg.pid; myRoomId=msg.room_id;
+      applyState(msg.state); showGameScreen();
+      break;
+
+    case 'spectating':
+      isSpectator=true; myRoomId=msg.room_id; spectatorCount=msg.spectator_count||0;
+      gameState=msg.state; renderTable(); showGameScreen();
+      if(msg.state?.phase) setPhase(msg.state.phase,msg.state);
+      addLog(`👁 Watching room ${msg.room_id} (${spectatorCount} watching)`,'imp');
+      break;
+
+    case 'spectator_update':
+      spectatorCount=msg.spectator_count||0; updateSpectatorBadge(); break;
+
+    case 'game_started':
+      if(_lastGameStartedAt&&Date.now()-_lastGameStartedAt<500) break;
+      _lastGameStartedAt=Date.now();
+      selectedCardCids=[];
+      _passedSleepingThisRound=false;
+      _confirmedOrder=null;   // fresh game = fresh seating
+      addLog(msg.first_leader_pid
+        ? `── Game started! ${nameOf(msg.first_leader_pid)} won the initial deal and leads first ──`
+        : '── Game started! ──','imp');
+      break;
+
+    case 'hand_update':
+      // Update public player data for table display (hand_count, dragon_count, sleeping_pairs)
+      if(gameState?.players?.[msg.pid]){
+        const _hc=(msg.hand||[]).length;
+        gameState.players[msg.pid].hand_count=_hc;
+        if(msg.dragon_count!=null) gameState.players[msg.pid].dragon_count=msg.dragon_count;
+        const _sc=(msg.sleeping||[]).length;
+        gameState.players[msg.pid].sleeping_count=_sc;
+        gameState.players[msg.pid].sleeping_pairs=msg.sleeping||[];
+      }
+      renderTable();
+      if(msg.pid===myPid){
+        if(!gameState) break;
+        // Buffer hand_update during round-end review — apply after player clicks CONTINUE
+        if(_awaitingRoundEndContinue){
+          _pendingHandUpdate=msg;
+          // Still update dragon count for the table display
+          if(gameState.players?.[myPid]&&msg.dragon_count!=null)
+            gameState.players[myPid].dragon_count=msg.dragon_count;
+          renderTable();
+          break;
+        }
+        gameState.me=msg;
+        if(gameState.players?.[myPid]&&msg.dragon_count!=null)
+          gameState.players[myPid].dragon_count=msg.dragon_count;
+        renderHand();renderTable();
+      }
+      break;
+
+    case 'rejoined':
+      _rejoining=false;
+      _pendingRoundEndMsg=null;
+      const _wasAwaitingContinue=_awaitingRoundEndContinue;
+      _awaitingRoundEndContinue=false;
+      _roundEndOverlayVisible=false;
+      _iPickedThisRound=false;
+      _pendingHandUpdate=null;
+      document.getElementById('roundEndOverlay').classList.add('hidden');
+      myPid=msg.pid; myRoomId=msg.room_id;
+      // Don't override game_over state with a stale snapshot
+      if(phase==='game_over') break;
+      // ── If player was mid-round-review (Continue button showing), sync gameState from
+      //    the snapshot so dismissRoundEnd() advances to the right next phase, then
+      //    restore the Continue overlay rather than jumping into the new phase directly. ──
+      if(_wasAwaitingContinue && msg.state){
+        if(gameState){
+          if(msg.state.players) gameState.players=msg.state.players;
+          if(msg.state.phase)   gameState.phase=msg.state.phase;
+          if(msg.state.round!=null) gameState.round=msg.state.round;
+          if(msg.state.declared_steps!=null) gameState.declared_steps=msg.state.declared_steps;
+          if(msg.state.declared_el)  gameState.declared_el=msg.state.declared_el;
+          if(msg.state.lead_pid)     gameState.lead_pid=msg.state.lead_pid;
+          const snap_me=msg.state.me||msg.state.players?.[myPid];
+          if(snap_me) gameState.me=snap_me;
+        }
+        _awaitingRoundEndContinue=true;
+        _roundEndOverlayVisible=true;
+        document.getElementById('roundEndOverlay').classList.remove('hidden');
+        const _mb=document.getElementById('mainBtn');
+        if(_mb){ _mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; _mb.disabled=false; }
+        setConnStatus(true,'Reconnected');
+        addLog('\uD83D\uDD04 Reconnected to game','imp');
+        break;
+      }
+      // Don't regress to an earlier phase — if client is already further along than
+      // the snapshot, the snapshot is stale (reconnect happened mid-round).
+      // Phase order: sleeping < pick_cards < arrange_hand < reveal < leader_declare (next round)
+      { const PHASE_ORDER={waiting:0,leader_declare:1,sleeping:2,pick_cards:3,
+                            arrange_hand:4,reveal:5,end_round:6,game_over:7};
+        const snapPhase=msg.state?.phase||'waiting';
+        const snapRound=msg.state?.round||1;
+        const curRound=gameState?.round||1;
+        const curRank=PHASE_ORDER[phase]??0;
+        const snapRank=PHASE_ORDER[snapPhase]??0;
+        // Snapshot is stale if: same round but earlier phase, OR earlier round
+        const snapIsStale = (snapRound < curRound) ||
+                            (snapRound === curRound && snapRank < curRank);
+        if(snapIsStale){
+          addLog('\uD83D\uDD04 Reconnected','imp');
+          if(msg.state && gameState){
+            if(msg.state.players) gameState.players=msg.state.players;
+            const snap_me=msg.state.me||msg.state.players?.[myPid];
+            if(snap_me && !_pendingHandUpdate){ gameState.me=snap_me; renderHand(); }
+          }
+          setConnStatus(true,'Reconnected');
+          break;
+        }
+      }
+      applyState(msg.state);
+      // ── Sleeping phase: if player already acted, hide sleeping UI immediately ──
+      if(msg.state?.phase==='sleeping'){
+        const pendingSleep=msg.state?.pending_sleeping_pids||msg.state?.pending_pids||[];
+        if(!pendingSleep.includes(myPid)){
+          hideSleepingSection();
+          document.getElementById('mainBtn').disabled=true;
+          document.getElementById('mainBtn').textContent='Waiting for others...';
+        }
+      }
+      // ── Pick phase: use pending_pick_pids if server sends it; never use battle_count (stale) ──
+      if(msg.state?.phase==='pick_cards'){
+        const pending=msg.state?.pending_pick_pids||msg.state?.pending_pids||null;
+        if(pending!==null && !pending.includes(myPid)){
+          _iPickedThisRound=true;
+          const mb=document.getElementById('mainBtn');
+          if(mb){ mb.textContent='Waiting for others...'; mb.disabled=true; }
+          const pb=document.getElementById('phaseBanner');
+          if(pb) pb.textContent='\uD83C\uDCCF Cards submitted \u2014 waiting for others';
+        }
+      }
+      // ── Arrange phase: if already confirmed, show waiting ──
+      if(msg.state?.phase==='arrange_hand'){
+        const pending=msg.state?.pending_arrange_pids||[];
+        if(!pending.includes(myPid)){
+          const mb=document.getElementById('mainBtn');
+          if(mb){ mb.textContent='Waiting for battle to start...'; mb.disabled=true; }
+        }
+      }
+      setConnStatus(true,'Reconnected');
+      addLog('\uD83D\uDD04 Reconnected to game','imp');
+      break;
+
+    case 'state':
+      applyState(msg.state);
+      syncHandCounts(msg.state?.players); break;
+
+    case 'phase_change':
+      // Refresh hand counts when entering reveal phase (all cards are now picked)
+      if(msg.phase==='reveal' && msg.step===1) send({type:'get_state'});
+      // ── Sync lead_pid whenever server tells us the leader ──
+      if(msg.leader_pid&&gameState) gameState.lead_pid=msg.leader_pid;
+      // Buffer leader_declare while round-end overlay is showing
+      if(msg.phase==='leader_declare' && _roundEndOverlayVisible){
+        _bufferedLeaderDeclare=msg;
+        if(gameState){ gameState.phase=msg.phase; gameState.round=msg.round||gameState.round; }
+      } else if(msg.phase==='sleeping' && phase==='sleeping'){
+        // Already in sleeping — just update pending list and button state
+        const _pendingPids=msg.pending_pids||[];
+        const _isMyTurn=_pendingPids.includes(myPid);
+        if(gameState) gameState.phase='sleeping';
+        renderTable();
+        if(_awaitingRoundEndContinue) break; // don't update UI during round-end review
+        const _mb=document.getElementById('mainBtn');
+        if(false){
+          // placeholder
+        } else if(_isMyTurn){
+          if(_mb){ _mb.textContent='PASS (DO NOTHING)'; _mb.disabled=false; }
+          document.getElementById('sleepingSection').classList.remove('hidden');
+          try{ renderSleepingSection(true); }catch(e){}
+        } else {
+          if(_mb){ _mb.textContent='Waiting for others...'; _mb.disabled=true; }
+        }
+        renderTable();
+      } else {
+        setPhase(msg.phase,msg);
+      }
+      break;
+
+    case 'declaration':
+      // ── Always sync declared_steps, declared_el AND lead_pid from declaration event ──
+      if(gameState){
+        gameState.declared_steps=msg.steps;
+        gameState.declared_el=msg.element;
+        gameState.lead_pid=msg.pid;
+      }
+      addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${SUIT_SYM[msg.element]}`,'imp');
+      renderTable();
+      break;
+
+    case 'cards_picked':
+      if(msg.pid===myPid){
+        selectedCardCids=[];
+        _iPickedThisRound=true;
+        const btn=document.getElementById('mainBtn');
+        btn.disabled=true; btn.textContent='Waiting for others...';
+        // Request state to update hand counts for all players
+        setTimeout(()=>send({type:'get_state'}), 200);
+      } else if(phase==='pick_cards' && !_iPickedThisRound){
+        // Another player picked — re-assert our button state in case something disrupted it
+        const need=pickNeed();
+        const btn=document.getElementById('mainBtn');
+        if(selectedCardCids.length>=need && need>0){
+          btn.disabled=false;
+          btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+        }
+      }
+      addLog(`${nameOf(msg.pid)} is ready (${msg.count} cards)`);
+      break;
+
+    case 'arrange_ready':
+      if(msg.pid===myPid){
+        // Already handled by mainAction — button disabled there
+      } else {
+        addLog(`${nameOf(msg.pid)} is set`);
+      }
+      break;
+
+    case 'step_revealed': {
+      // Dedup: build a key from step number + card cids; skip if identical to last
+      const revKey = (gameState?.round||0) + ':' + msg.step + ':' + (msg.entries||[]).map(e=>e.card?.cid).sort().join(',');
+      if (revKey === _lastRevealKey) break;
+      _lastRevealKey = revKey;
+      renderBattleStep(msg);
+      for(const ev of (msg.special_events||[])){
+        addLog(ev,'imp');
+      }
+      if(msg.winner_pid){
+        addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
+        // Track step wins for round-end overlay
+        _stepWins[msg.winner_pid]=(_stepWins[msg.winner_pid]||0)+1;
+      }
+      // If this was the last step, update button so player knows round is ending
+      if(msg.step >= msg.total_steps){
+        const mb=document.getElementById('mainBtn');
+        if(mb){ mb.textContent='Round complete…'; mb.disabled=true; }
+      }
+      break;
+    }
+
+    case 'sleeping_choice':
+      if(msg.pid===myPid){
+        if(msg.action==='sleep'){
+          addLog(`😴 You put a pair to sleep (${msg.dragon_count||'?'}🐉 total)`,'imp');
+          const _sbtn=document.getElementById('mainBtn');
+          if(_sbtn&&!_awaitingRoundEndContinue){ _sbtn.textContent='PASS — DONE SLEEPING'; _sbtn.disabled=false; }
+        } else if(msg.action==='wake'){
+          addLog(`⏰ You woke a sleeping pair`,'imp');
+          const _sbtn=document.getElementById('mainBtn');
+          if(_sbtn&&!_awaitingRoundEndContinue){ _sbtn.textContent='PASS — DONE SLEEPING'; _sbtn.disabled=false; }
+          // Refresh declare panel wake options if we woke during leader_declare
+          if(phase==='leader_declare') updateDeclarePanel('leader_declare', {leader_pid: gameState?.lead_pid});
+        } else {
+          addLog('You passed the sleeping phase.');
+          _passedSleepingThisRound=true;
+        }
+      } else {
+        const n=nameOf(msg.pid);
+        if(msg.action==='sleep')  addLog(`😴 ${n} puts a pair to sleep`);
+        else if(msg.action==='wake') addLog(`⏰ ${n} wakes a pair`);
+      }
+      break;
+
+    case 'forced_wake':
+      if(msg.pid===myPid){
+        addLog(`⏰ You were forced to wake ${msg.pairs_woken?.length||1} pair(s)`,'warn');
+        send({type:'get_state'});
+      } else {
+        addLog(`⏰ ${nameOf(msg.pid)} forced to wake a pair`);
+      }
+      break;
+
+    case 'forced_wake_choose':
+      if(msg.pid===myPid) showForcedWakeOverlay(msg);
+      break;
+
+    case 'skip_next_cleared':
+      if(msg.pid===myPid) addLog('⏳ You return from your Time Dragon skip.');
+      break;
+
+    case 'portal_choose_target':
+      if(msg.portal_pid===myPid) showPortalModal(msg);
+      else addLog(`🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`);
+      break;
+
+    case 'time_dragon_applied':
+      { const choice=msg.choice;
+        const icon='\u23F3';
+        if(choice==='back')
+          addLog(`${icon} ${nameOf(msg.pid)} claims previous step's cards!`,'imp');
+        else if(choice==='forward')
+          addLog(`${icon} ${nameOf(msg.pid)} leaps forward — skipping next round!`,'imp');
+        else
+          addLog(`${icon} ${nameOf(msg.pid)} lets the Time Dragon power fade.`);
+        if(msg.msg) addLog(msg.msg,'imp');
+      }
+      break;
+
+    case 'space_dragon_choose_swap':
+      if(msg.space_pid===myPid) showSpaceDragonModal(msg);
+      else addLog(`\uD83C\uDF0C ${nameOf(msg.space_pid)} plays Space Dragon \u2014 choosing a swap target...`);
+      break;
+
+    case 'time_dragon_choose':
+      if(msg.pid===myPid){
+        showTimeDragonModal(null, msg);
+      } else {
+        addLog(`\u23F3 ${nameOf(msg.pid)} holds Time Dragon power \u2014 choosing...`);
+      }
+      break;
+
+    case 'joker_choose_power':
+      // Human won a battle with BOTH Time and Space Dragon — must choose which power to use
+      if(msg.pid===myPid){
+        showJokerPowerModal(msg);
+      } else {
+        addLog(`\uD83C\uDCCF ${nameOf(msg.pid)} chooses Joker power...`);
+      }
+      break;
+
+    case 'seat_swap':
+      if(gameState){ gameState.order=msg.new_order; }
+      _confirmedOrder=msg.new_order;   // survives applyState overwrites on rejoin
+      addLog(`\uD83C\uDF0C Seats swapped: ${nameOf(msg.pid_a)} \u2194 ${nameOf(msg.pid_b)}`,'imp');
+      renderTable();
+      break;
+
+    case 'love_choose_tamer':
+      if(msg.princess_pid===myPid) showLoveModal(msg);
+      else addLog(`💕 ${nameOf(msg.princess_pid)} plays Princess — Love Power activated!`);
+      break;
+
+    case 'round_end':
+      _passedSleepingThisRound=false;
+      addLog(`── Round ${msg.round} complete ──`);
+      hideSleepingSection();
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
+      _pendingRoundEndMsg=null;
+      // Buffer leader_declare until player clicks CONTINUE — set flag immediately.
+      _roundEndOverlayVisible=true;
+      _awaitingRoundEndContinue=true;
+      // Arm the main button — player continues at their own pace, just like between steps.
+      { const mb=document.getElementById('mainBtn');
+        const pb=document.getElementById('phaseBanner');
+        if(mb){ mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; mb.disabled=false; }
+        if(pb){ pb.className='phase-bar end'; pb.textContent='\u2705 Round complete \u2014 continue when ready'; }
+      }
+      break;
+
+    case 'eliminated':
+      for(const pid of (msg.pids||[])){
+        addLog(`💀 ${nameOf(pid)} eliminated — out of cards!`,'warn');
+        if(gameState?.players?.[pid]) gameState.players[pid].out=true;
+      }
+      // Request state to refresh hand counts after round ends
+      send({type:'get_state'});
+      renderTable(); break;
+
+    case 'player_joined':
+      addLog(`${msg.name} joined the room`); break;
+
+        case 'seat_changed':
+      if(gameState){ gameState.order=msg.new_order; if(msg.lead_pid) gameState.lead_pid=msg.lead_pid; }
+      _confirmedOrder=msg.new_order;
+      renderTable();
+      addLog('\uD83C\uDF0C Seat order changed!','imp');
+      break;
+
+    case 'game_over':
+      phase='game_over';
+      if(gameState) gameState.phase='game_over';
+      { const mb=document.getElementById('mainBtn');
+        if(mb){ mb.disabled=true; mb.textContent='Game Over...'; }
+      }
+      // Show immediately — no delay to avoid race with reconnect/applyState
+      showGameOver(msg);
+      break;
+
+    case 'rooms':
+      renderRoomList(msg.rooms); break;
+
+    case 'error':
+      addLog(`⚠ ${msg.msg}`,'warn');
+      if(phase==='pick_cards'){
+        _iPickedThisRound=false;   // allow retry after server rejection
+        const need=pickNeed();
+        const btn=document.getElementById('mainBtn');
+        btn.disabled=selectedCardCids.length<need;
+        btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+        renderHand();
+      }
+      break;
+  }
+}
+
+// ── Joker modal: strict matching to avoid false positives ──
+function checkJokerModal(ev, msg) {
+  // Time Dragon is auto-resolved by the engine — just log the result, no modal.
+  // Space Dragon interactive choice comes via 'space_dragon_choose_swap' event, not here.
+  // This function is intentionally left as a no-op now.
+}
+
+// ══════════════════════════════════════════════════════
+//  PHASE MANAGEMENT
+// ══════════════════════════════════════════════════════
+function setPhase(newPhase, data) {
+  phase=newPhase;
+  const banner  = document.getElementById('phaseBanner');
+  const declSec = document.getElementById('declareSection');
+  const mainBtn = document.getElementById('mainBtn');
+  const phaseLbl = document.getElementById('tablePhaseLbl');
+  if(phaseLbl) phaseLbl.textContent = PHASE_LABELS[newPhase]||newPhase;
+
+  // Declaration panel is always visible — just update its state
+  updateDeclarePanel(newPhase, data);
+  // Issue 1: show declaration summary bar during pick/reveal so everyone sees what was declared
+  const declSum=document.getElementById('declSummary');
+  if(declSum){
+    if((newPhase==='pick_cards'||newPhase==='reveal')&&gameState){
+      const ldr=nameOf(gameState.lead_pid||'');
+      const steps=gameState.declared_steps||'?';
+      const el=gameState.declared_el||'Hearts';
+      declSum.textContent=`👑 ${ldr} declares ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
+      declSum.classList.remove('hidden');
+    } else {
+      declSum.classList.add('hidden');
+    }
+  }
+  // Show/hide the declare panel — hide it during sleeping so it doesn't block the sleeping UI
+  if(newPhase==='sleeping'){
+    declSec.classList.add('hidden');
+    if(_awaitingRoundEndContinue){
+      // Don't show sleeping UI during round-end review — hide it
+      document.getElementById('sleepingSection').classList.add('hidden');
+      // Also hide the banner change — keep round-end banner
+      return;
+    } else {
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      hideBattle();
+    }
+  } else {
+    declSec.classList.remove('hidden');
+    hideSleepingSection();
+    // Hide battle during phases that precede battle — prevents stale display
+    if(!_awaitingRoundEndContinue &&
+       (newPhase==='leader_declare'||newPhase==='pick_cards'||newPhase==='arrange_hand')){
+      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+      hideBattle();
+    }
+  }
+
+  if(isSpectator){mainBtn.disabled=true;mainBtn.textContent='👁 Spectating';return;}
+  mainBtn.disabled=false;
+
+  if(newPhase==='leader_declare'){
+    if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
+    // Don't hide battle while round-end overlay is showing — player hasn't seen results yet.
+    if(!_roundEndOverlayVisible) hideBattle();
+    selectedCardCids=[];   // clear stale badges from previous round's card selection
+
+    // Reset declaration controls to defaults each round — stale values from last round
+    // would cause wrong steps/element to be sent or wrong lightning to show.
+    selectedSteps=3; selectedSuit='Hearts';
+    setSteps(3); setSuit('Hearts');
+    // Clear stale declared_el so no lightning shows before the new declaration is made
+    if(gameState) gameState.declared_el=null;
+
+    const leaderPid = data.leader_pid || gameState?.lead_pid;
+    // Ensure gameState stays in sync
+    if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
+
+    const isMe = leaderPid===myPid;
+    banner.className='phase-bar declare';
+    banner.textContent = isMe
+      ? '👑 You are the Leader — declare steps & element'
+      : `⏳ ${nameOf(leaderPid)} is declaring...`;
+
+    const leaderLine = document.getElementById('declareLeaderLine');
+    if(leaderLine) leaderLine.textContent = isMe
+      ? `👑 You are the Leader`
+      : `⏳ Waiting for ${nameOf(leaderPid)} to declare...`;
+    mainBtn.textContent = isMe ? 'DECLARE' : 'Waiting...';
+    mainBtn.disabled = !isMe;
+    if(isMe){ _highlightSuit=selectedSuit; applyHandSuitHighlight(); } else { _highlightSuit=null; applyHandSuitHighlight(); }
+    if(data.round){
+      document.getElementById('roundBadge').textContent=`Round ${data.round} · ${winDragons}🐉`;
+      const rl=document.getElementById('tableRoundLbl'); if(rl) rl.textContent=`Round ${data.round}`;
+    }
+    renderTable();
+
+  } else if(newPhase==='pick_cards'){
+    const n=data.steps_needed||data.declared_steps||gameState?.declared_steps||2;
+    if(gameState) gameState.declared_steps=n;
+    banner.className='phase-bar pick';
+    // Clear pick flag for this fresh pick phase; set it again when cards_picked fires for myPid.
+    // Do NOT use battle_count — it reflects stale state since phase_change arrives before hand_update.
+    _iPickedThisRound=false;
+    selectedCardCids=[];
+    const need=pickNeed();
+    banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
+    mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
+    mainBtn.disabled=true;
+    renderHand();
+
+  } else if(newPhase==='arrange_hand'){
+    banner.className='phase-bar pick';
+    banner.textContent='\uD83C\uDCCF Arrange your hand — drag to reorder, then confirm';
+    mainBtn.textContent='READY \u2014 START BATTLE \u25b6';
+    mainBtn.disabled=false;
+    _tapPickedIdx=null;  // reset any in-progress tap-reorder
+    renderHand();
+
+  } else if(newPhase==='reveal'){
+    // Rejoin gives current_step (0-based already played), so next = current_step+1
+    const nextStep = data.next_step || data.step ||
+                     (data.current_step != null ? data.current_step + 1 : 1);
+    // If starting from step 1, clear any leftover battle content from previous round
+    // (e.g. when Time Dragon "Forward" skips leader_declare so hideBattle never ran)
+    if(nextStep===1) hideBattle();
+    banner.className='phase-bar reveal';
+    banner.textContent=`⚔ Step ${nextStep} of ${gameState?.declared_steps||'?'}`;
+    document.getElementById('battleSection').classList.remove('hidden');
+    document.getElementById('stepNum').textContent=nextStep;
+    renderStepDots(nextStep);
+    mainBtn.textContent=`REVEAL STEP ${nextStep}`;
+    mainBtn.disabled=false;
+
+  } else if(newPhase==='sleeping'){
+    banner.className='phase-bar declare';
+    const pendingPids = data.pending_pids || data.pending_sleeping_pids || null;
+    const isMyTurn = pendingPids ? pendingPids.includes(myPid) : true;
+
+    banner.textContent = isMyTurn
+      ? '😴 Dragon Rest — Sleep, Wake, or Pass'
+      : '⏳ Waiting for players to choose...';
+    mainBtn.textContent = 'PASS (DO NOTHING)';
+    mainBtn.disabled = !isMyTurn;
+    document.getElementById('sleepingSection').classList.remove('hidden');
+    try{ renderSleepingSection(isMyTurn); }catch(e){ console.error('renderSleepingSection error:',e); }
+
+  } else if(newPhase==='end_round'){
+    banner.className='phase-bar end';
+    banner.textContent='✅ Round complete';
+    mainBtn.textContent='NEXT ROUND';
+  }
+
+  // If the player still needs to click "Continue" after the previous round, always
+  // restore that button regardless of what phase just arrived (sleeping, pick_cards, etc.)
+  // The sleeping auto-pass path returns early above, so its button is already correct.
+  if(_awaitingRoundEndContinue && !isSpectator) {
+    mainBtn.textContent = 'CONTINUE TO NEXT ROUND \u25b6';
+    mainBtn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+//  SLEEPING PHASE
+// ══════════════════════════════════════════════════════
+function hideSleepingSection() {
+  document.getElementById('sleepingSection').classList.add('hidden');
+  document.getElementById('sleepingContent').innerHTML='';
+}
+
+function renderSleepingSection(isMyTurn) {
+  const me = gameState?.me;
+  const el = document.getElementById('sleepingContent');
+  if(!el) return;
+  el.innerHTML='';
+
+  const sleeping = me?.sleeping||[];
+  if(sleeping.length){
+    const lbl=document.createElement('div'); lbl.className='sleep-section-lbl';
+    lbl.textContent='😴 Sleeping Pairs — click to Wake'; el.appendChild(lbl);
+    sleeping.forEach((pair,i)=>{
+      const [t,d]=pair;
+      const row=document.createElement('div'); row.className='sleep-pair-row';
+      const cardsDiv=document.createElement('div'); cardsDiv.className='sleep-pair-cards';
+      cardsDiv.appendChild(renderCardEl(t,false,false,-1));
+      cardsDiv.appendChild(renderCardEl(d,false,false,-1));
+      const lbl2=document.createElement('div'); lbl2.className='sleep-pair-label';
+      lbl2.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit||''} pair · protected`;
+      const btn=document.createElement('button'); btn.className='sleep-pair-btn btn-wake';
+      btn.textContent='⏰ WAKE'; btn.disabled=!isMyTurn;
+      btn.onclick=()=>sendSleepingChoice('wake',null,null,i);
+      row.appendChild(cardsDiv); row.appendChild(lbl2); row.appendChild(btn);
+      el.appendChild(row);
+    });
+  }
+
+  const hand = me?.hand||[];
+  const sleepingCids = new Set((sleeping||[]).flatMap(p=>p.map(c=>c.cid)));
+  const dragons={}, tamers={};
+  hand.forEach(c=>{
+    if(sleepingCids.has(c.cid)||c.is_joker||!c.suit) return;
+    if(c.is_dragon) dragons[c.suit]=c;
+    if(c.is_tamer)  tamers[c.suit]=c;
+  });
+  const eligiblePairs=Object.keys(dragons).filter(s=>tamers[s]).map(s=>({tamer:tamers[s],dragon:dragons[s]}));
+
+  if(eligiblePairs.length){
+    const lbl=document.createElement('div'); lbl.className='sleep-section-lbl';
+    lbl.textContent='Hand pairs — click to Sleep'; el.appendChild(lbl);
+    eligiblePairs.forEach(({tamer:t,dragon:d})=>{
+      const row=document.createElement('div'); row.className='sleep-pair-row';
+      const cardsDiv=document.createElement('div'); cardsDiv.className='sleep-pair-cards';
+      cardsDiv.appendChild(renderCardEl(t,false,false,-1));
+      cardsDiv.appendChild(renderCardEl(d,false,false,-1));
+      const lbl2=document.createElement('div'); lbl2.className='sleep-pair-label';
+      lbl2.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit||''} · puts them to sleep`;
+      const btn=document.createElement('button'); btn.className='sleep-pair-btn btn-sleep';
+      btn.textContent='😴 SLEEP'; btn.disabled=!isMyTurn;
+      btn.onclick=()=>sendSleepingChoice('sleep',t.cid,d.cid,null);
+      row.appendChild(cardsDiv); row.appendChild(lbl2); row.appendChild(btn);
+      el.appendChild(row);
+    });
+  }
+
+  if(!sleeping.length && !eligiblePairs.length){
+    const hint=document.createElement('div'); hint.className='sleep-hint';
+    hint.textContent='No pairs available — press PASS to continue.';
+    el.appendChild(hint);
+  } else {
+    const hint=document.createElement('div'); hint.className='sleep-hint';
+    hint.textContent='Sleep protects a pair & keeps dragons safe. Wake returns them to fight.';
+    el.appendChild(hint);
+  }
+}
+
+function sendSleepingChoice(action, tamer_cid, dragon_cid, pair_index) {
+  send({type:'sleeping_choice', action, tamer_cid, dragon_cid, pair_index});
+  document.getElementById('mainBtn').disabled=true;
+  document.querySelectorAll('.sleep-pair-btn').forEach(b=>b.disabled=true);
+}
+
+function showForcedWakeOverlay(msg) {
+  const pairs = msg.pairs_available||[];
+  const needed = msg.pairs_needed||1;
+  document.getElementById('forcedWakeText').textContent=
+    `You have too few cards for battle (need ${msg.steps_needed}, have ${msg.hand_size}). Choose ${needed} pair(s) to wake.`;
+  const container=document.getElementById('forcedWakePairs');
+  container.innerHTML='';
+  const selected=[];
+  pairs.forEach(({index,tamer:t,dragon:d})=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline';
+    btn.style.cssText='text-align:left;font-size:12px;';
+    btn.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit} pair (${t.label}+${d.label})`;
+    btn.onclick=()=>{
+      const i=selected.indexOf(index);
+      if(i>=0){ selected.splice(i,1); btn.classList.remove('active'); }
+      else if(selected.length<needed){ selected.push(index); btn.classList.add('active'); }
+      confirmBtn.disabled=selected.length!==needed;
+    };
+    container.appendChild(btn);
+  });
+  const confirmBtn=document.createElement('button');
+  confirmBtn.className='btn btn-gold btn-full'; confirmBtn.textContent='CONFIRM WAKE';
+  confirmBtn.disabled=true;
+  confirmBtn.onclick=()=>{
+    send({type:'forced_wake_chosen',pair_indices:selected});
+    document.getElementById('forcedWakeOverlay').classList.add('hidden');
+  };
+  container.appendChild(confirmBtn);
+  document.getElementById('forcedWakeOverlay').classList.remove('hidden');
+}
+
+function applyState(state) {
+  gameState=state;
+  // Sync declared_el from state — prevents stale lightning showing wrong suit
+  if(gameState && state.declared_el !== undefined)
+    gameState.declared_el = state.declared_el || null;
+  // If a seat_swap happened after the snapshot was taken, restore the correct order
+  if(_confirmedOrder && gameState) gameState.order=_confirmedOrder;
+  renderTable(); renderHand();
+  if(state.phase) setPhase(state.phase,state);
+}
+// Called when server sends full state — sync hand counts for all players
+function syncHandCounts(players){
+  if(!gameState||!players) return;
+  Object.entries(players).forEach(([pid,p])=>{
+    if(gameState.players?.[pid]){
+      if(p.hand_count!=null) gameState.players[pid].hand_count=p.hand_count;
+      if(p.dragon_count!=null) gameState.players[pid].dragon_count=p.dragon_count;
+      if(p.sleeping_count!=null) gameState.players[pid].sleeping_count=p.sleeping_count;
+      if(p.sleeping_pairs!=null) gameState.players[pid].sleeping_pairs=p.sleeping_pairs;
+    }
+  });
+  renderTable();
+}
+function nameOf(pid) {
+  if(!gameState) return pid||'';
+  return gameState.players?.[pid]?.name||pid||'';
+}
+function showGameScreen() {
+  document.getElementById('lobbyScreen').classList.add('hidden');
+  document.getElementById('gameScreen').classList.remove('hidden');
+  if(isSpectator){
+    document.querySelector('.action-bar').style.display='none';
+    document.querySelector('#handCards').parentElement.classList.add('hidden');
+    document.querySelector('#declareSection').classList.add('hidden');
+    const specBanner=document.createElement('div');
+    specBanner.style.cssText='background:linear-gradient(90deg,rgba(74,26,107,.85),rgba(74,26,107,.4));padding:8px 14px;text-align:center;font-family:Cinzel,serif;font-size:13px;font-weight:700;letter-spacing:1px;color:#C39BD3;flex-shrink:0;';
+    specBanner.innerHTML=`👁 SPECTATING · Room ${myRoomId} · <span id="specCount">${spectatorCount}</span> watching`;
+    const pb=document.getElementById('phaseBanner');
+    pb.parentNode.insertBefore(specBanner,pb);
+  }
+  requestAnimationFrame(renderTable);
+}
+function updateSpectatorBadge() {
+  const el=document.getElementById('specCount'); if(el) el.textContent=spectatorCount;
+}
+
+// ══════════════════════════════════════════════════════
+//  ROUND TABLE
+// ══════════════════════════════════════════════════════
+function renderTable() {
+  if(!gameState) return;
+  const container=document.getElementById('tableContainer'); if(!container) return;
+  const order=gameState.order||Object.keys(gameState.players||{});
+  const N=order.length;
+  const W=container.offsetWidth||300, H=container.offsetHeight||260;
+  const cx=W/2, cy=H/2;
+  const avSize = N<=4?50:N<=6?44:36;
+  const margin = avSize/2+32;
+  const orbitR = Math.min(cx*0.9, cy-margin);
+  const feltR  = Math.max(28, orbitR*0.5);
+
+  const felt=document.getElementById('tableFelt');
+  if(felt){ const d=feltR*2; Object.assign(felt.style,{width:d+'px',height:d+'px',left:cx+'px',top:cy+'px'}); }
+  const ci=document.getElementById('tableCenterInfo');
+  if(ci){ci.style.left=cx+'px';ci.style.top=cy+'px';}
+
+  container.querySelectorAll('.player-seat').forEach(s=>s.remove());
+  if(!N) return;
+
+  const myIdx=order.indexOf(myPid);
+  const leadPid=gameState.lead_pid;
+  const isTurnPid=(phase==='leader_declare')?leadPid:null;
+
+  order.forEach((pid,i)=>{
+    const p=gameState.players[pid]; if(!p) return;
+    const frac=(myIdx>=0)?(i-myIdx)/N:i/N;
+    const angle=frac*2*Math.PI+Math.PI/2;
+    const x=cx+orbitR*Math.cos(angle);
+    const y=cy+orbitR*Math.sin(angle);
+    const isMe=pid===myPid, isLeader=pid===leadPid, isTurn=pid===isTurnPid;
+    const initials=(p.name||'?').slice(0,2).toUpperCase();
+    const d=p.dragon_count||0;
+    const dragonStr='';
+    const handCount=p.hand_count||0;
+    const sleepCount=p.sleeping_count||0;
+    const metaStr=p.out?'❌':`${handCount}🃏${sleepCount>0?' · 😴'+sleepCount:''}`;
+    const SUIT_COLOR_T={'Hearts':'#C0392B','Diamonds':'#C0392B','Clubs':'#e8e0d0','Spades':'#e8e0d0'};
+    const SUIT_BG_T={'Hearts':'#fffaf0','Diamonds':'#fffaf0','Clubs':'#1a1e30','Spades':'#1a1e30'};
+    const SUIT_SYM_T={'Hearts':'♥','Clubs':'♣','Diamonds':'♦','Spades':'♠'};
+    const sleeping_pairs=p.sleeping_pairs||[];
+    let sleepingHTML='';
+    if(sleeping_pairs.length>0){
+      const pairsHTML=sleeping_pairs.map(pair=>{
+        const t=pair[0],d2=pair[1];
+        const bg=SUIT_BG_T[d2.suit]||'#1a1e30';
+        const col=SUIT_COLOR_T[d2.suit]||'#e8e0d0';
+        const sym=SUIT_SYM_T[d2.suit]||'';
+        const tRank=t.label.replace(/[♥♣♦♠]/g,'');
+        const dRank=d2.label.replace(/[♥♣♦♠]/g,'');
+        return `<span style="background:rgba(0,0,0,.35);border:1px solid ${col};border-radius:4px;padding:2px 3px;display:inline-flex;flex-direction:column;align-items:center;gap:1px;min-width:18px;">
+          <span style="font-size:11px;line-height:1;">🐉</span>
+          <span style="color:${col};font-size:10px;line-height:1;font-weight:700;">${sym}</span>
+        </span>`;
+      }).join(' ');
+      sleepingHTML=`<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin-top:2px;">${pairsHTML}</div>`;
+    }
+
+    const seat=document.createElement('div');
+    seat.className='player-seat'+(isMe?' is-me':'')+(isLeader?' is-leader':'')+(p.out?' is-out':'')+(isTurn?' is-turn':'');
+    seat.style.left=x+'px'; seat.style.top=y+'px';
+    // Build accum pile HTML
+    const accumCards = p.accum || [];
+    let pileHTML = '';
+    if(accumCards.length > 0){
+      const shown = accumCards.slice(-5); // show last 5 won cards
+      const pips = shown.map(c => {
+        let cls = 'pile-card-mini ';
+        if(c.is_joker) cls += c.joker_type==='space'?'js':'jt';
+        else cls += (c.suit||'')[0].toLowerCase();
+        const r = c.is_joker ? (c.joker_type==='space'?'🌌':'⏳')
+                             : c.label.replace(/[♥♣♦♠]/g,'');
+        return `<div class="${cls}" title="${c.label}">${r}</div>`;
+      }).join('');
+      const extraLabel = accumCards.length>5
+        ? `<div style="font-size:8px;color:var(--gold-light);text-align:center;">+${accumCards.length-5}</div>` : '';
+      const accumDragons = accumCards.filter(c=>c.is_dragon).length;
+      const accumDragonBadge = accumDragons>0
+        ? `<div style="font-size:8px;color:#E8A020;text-align:center;">🐉×${accumDragons}</div>` : '';
+      pileHTML = `<div class="seat-pile" title="${accumCards.length} cards won">${pips}${extraLabel}${accumDragonBadge}</div>`;
+    }
+    seat.innerHTML=`
+      <div class="seat-avatar" style="width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize*.38)}px;">
+        ${isLeader?'<span class="seat-crown">👑</span>':''}${initials}
+      </div>
+      <div class="seat-name">${p.name}</div>
+      ${sleepingHTML}
+      ${pileHTML}
+      <div class="seat-meta">${metaStr}</div>`;
+    container.appendChild(seat);
+  });
+
+  const tt=document.getElementById('tableTitle');
+  if(tt) tt.innerHTML=spectatorCount>0
+    ?`⚔ Round Table &nbsp;<span style="font-size:10px;color:#C39BD3;background:rgba(74,26,107,.4);padding:1px 6px;border-radius:3px;">👁 ${spectatorCount}</span>`
+    :'⚔ Round Table';
+}
+
+// ══════════════════════════════════════════════════════
+//  CLASSIC CARD RENDERING
+// ══════════════════════════════════════════════════════
+function buildCardPips(origRank, suitSym) {
+  const layout=PIP_LAYOUTS[origRank]; if(!layout) return '';
+  const sz=origRank===1?28:origRank<=3?18:origRank<=6?16:13;
+  return layout.map(([x,y])=>
+    `<span class="pip" style="left:${x}%;top:${y}%;font-size:${sz}px;">${suitSym}</span>`
+  ).join('');
+}
+
+function renderCardEl(card, isPick, isSelected, orderIdx) {
+  let cls='card ';
+  const sym = card.is_joker ? (card.joker_type==='space'?'🌌':'⏳') : SUIT_SYM[card.suit];
+  // 3: Replace 'J' with 'P' for Jacks (Princess)
+  let rankStr = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
+  if(card.orig_rank===11) rankStr='P';
+
+  if(card.is_joker) cls+=card.joker_type==='space'?'joker-space':'joker-time';
+  else cls+=(card.suit||'').toLowerCase();
+  if(isSelected) cls+=' selected';
+
+  let badge='';
+  if(card.is_tamer)         badge='TAMER';
+  else if(card.is_princess) badge='PRINCESS';
+  else if(card.is_portal)   badge='🌀 PORTAL';  // 2: spiral + label on portal
+  else if(card.orig_rank===8) badge='WIZARD';
+
+  // Dragon icon for Ace cards
+  const dragonIcon = (card.is_dragon && !card.is_joker)
+    ? '<span class="ace-dragon-icon">🐉</span>' : '';
+
+  // Badge shows which step this card will play in: pick 1 → step 1, pick 2 → step 2, etc.
+  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${orderIdx+1}</span>`:'';
+
+  // 1: blinking bolt for cards matching the declared dominant element
+  const isDominant = !card.is_joker 
+                     && gameState?.declared_el
+                     && card.suit===gameState.declared_el
+                     && (phase==='pick_cards'||phase==='reveal');
+  const dominantBolt = isDominant ? '<span class="dominant-bolt">⚡</span>' : '';
+
+  let centerHTML='';
+  if(card.is_joker){
+    const lbl=card.joker_type==='space'?'SPACE':'TIME';
+    centerHTML=`<div class="pip-area"><div class="joker-inner">
+      <div class="joker-big-sym">${sym}</div>
+      <div class="joker-label">${lbl}</div>
+      <div class="joker-sub">DRAGON</div>
+    </div></div>`;
+  } else if(card.orig_rank>=11){
+    // Face card: P for Jack/Princess, Q, K
+    const faceLetters={11:'P',12:'Q',13:'K'};
+    centerHTML=`<div class="pip-area"><span class="face-center" style="font-size:${card.orig_rank===13?30:28}px;">${faceLetters[card.orig_rank]||rankStr}</span></div>`;
+  } else {
+    centerHTML=`<div class="pip-area">${buildCardPips(card.orig_rank, sym)}</div>`;
+  }
+
+  const el=document.createElement('div');
+  el.className=cls;
+  el.dataset.cid=card.cid;
+  el.innerHTML=`
+    <div class="card-corner card-tl">
+      <span class="corner-rank">${rankStr}</span>
+      <span class="corner-sym">${card.is_joker?'':sym}</span>
+    </div>
+    ${centerHTML}
+    <div class="card-corner card-br">
+      <span class="corner-rank">${rankStr}</span>
+      <span class="corner-sym">${card.is_joker?'':sym}</span>
+    </div>
+    ${dragonIcon}
+    ${dominantBolt}
+    ${badge?`<span class="card-badge">${badge}</span>`:''}
+    ${orderBadge}`;
+  return el;
+}
+
+let _dragSrcIdx = null;        // desktop drag source index
+let _tapPickedIdx = null;      // mobile tap-to-move: index of picked card
+
+function renderHand() {
+  const me=gameState?.me;
+  const el=document.getElementById('handCards');
+  el.innerHTML='';
+  if(!me?.hand) return;
+  const alreadyPicked=_iPickedThisRound;
+  const isPick=phase==='pick_cards' && !alreadyPicked;
+  const canReorder = phase==='arrange_hand';  // reorder ONLY during arrange_hand phase
+  const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
+  document.getElementById('handTitle').textContent=
+    isPick?`Your Hand \u2014 select ${need}`:`Your Hand (${me.hand.length} cards)`;
+
+  // Server sends hand in display order (engine's ordered_hand). Use it directly.
+  const cards = me.hand;
+
+  cards.forEach((card, idx)=>{
+    const isSelected=selectedCardCids.includes(card.cid);
+    const orderIdx=selectedCardCids.indexOf(card.cid);
+    const cardEl=renderCardEl(card,isPick,isSelected,orderIdx);
+
+    // ── Portal steal indicator: leftmost card (shown during arrange_hand) ──
+    if(canReorder && idx===0 && me.hand.length>0){
+      const dot=document.createElement('span');
+      dot.title='Portal target \u2014 leftmost card stolen first';
+      dot.style.cssText='position:absolute;top:2px;left:50%;transform:translateX(-50%);'
+        +'font-size:8px;color:#00CED1;opacity:.8;pointer-events:none;z-index:5;';
+      dot.textContent='\uD83C\uDF00';
+      cardEl.style.position='relative';
+      cardEl.appendChild(dot);
+    }
+
+    if(canReorder){
+      // ── Tap-picked highlight ──
+      if(_tapPickedIdx===idx) cardEl.classList.add('tap-picked');
+
+      // ── Tap-to-move: use click so it works on both mobile and desktop ──
+      cardEl.addEventListener('click', ()=>_handleTapReorder(idx));
+
+      // ── Drag-and-drop (desktop) ──
+      cardEl.draggable=true;
+      cardEl.addEventListener('dragstart', e=>{
+        _dragSrcIdx=idx;
+        e.dataTransfer.effectAllowed='move';
+        cardEl.style.opacity='0.4';
+      });
+      cardEl.addEventListener('dragend', ()=>{
+        cardEl.style.opacity='';
+        _dragSrcIdx=null;
+        document.querySelectorAll('.hand-card').forEach(c=>c.classList.remove('drag-over'));
+      });
+      cardEl.addEventListener('dragover', e=>{
+        e.preventDefault();
+        e.dataTransfer.dropEffect='move';
+        cardEl.classList.add('drag-over');
+      });
+      cardEl.addEventListener('dragleave', ()=>cardEl.classList.remove('drag-over'));
+      cardEl.addEventListener('drop', e=>{
+        e.preventDefault();
+        cardEl.classList.remove('drag-over');
+        if(_dragSrcIdx===null || _dragSrcIdx===idx) return;
+        _moveHandCard(_dragSrcIdx, idx);
+      });
+    }
+
+    // ── Pick-mode click ──
+    if(isPick) cardEl.addEventListener('click', ()=>toggleCard(card.cid,need));
+
+    el.appendChild(cardEl);
+  });
+  // Apply suit highlight if active (leader_declare)
+  applyHandSuitHighlight();
+}
+
+function _handleTapReorder(idx){
+  if(_tapPickedIdx===null){
+    // First tap: pick up card
+    _tapPickedIdx=idx;
+    renderHand();
+  } else if(_tapPickedIdx===idx){
+    // Tap same card: cancel
+    _tapPickedIdx=null;
+    renderHand();
+  } else {
+    // Second tap: drop here
+    const from=_tapPickedIdx;
+    _tapPickedIdx=null;
+    _moveHandCard(from, idx);
+  }
+}
+
+function _moveHandCard(fromIdx, toIdx){
+  const hand=[...gameState.me.hand];
+  const [moved]=hand.splice(fromIdx,1);
+  hand.splice(toIdx,0,moved);
+  gameState.me.hand=hand;
+  // Send new order to server
+  send({type:'reorder_hand', cid_list: hand.map(c=>c.cid)});
+  renderHand();
+}
+
+function toggleCard(cid, need) {
+  const idx=selectedCardCids.indexOf(cid);
+  if(idx>=0) selectedCardCids.splice(idx,1);
+  else if(selectedCardCids.length<need) selectedCardCids.push(cid);
+  const btn=document.getElementById('mainBtn');
+  btn.textContent=`CONFIRM CARDS (${selectedCardCids.length}/${need})`;
+  btn.disabled=selectedCardCids.length<need;
+  renderHand();
+}
+
+// How many cards this player must actually submit: min(declared_steps, hand_size).
+// The engine enforces this same cap in player_pick_cards().
+function pickNeed() {
+  const declared=gameState?.declared_steps||0;
+  const handSize=gameState?.me?.hand?.length??declared;
+  return Math.min(declared, handSize);
+}
+
+// ══════════════════════════════════════════════════════
+//  BATTLE
+// ══════════════════════════════════════════════════════
+function renderStepDots(cur) {
+  const total=gameState?.declared_steps||3;
+  const el=document.getElementById('stepDots'); el.innerHTML='';
+  for(let i=1;i<=total;i++){
+    const d=document.createElement('div');
+    d.className='sdot'+(i<cur?' done':i===cur?' cur':'');
+    el.appendChild(d);
+  }
+}
+
+function renderBattleStep(msg) {
+  const rows=document.getElementById('battleRows');
+  if(msg.step===1) rows.innerHTML='';
+  renderStepDots(msg.step);
+  document.getElementById('stepNum').textContent=msg.step;
+  const div=document.createElement('div');
+  div.style.cssText='font-family:Cinzel,serif;font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin:4px 0;letter-spacing:2px;';
+  div.textContent=`— STEP ${msg.step} —`; rows.appendChild(div);
+
+  // Show any duel / special event as a banner in the battle section
+  const duelEvents=(msg.special_events||[]).filter(e=>e.includes('⚔️')||e.includes('🧙')||e.includes('🃏'));
+  if(duelEvents.length){
+    const duelBanner=document.createElement('div');
+    duelBanner.style.cssText='background:rgba(155,89,182,.18);border:1px solid rgba(155,89,182,.45);border-radius:6px;padding:5px 10px;margin:4px 8px;font-size:11px;color:#C39BD3;text-align:center;';
+    duelBanner.textContent=duelEvents.join(' · ');
+    rows.appendChild(duelBanner);
+  }
+
+  // BUG2: sort entries by the game's seat order so rows always appear in table order
+  const _seatOrder=gameState?.order||[];
+  const _entries=[...(msg.entries||[])].sort((a,b)=>{
+    const ia=_seatOrder.indexOf(a.pid); const ib=_seatOrder.indexOf(b.pid);
+    return (ia<0?9999:ia)-(ib<0?9999:ib);
+  });
+  _entries.forEach(entry=>{
+    const row=document.createElement('div');
+    row.className='battle-row'+(entry.pid===msg.winner_pid?' winning':'');
+    const pname=document.createElement('div');
+    pname.className='battle-pname';
+    pname.textContent=entry.pid===myPid?'👤 You':nameOf(entry.pid);
+    const cardsDiv=document.createElement('div');
+    cardsDiv.className='battle-cards';
+    // Main battle card
+    const wrap=document.createElement('div');
+    wrap.className='battle-card-wrap';
+    wrap.appendChild(renderCardEl(entry.card, false, false, -1));
+    cardsDiv.appendChild(wrap);
+    // Duel drawn cards (if any — from special_events parsing)
+    const duelCards = entry.duel_cards||[];
+    duelCards.forEach(dc=>{
+      const dw=document.createElement('div');
+      dw.className='battle-card-wrap';
+      dw.style.cssText='opacity:0.75;margin-left:-8px;';
+      dw.appendChild(renderCardEl(dc, false, false, -1));
+      cardsDiv.appendChild(dw);
+    });
+    row.appendChild(pname);
+    row.appendChild(cardsDiv);
+    if(entry.pid===msg.winner_pid){
+      const wb=document.createElement('div');
+      wb.className='win-badge'; wb.textContent='WIN';
+      row.appendChild(wb);
+    }
+    rows.appendChild(row);
+  });
+
+  const banner=document.getElementById('phaseBanner');
+  const total=gameState?.declared_steps||3;
+  if(msg.step<total){
+    const next=msg.step+1;
+    banner.textContent=`⚔ Step ${next} of ${total}`;
+    const mb=document.getElementById('mainBtn');
+    mb.textContent=`REVEAL STEP ${next}`;
+    mb.disabled=false;
+    renderStepDots(msg.step);
+  } else {
+    banner.className='phase-bar end';
+    banner.textContent='✅ All steps done — ending round';
+    document.getElementById('mainBtn').textContent='COLLECTING CARDS...';
+    document.getElementById('mainBtn').disabled=true;
+  }
+}
+
+function hideBattle() {
+  document.getElementById('battleSection').classList.add('hidden');
+  document.getElementById('battleRows').innerHTML='';
+}
+
+// ══════════════════════════════════════════════════════
+//  JOKER MODALS
+// ══════════════════════════════════════════════════════
+function showTimeDragonModal(ev, msg) {
+  // BUG3: "Back in Time" is only impossible on step 1 (no previous step exists)
+  const hasPrev = msg?.has_prev !== undefined ? msg.has_prev : ((msg?.step||1) > 1);
+  document.getElementById('timeDragonText').textContent=
+    hasPrev
+      ? 'The Time Dragon grants you power! Go back and claim the previous step\'s cards, or leap forward and skip your next round.'
+      : 'The Time Dragon grants you power! There\'s no previous step to claim, so you can only leap forward (skip your next round) or do nothing.';
+  const backBtn=document.getElementById('timeBackBtn');
+  backBtn.style.opacity=hasPrev?'1':'.35'; backBtn.disabled=!hasPrev;
+  document.getElementById('timeDragonOverlay').classList.remove('hidden');
+}
+
+let _pendingJokerMsg=null;  // stored joker_choose_power msg, used by resolveJokerPower
+function showJokerPowerModal(msg) {
+  _pendingJokerMsg=msg;
+  document.getElementById('jokerPowerOverlay').classList.remove('hidden');
+}
+function resolveJokerPower(power) {
+  document.getElementById('jokerPowerOverlay').classList.add('hidden');
+  if(power==='nothing'){
+    send({type:'joker_power_chosen', power:'nothing'});
+    addLog('\uD83C\uDCCF Joker powers fade — do nothing.','imp');
+  } else if(power==='time'){
+    // Show time dragon modal next
+    send({type:'joker_power_chosen', power:'time'});
+    // Time dragon choose event will arrive from server — wait for it
+  } else if(power==='space'){
+    send({type:'joker_power_chosen', power:'space'});
+    // Space dragon choose event will arrive from server — wait for it
+  }
+  _pendingJokerMsg=null;
+}
+function resolveTimeDragon(choice) {
+  document.getElementById('timeDragonOverlay').classList.add('hidden');
+  send({type:'joker_power',power:'time',choice});
+  const msgs={back:'⏳ Time Dragon: claimed previous step!',forward:'⏳ Time Dragon: skipping next round!',nothing:'⏳ Time Dragon power fades...'};
+  addLog(msgs[choice]||'','imp');
+}
+function showSpaceDragonModal(msg) {
+  const btns=document.getElementById('spaceDragonBtns');
+  btns.innerHTML='';
+  (msg.valid_target_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#9B59B6;color:#C39BD3;';
+    btn.textContent=`🔄 Swap seats with ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
+    btn.onclick=()=>resolveSpaceDragon(pid);
+    btns.appendChild(btn);
+  });
+  if(msg.can_pass){
+    const passBtn=document.createElement('button');
+    passBtn.className='btn btn-outline btn-full';
+    passBtn.style.cssText='border-color:rgba(253,246,227,.2);color:rgba(253,246,227,.4);';
+    passBtn.textContent='✗ Stay in current seat';
+    passBtn.onclick=()=>resolveSpaceDragon(null);
+    btns.appendChild(passBtn);
+  }
+  document.getElementById('spaceDragonOverlay').classList.remove('hidden');
+}
+function resolveSpaceDragon(targetPid) {
+  document.getElementById('spaceDragonOverlay').classList.add('hidden');
+  send({type:'space_dragon_swap', target_pid: targetPid||null});
+  addLog(targetPid?`🌌 Space Dragon: swapping with ${nameOf(targetPid)}!`:'🌌 Space Dragon: staying put.','imp');
+}
+
+// ══════════════════════════════════════════════════════
+//  ROUND END SUMMARY  (BUG4)
+// ══════════════════════════════════════════════════════
+let _roundEndTimer=null;
+let _roundEndShowTimer=null;   // setTimeout handle for the delayed overlay display
+let _roundEndOverlayVisible=false;   // true while overlay is shown
+let _awaitingRoundEndContinue=false; // true when main button should fire dismissRoundEnd
+let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
+let _stepWins={};          // pid → wins this round, reset on each round_end call
+let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
+let _iPickedThisRound=false;   // true after myPid sends cards_picked; cleared each pick phase
+let _confirmedOrder=null;      // most recent seat order from seat_swap; survives applyState
+let _pendingHandUpdate=null;   // hand_update buffered during round-end review
+function showRoundEndOverlay(msg) {
+  const overlay=document.getElementById('roundEndOverlay');
+  const title=document.getElementById('roundEndTitle');
+  const rowsEl=document.getElementById('roundEndRows');
+  const timerEl=document.getElementById('roundEndTimer');
+  // Clear any still-running timer from a previous overlay
+  if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
+  rowsEl.innerHTML='';
+
+  // Determine who won the most steps this round
+  let roundWinnerPid=msg.winner_pid||null;
+  if(!roundWinnerPid && Object.keys(_stepWins).length){
+    const maxWins=Math.max(...Object.values(_stepWins));
+    const leaders=Object.entries(_stepWins).filter(([,w])=>w===maxWins).map(([p])=>p);
+    if(leaders.length===1) roundWinnerPid=leaders[0];
+  }
+  title.textContent=roundWinnerPid
+    ? `Round ${msg.round||''} — ${nameOf(roundWinnerPid)} wins!`
+    : `Round ${msg.round||''} Complete!`;
+  _stepWins={};  // reset for next round
+
+  const order=(gameState?.order)||Object.keys(gameState?.players||{});
+  order.forEach(pid=>{
+    const p=gameState?.players?.[pid]; if(!p||p.out) return;
+    const d=p.dragon_count||0;
+    const dragonStr=d>0?'🐉'.repeat(Math.min(d,5))+(d>5?`+${d-5}`:''):'—';
+    const row=document.createElement('div');
+    row.className='round-end-row'+(pid===roundWinnerPid?' winner-row':'');
+    row.innerHTML=`<span class="round-end-name">${pid===myPid?'👤 '+p.name:p.name}${pid===roundWinnerPid?' 🏆':''}</span>`+
+      `<span class="round-end-dragons">${dragonStr} <span style="font-size:11px;color:rgba(253,246,227,.45);">(${d})</span></span>`;
+    rowsEl.appendChild(row);
+  });
+
+  let secs=5;
+  timerEl.innerHTML='';  // clear timer area — CONTINUE button is already in HTML
+  overlay.classList.remove('hidden');
+  _roundEndOverlayVisible=true;
+}
+function dismissRoundEnd() {
+  if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
+  if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
+  _roundEndOverlayVisible=false;
+  _awaitingRoundEndContinue=false;
+  _pendingRoundEndMsg=null;
+  document.getElementById('roundEndOverlay').classList.add('hidden');
+  hideBattle();
+  // Apply buffered hand_update (new round's hand) now that player has reviewed last step
+  if(_pendingHandUpdate && gameState){
+    gameState.me=_pendingHandUpdate;
+    if(gameState.players?.[myPid]&&_pendingHandUpdate.dragon_count!=null)
+      gameState.players[myPid].dragon_count=_pendingHandUpdate.dragon_count;
+    _pendingHandUpdate=null;
+    renderHand();
+  }
+  // Always apply the CURRENT game phase (game may have advanced past leader_declare
+  // during the round-end review window — using the buffered leader_declare would
+  // rewind the UI and leave the player unable to pick cards).
+  _bufferedLeaderDeclare=null;
+  if(gameState?.phase) setPhase(gameState.phase, gameState);
+}
+
+function showPortalModal(msg) {
+  const btns=document.getElementById('portalBtns');
+  btns.innerHTML='';
+  (msg.valid_target_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#00CED1;color:#40E0D0;';
+    btn.textContent=`🎯 Steal from ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
+    btn.onclick=()=>{
+      document.getElementById('portalOverlay').classList.add('hidden');
+      send({type:'portal_target',target_pid:pid});
+      addLog(`🌀 Portal: stealing from ${nameOf(pid)}...`,'imp');
+    };
+    btns.appendChild(btn);
+  });
+  document.getElementById('portalOverlay').classList.remove('hidden');
+}
+
+function showLoveModal(msg) {
+  const btns=document.getElementById('loveBtns');
+  btns.innerHTML='';
+  (msg.tamer_pids||[]).forEach(pid=>{
+    const btn=document.createElement('button');
+    btn.className='btn btn-outline btn-full';
+    btn.style.cssText='border-color:#FF69B4;color:#FFB6C1;';
+    btn.textContent=`💕 Give lead to ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
+    btn.onclick=()=>{
+      document.getElementById('loveOverlay').classList.add('hidden');
+      send({type:'princess_choose_tamer',tamer_pid:pid});
+      addLog(`💕 Love Power: ${nameOf(pid)} earns next lead!`,'imp');
+    };
+    btns.appendChild(btn);
+  });
+  document.getElementById('loveOverlay').classList.remove('hidden');
+}
+
+// ══════════════════════════════════════════════════════
+//  LOG
+// ══════════════════════════════════════════════════════
+function addLog(msg,type='') {
+  const el=document.createElement('div');
+  el.className='log-entry'+(type?' '+type:'');
+  el.textContent=msg;
+  const list=document.getElementById('logList');
+  list.prepend(el);
+  while(list.children.length>60) list.lastChild.remove();
+}
+
+// ══════════════════════════════════════════════════════
+//  GAME OVER
+// ══════════════════════════════════════════════════════
+function showGameOver(msg) {
+  try {
+    const isMe=msg.winner_pid===myPid;
+    document.getElementById('goTitle').textContent=isMe?'🏆 You Win!':`${msg.winner_name} Wins!`;
+    document.getElementById('goDragons').textContent='🐉'.repeat(msg.dragons||4);
+    document.getElementById('goText').textContent=isMe
+      ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
+      :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
+    // Snapshot the current battle display into the overlay so player can review the last step
+    try {
+      const battleRows=document.getElementById('battleRows');
+      const goLastBattle=document.getElementById('goLastBattle');
+      const goLastBattleRows=document.getElementById('goLastBattleRows');
+      if(battleRows && battleRows.innerHTML.trim()){
+        goLastBattleRows.innerHTML=battleRows.innerHTML;
+        goLastBattle.classList.remove('hidden');
+      } else { goLastBattle.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver last battle error:',e); }
+    // Show the winner's actual dragon cards
+    try {
+      const dragonRow=document.getElementById('goDragonCards');
+      dragonRow.innerHTML='';
+      const dragons=msg.all_dragons||[];
+      if(isMe && dragons.length){
+        dragons.forEach(card=>{
+          const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+          wrap.appendChild(renderCardEl(card,false,false,-1));
+          dragonRow.appendChild(wrap);
+        });
+        dragonRow.classList.remove('hidden');
+      } else { dragonRow.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver dragons error:',e); }
+    // Show all players' final hands
+    try {
+      const allHandsEl=document.getElementById('goAllHands');
+      allHandsEl.innerHTML='';
+      const allPlayers=msg.all_players||[];
+      if(allPlayers.length){
+        const hdr=document.createElement('div');
+        hdr.style.cssText='font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin:10px 0 6px;text-align:center;';
+        hdr.textContent='— FINAL HANDS —';
+        allHandsEl.appendChild(hdr);
+        allPlayers.forEach(p=>{
+          const row=document.createElement('div'); row.className='go-player-row';
+          const nameEl=document.createElement('div'); nameEl.className='go-player-name';
+          const prefix=p.pid===msg.winner_pid?'🏆 ': p.out?'💀 ':'';
+          nameEl.textContent=`${prefix}${p.name}  ·  ${p.dragons}🐉`;
+          const cardsDiv=document.createElement('div'); cardsDiv.className='go-player-cards';
+          (p.hand||[]).forEach(card=>{
+            try {
+              const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+              wrap.appendChild(renderCardEl(card,false,false,-1));
+              cardsDiv.appendChild(wrap);
+            } catch(e){}
+          });
+          (p.sleeping||[]).forEach(pair=>{
+            try {
+              const d=pair[1];
+              const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
+              wrap.appendChild(renderCardEl(d,false,false,-1));
+              cardsDiv.appendChild(wrap);
+            } catch(e){}
+          });
+          row.appendChild(nameEl); row.appendChild(cardsDiv);
+          allHandsEl.appendChild(row);
+        });
+        allHandsEl.classList.remove('hidden');
+      } else { allHandsEl.classList.add('hidden'); }
+    } catch(e){ console.error('showGameOver allHands error:',e); }
+  } catch(e){ console.error('showGameOver error:',e); }
+  // Always show the overlay — force with both class removal and inline style
+  const goOverlay = document.getElementById('gameOverOverlay');
+  console.log('showGameOver: showing overlay, element=', goOverlay);
+  if(goOverlay){
+    goOverlay.classList.remove('hidden');
+    goOverlay.style.display='flex';
+    goOverlay.style.zIndex='9999';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  DECLARATION PANEL
+// ══════════════════════════════════════════════════════
+function updateDeclarePanel(phase, data) {
+  const isLeader = (data.leader_pid || gameState?.lead_pid) === myPid;
+  const isActive = phase === 'leader_declare' && isLeader;
+  const leaderPid = data.leader_pid || gameState?.lead_pid;
+  // Show wake option during leader_declare if player has sleeping pairs
+  const _wakeEl=document.getElementById('declareSleepingWake');
+  if(_wakeEl){
+    const _meSleeping=gameState?.me?.sleeping||[];
+    if(phase==='leader_declare' && _meSleeping.length>0){
+      _wakeEl.innerHTML='';
+      const _lbl=document.createElement('div');
+      _lbl.style.cssText='font-family:Cinzel,serif;font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:5px;opacity:.8;';
+      _lbl.textContent='😴 SLEEPING PAIRS — WAKE BEFORE DECLARING?';
+      _wakeEl.appendChild(_lbl);
+      _meSleeping.forEach((pair,i)=>{
+        const [t,d]=pair;
+        const sym=SUIT_SYM[d.suit]||'';
+        const btn=document.createElement('button');
+        btn.className='btn btn-outline';
+        btn.style.cssText='font-size:11px;padding:5px 10px;margin-bottom:4px;width:100%;border-color:rgba(143,219,143,.4);color:#8fdb8f;';
+        btn.textContent=`⏰ Wake ${sym} pair (${t.label} + ${d.label})`;
+        btn.onclick=()=>{ send({type:'sleeping_choice',action:'wake',tamer_cid:null,dragon_cid:null,pair_index:i}); };
+        _wakeEl.appendChild(btn);
+      });
+      _wakeEl.classList.remove('hidden');
+    } else {
+      _wakeEl.classList.add('hidden');
+      _wakeEl.innerHTML='';
+    }
+  }
+
+  // Buttons: active only if I'm leader in declare phase
+  document.querySelectorAll('.step-btn').forEach(b => {
+    b.classList.toggle('inactive', !isActive);
+    if(isActive) b.classList.remove('display-only');
+  });
+  document.querySelectorAll('.suit-btn').forEach(b => {
+    b.classList.toggle('inactive', !isActive);
+    if(isActive) b.classList.remove('display-only');
+  });
+  // Clear suit highlight when not actively declaring
+  if(!isActive){ _highlightSuit=null; applyHandSuitHighlight(); }
+
+  // If AI declared or game not started — show declared values greyed
+  if(phase === 'pick_cards' || phase === 'reveal') {
+    const steps = gameState?.declared_steps || 0;
+    const el = gameState?.declared_el || '';
+    // Highlight declared values in display-only mode
+    document.querySelectorAll('.step-btn').forEach((b,i) => {
+      b.classList.remove('active','inactive','display-only');
+      if(i+1 === steps) b.classList.add('display-only','active');
+      else b.classList.add('inactive');
+    });
+    document.querySelectorAll('.suit-btn').forEach(b => {
+      b.classList.remove('active','inactive','display-only');
+      b.classList.add('inactive');
+    });
+    const suitIdMap={Hearts:'suitH',Clubs:'suitC',Diamonds:'suitD',Spades:'suitS'};
+    const activeBtn=document.getElementById(suitIdMap[el]);
+    if(activeBtn){ activeBtn.classList.remove('inactive'); activeBtn.classList.add('display-only','active'); }
+    const ll = document.getElementById('declareLeaderLine');
+    if(ll) ll.textContent = `👑 ${nameOf(leaderPid)} · ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
+  } else if(phase === 'waiting' || phase === 'end_round') {
+    // All inactive, no highlight
+    document.querySelectorAll('.step-btn,.suit-btn').forEach(b => {
+      b.classList.remove('active','display-only');
+      b.classList.add('inactive');
+    });
+    const ll = document.getElementById('declareLeaderLine');
+    if(ll) ll.textContent = '— Waiting —';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════
+connect();
+setSteps(3);
+setSuit('Hearts');
+window.addEventListener('resize',()=>{if(gameState) renderTable();});
+
+// ── Anti-freeze: if stuck on AI declare for >4s, request state ──
+let _stuckTimer=null;
+let _passedSleepingThisRound=false;  // true after player passes sleeping phase
+function resetStuckTimer(){
+  if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
+  if(phase==='leader_declare' && gameState?.lead_pid && gameState.players?.[gameState.lead_pid]?.is_ai){
+    _stuckTimer=setTimeout(()=>{
+      if(phase==='leader_declare' && gameState?.players?.[gameState.lead_pid]?.is_ai){
+        console.warn('Stuck on AI declare — requesting state');
+        send({type:'get_state'});
+        resetStuckTimer();
+      }
+    }, 4000);
+  }
+}
+setPhase=(function(_orig){
+  return function(p,d){ _orig(p,d); resetStuckTimer(); };
+})(setPhase);
+</script>
+</body>
+</html>

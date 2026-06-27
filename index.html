@@ -153,89 +153,100 @@ body::before{content:'';position:fixed;inset:0;
 .step-btn.display-only,.suit-btn.display-only{opacity:.6;cursor:default;pointer-events:none;}
 .suit-btn{width:42px;height:38px;display:flex;align-items:center;justify-content:center;font-size:19px;padding:0;}
 .waiting-declare{font-size:14px;color:rgba(253,246,227,.5);text-align:center;padding:8px 0;font-style:italic;}
-/* Suit highlight in hand during leader_declare */
 .card.suit-match{filter:brightness(1.25);box-shadow:0 0 14px 4px rgba(255,210,60,.55);transform:translateY(-6px);transition:filter .18s,box-shadow .18s,transform .18s;z-index:3;position:relative;}
-.card.suit-dim{filter:brightness(0.32) saturate(0.2);opacity:.5;transition:filter .18s,opacity .18s;}
+.card.suit-dim{filter:brightness(0.55) saturate(0.35);opacity:.65;transition:filter .18s,opacity .18s;}
 
 /* ══════════════════════════════════
-   CLASSIC CARDS
+   ELEMENT-THEMED CARDS
 ══════════════════════════════════ */
 .hand-scroll{display:flex;gap:7px;overflow-x:auto;padding:6px 2px;scrollbar-width:thin;}
 .hand-scroll::-webkit-scrollbar{height:3px;}
 
 .card{
   width:var(--card-w);height:var(--card-h);border-radius:8px;
-  border:1.5px solid rgba(184,134,11,.45);
-  display:flex;flex-direction:column;padding:5px 4px;
+  border:2px solid rgba(184,134,11,.45);
+  display:flex;flex-direction:column;
   cursor:pointer;transition:all .18s;position:relative;flex-shrink:0;user-select:none;
 }
-.card.selected{border-color:var(--gold-bright)!important;background:rgba(255,215,0,.18)!important;
+.card.selected{border-color:var(--gold-bright)!important;
   transform:translateY(-7px);box-shadow:0 6px 20px rgba(255,215,0,.5);}
 
-/* Suit colours */
-.card.hearts,.card.diamonds{background:linear-gradient(155deg,#fffaf0,#f0e6c8);}
-.card.clubs,.card.spades   {background:linear-gradient(155deg,#1a1e30,#22283c);}
-.card.joker-space{background:linear-gradient(155deg,#160a2e,#22144a);border-color:#9B59B6;}
-.card.joker-time {background:linear-gradient(155deg,#1a0a0a,#2e1600);border-color:#E8A020;}
+/* Element backgrounds */
+.card.hearts  {background:linear-gradient(155deg,#280500,#720f00,#380900);border-color:#cc3d00;}
+.card.diamonds{background:linear-gradient(155deg,#0a0520,#1a0848,#060318);border-color:#6633cc;}
+.card.clubs   {background:linear-gradient(155deg,#000a20,#001a5a,#000d30);border-color:#0055cc;}
+.card.spades  {background:linear-gradient(155deg,#180a00,#382000,#0f0500);border-color:#8a5200;}
+.card.joker-space{background:linear-gradient(155deg,#001a08,#003818,#001008);border-color:#22cc66;}
+.card.joker-time {background:linear-gradient(155deg,#1a1800,#3a3400,#0a0900);border-color:#dddd00;}
 
-/* Corners */
-.card-corner{display:flex;flex-direction:column;align-items:center;line-height:1.1;gap:0px;}
-.card-tl{align-self:flex-start;}
-.card-br{align-self:flex-end;transform:rotate(180deg);}
-.corner-rank{font-family:'Cinzel',serif;font-size:16px;font-weight:700;line-height:1;}
-.corner-sym {font-size:14px;line-height:1;}
-.card.hearts .corner-rank,.card.hearts .corner-sym{color:#8B1515;}
-.card.diamonds .corner-rank,.card.diamonds .corner-sym{color:#8B1515;}
-.card.clubs  .corner-rank,.card.clubs  .corner-sym{color:#e8e0d0;}
-.card.spades .corner-rank,.card.spades .corner-sym{color:#e8e0d0;}
-.card.joker-space .corner-rank{color:#C39BD3;}
-.card.joker-time  .corner-rank{color:#E8A020;}
+/* Corner — rank + element icon on same row, absolutely positioned */
+.card-corner{display:flex;flex-direction:row;align-items:center;gap:3px;line-height:1;
+  position:absolute;}
+.card-tl{top:4px;left:5px;}
+.card-br{bottom:4px;right:5px;transform:rotate(180deg);}
+.corner-rank{font-family:'Cinzel',serif;font-size:15px;font-weight:900;line-height:1;}
+.corner-sym{font-size:13px;line-height:1;}
+/* corner colors */
+.card.hearts  .corner-rank,.card.hearts  .corner-sym{color:#FFE000;}
+.card.diamonds .corner-rank,.card.diamonds .corner-sym{color:#aa77ff;}
+.card.clubs   .corner-rank,.card.clubs   .corner-sym{color:#00FFCC;}
+.card.spades  .corner-rank{color:#cc8822;}
+.card.spades  .corner-sym{filter:sepia(1) saturate(6) hue-rotate(340deg) brightness(.55);}
+.card.joker-space .corner-rank{color:#44ee88;font-size:11px;}
+.card.joker-time  .corner-rank{color:#eeee33;font-size:11px;}
 
-/* Pip area */
-.pip-area{flex:1;position:relative;width:100%;overflow:hidden;}
-.pip{position:absolute;transform:translate(-50%,-50%);line-height:1;user-select:none;pointer-events:none;}
-.card.hearts .pip,.card.diamonds .pip{color:#8B1515;}
-.card.clubs  .pip,.card.spades  .pip{color:#e8e0d0;}
+/* Ornament lines */
+.card-orn{position:absolute;left:9px;right:9px;height:1px;opacity:.25;pointer-events:none;}
+.card-orn.t{top:26px;}.card-orn.b{bottom:26px;}
+.card.hearts  .card-orn{background:#FFE000;}
+.card.diamonds .card-orn{background:#8844ff;}
+.card.clubs   .card-orn{background:#00FFCC;}
+.card.spades  .card-orn{background:#996600;}
+.card.joker-space .card-orn{background:#22cc66;}
+.card.joker-time  .card-orn{background:#dddd00;}
 
-/* Face cards */
-.face-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-  font-family:'Cinzel',serif;font-weight:700;color:inherit;line-height:1;}
-.card.hearts  .face-center,.card.diamonds .face-center{color:#8B1515;}
-.card.clubs   .face-center,.card.spades  .face-center{color:#e8e0d0;}
+/* Center area */
+.card-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-54%);
+  display:flex;flex-direction:column;align-items:center;gap:2px;text-align:center;width:90%;}
+/* number word */
+.card-word{font-family:'Cinzel',serif;font-weight:900;text-transform:uppercase;
+  letter-spacing:2px;line-height:1;}
+.card.hearts  .card-word{color:#FFE000;text-shadow:0 0 14px rgba(255,68,0,.5);}
+.card.diamonds .card-word{color:#cc99ff;text-shadow:0 0 14px rgba(100,40,200,.5);}
+.card.clubs   .card-word{color:#00FFCC;text-shadow:0 0 14px rgba(0,80,255,.5);}
+.card.spades  .card-word{color:#ddaa44;text-shadow:0 0 12px rgba(100,50,0,.5);}
+/* special card icon */
+.card-big-icon{font-size:30px;line-height:1.1;}
+.card.hearts  .card-big-icon{filter:drop-shadow(0 0 8px #ff4400);}
+.card.diamonds .card-big-icon{filter:drop-shadow(0 0 8px #8844ff);}
+.card.clubs   .card-big-icon{filter:drop-shadow(0 0 8px #0055ff);}
+.card.spades  .card-big-icon{filter:drop-shadow(0 0 8px #885500);}
+.card.joker-space .card-big-icon{filter:drop-shadow(0 0 10px #33dd77);}
+.card.joker-time  .card-big-icon{filter:drop-shadow(0 0 10px #dddd00);}
+/* special card name */
+.card-spec-name{font-family:'Cinzel',serif;font-size:7.5px;font-weight:700;
+  letter-spacing:1.2px;text-transform:uppercase;margin-top:2px;}
+.card-spec-sub{font-family:'Cinzel',serif;font-size:6px;letter-spacing:.7px;opacity:.55;margin-top:1px;}
+.card.hearts  .card-spec-name{color:#FFE000;}
+.card.diamonds .card-spec-name{color:#cc99ff;}
+.card.clubs   .card-spec-name{color:#00FFCC;}
+.card.spades  .card-spec-name{color:#ddaa44;}
+.card.joker-space .card-spec-name{color:#44ee88;}
+.card.joker-time  .card-spec-name{color:#eeee33;}
 
-/* Joker special display */
-.joker-inner{position:absolute;inset:0;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:3px;}
-.joker-big-sym{font-size:32px;line-height:1;}
-.joker-label{font-family:'Cinzel',serif;font-size:12px;font-weight:700;letter-spacing:2px;}
-.joker-sub{font-family:'Cinzel',serif;font-size:10px;letter-spacing:1px;opacity:.7;}
-.card.joker-space .joker-label,.card.joker-space .joker-sub{color:#C39BD3;}
-.card.joker-time  .joker-label,.card.joker-time  .joker-sub{color:#E8A020;}
-
-/* Badge (TAMER / PRINCESS / PORTAL / WIZARD) */
-.card-badge{position:absolute;bottom:18px;font-size:9px;letter-spacing:.8px;
-  font-family:'Cinzel',serif;text-align:center;width:100%;padding:0 3px;}
-.card.hearts  .card-badge,.card.diamonds .card-badge{color:rgba(139,21,21,.75);}
-.card.clubs   .card-badge,.card.spades  .card-badge{color:rgba(232,224,208,.6);}
-.card.joker-space .card-badge{color:rgba(195,155,211,.8);}
-.card.joker-time  .card-badge{color:rgba(232,160,32,.8);}
-
-/* Dragon icon overlay on Ace cards */
-/* Dominant-element bolt badge */
-.dominant-bolt{position:absolute;top:3px;right:4px;font-size:22px;line-height:1;z-index:2;
+.dominant-bolt{position:absolute;top:3px;right:4px;font-size:20px;line-height:1;z-index:2;
   animation:boltBlink 1.6s ease-in-out infinite;pointer-events:none;}
 @keyframes boltBlink{0%,100%{opacity:1;filter:drop-shadow(0 0 3px #ffe066);}
   50%{opacity:.2;filter:none;}}
-.ace-dragon-icon{position:absolute;top:50%;left:50%;
-  transform:translate(-50%,-50%) translateY(6px);
-  font-size:26px;line-height:1;pointer-events:none;
-  filter:drop-shadow(0 0 4px rgba(0,0,0,.5));opacity:.85;}
 
 .card-order{position:absolute;top:3px;right:4px;width:18px;height:18px;border-radius:50%;
   background:var(--gold-bright);color:var(--navy);font-size:11px;
   font-family:'Cinzel',serif;font-weight:700;display:flex;align-items:center;justify-content:center;pointer-events:none;}
 .hand-card.drag-over{outline:2px solid var(--gold-bright);transform:scale(1.06);z-index:10;}
 .hand-card.tap-picked{outline:2px solid #00CED1;box-shadow:0 0 10px rgba(0,206,209,.5);transform:scale(1.06);z-index:10;}
+/* keep suit-match/dim */
+.card.suit-match{filter:brightness(1.25);box-shadow:0 0 14px 4px rgba(255,210,60,.55);transform:translateY(-6px);transition:filter .18s,box-shadow .18s,transform .18s;z-index:3;position:relative;}
+.card.suit-dim{filter:brightness(0.55) saturate(0.35);opacity:.65;transition:filter .18s,opacity .18s;}
 
 /* ── BATTLE ── */
 .step-dots{display:flex;gap:6px;justify-content:center;margin-bottom:8px;}
@@ -247,19 +258,15 @@ body::before{content:'';position:fixed;inset:0;
 .battle-row.winning{background:rgba(255,215,0,.1);border-color:rgba(255,215,0,.3);}
 .battle-pname{font-size:13px;font-weight:600;min-width:80px;}
 .battle-cards{display:flex;gap:6px;flex:1;flex-wrap:wrap;align-items:flex-start;}
-/* Full-size card wrapper for battle results — issue 1: was 0.5× scale, now 1× */
 .battle-card-wrap{width:88px;height:126px;position:relative;flex-shrink:0;overflow:visible;}
 .battle-card-wrap .card{transform:none;pointer-events:none;}
 .win-badge{font-size:11px;background:var(--gold);color:var(--navy);
   padding:2px 7px;border-radius:3px;font-family:'Cinzel',serif;font-weight:700;flex-shrink:0;}
-/* Declaration summary bar */
 .decl-summary{font-family:'Cinzel',serif;font-size:11px;letter-spacing:.8px;color:var(--gold);
   background:rgba(184,134,11,.12);border:1px solid rgba(184,134,11,.25);
   border-radius:6px;padding:5px 10px;margin:0 0 6px;text-align:center;}
-/* Win-screen dragon cards row */
 .go-dragons-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin:6px 0;}
 .go-dragons-row .battle-card-wrap{width:88px;height:126px;}
-/* Win-screen all-players final hand grid */
 .go-all-hands{margin-top:10px;text-align:left;max-height:320px;overflow-y:auto;}
 .go-player-row{margin-bottom:10px;}
 .go-player-name{font-size:12px;font-weight:700;color:var(--gold);margin-bottom:4px;
@@ -267,18 +274,17 @@ body::before{content:'';position:fixed;inset:0;
 .go-player-cards{display:flex;gap:5px;flex-wrap:wrap;}
 
 /* ── LOG ── */
-.log-list{max-height:120px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;}
-.log-entry{font-size:12px;color:rgba(253,246,227,.55);padding:2px 0;
+.log-list{max-height:140px;overflow-y:auto;display:flex;flex-direction:column;gap:3px;}
+.log-entry{font-size:14px;color:rgba(253,246,227,.7);padding:2px 0;
   border-bottom:1px solid rgba(255,255,255,.04);line-height:1.5;}
 .log-entry.imp    {color:var(--gold-light);font-weight:600;}
 .log-entry.warn   {color:var(--crimson-l);}
-.log-entry.victory{color:var(--gold-bright);text-align:center;font-family:'Cinzel',serif;font-size:14px;}
+.log-entry.victory{color:var(--gold-bright);text-align:center;font-family:'Cinzel',serif;font-size:16px;}
 
 /* ── ACTION BAR ── */
 .action-bar{position:sticky;bottom:0;
   background:linear-gradient(transparent,rgba(10,22,40,.97) 30%);
   padding:10px 10px 14px;display:flex;flex-direction:column;gap:7px;flex-shrink:0;}
-/* On mobile, use fixed positioning so the button is never clipped by overflow:hidden */
 @media(max-width:600px){
   .action-bar{position:fixed;bottom:0;left:0;right:0;z-index:50;
     padding:8px 10px calc(8px + env(safe-area-inset-bottom));
@@ -297,7 +303,7 @@ body::before{content:'';position:fixed;inset:0;
   display:flex;align-items:center;justify-content:center;padding:20px;}
 .overlay.hidden{display:none!important;}
 .modal{background:linear-gradient(160deg,#0f1f3d,#0A1628);border:2px solid var(--gold);
-  border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;}
+  border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center;max-height:90vh;overflow-y:auto;}
 .modal h2{font-family:'Cinzel',serif;font-size:20px;color:var(--gold-bright);
   margin-bottom:10px;text-shadow:0 0 15px rgba(255,215,0,.4);}
 .modal p {font-size:15px;color:rgba(253,246,227,.75);margin-bottom:18px;line-height:1.7;}
@@ -322,22 +328,6 @@ body::before{content:'';position:fixed;inset:0;
 .round-end-dragons{font-size:14px;letter-spacing:1px;}
 .round-end-timer{font-size:11px;color:rgba(253,246,227,.4);text-align:center;margin-top:8px;}
 
-/* ── SLEEPING PHASE ── */
-.sleep-pair-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;
-  border:1px solid rgba(184,134,11,.2);background:rgba(255,255,255,.025);margin-bottom:5px;}
-.sleep-pair-cards{display:flex;gap:5px;}
-.sleep-pair-cards .card{width:66px;height:95px;pointer-events:none;}
-.sleep-pair-label{font-family:'Cinzel',serif;font-size:10px;color:rgba(253,246,227,.5);
-  letter-spacing:1px;flex:1;text-align:center;}
-.sleep-pair-btn{font-family:'Cinzel',serif;font-size:11px;font-weight:700;letter-spacing:.8px;
-  padding:6px 12px;border-radius:6px;border:none;cursor:pointer;flex-shrink:0;}
-.btn-sleep{background:rgba(74,26,107,.6);color:#C39BD3;border:1px solid rgba(195,155,211,.4);}
-.btn-wake{background:rgba(26,107,60,.5);color:#8fdb8f;border:1px solid rgba(143,219,143,.4);}
-.sleep-hint{font-size:11px;color:rgba(253,246,227,.35);text-align:center;padding:4px 0;
-  font-style:italic;letter-spacing:.5px;}
-.sleep-section-lbl{font-family:'Cinzel',serif;font-size:10px;color:var(--gold);
-  letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px;opacity:.7;}
-
 /* ── ROOM BROWSER ── */
 .browser-modal{background:linear-gradient(160deg,#0f1f3d,#0A1628);
   border:2px solid rgba(195,155,211,.5);border-radius:16px;padding:20px;max-width:380px;width:100%;}
@@ -359,6 +349,31 @@ body::before{content:'';position:fixed;inset:0;
 .room-card-stats{display:flex;gap:10px;align-items:center;}
 .no-rooms{text-align:center;padding:28px 0;color:rgba(253,246,227,.35);font-size:14px;}
 .browser-refresh{font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin-bottom:10px;letter-spacing:1px;}
+
+/* ── Dragon image icon ── */
+.dragon-img{
+  display:inline-block;
+  vertical-align:middle;
+  background-image:url('data:image/png;base64,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');
+  background-size:contain;
+  background-repeat:no-repeat;
+  background-position:center;
+}
+.dragon-img.fire  {filter:invert(0) sepia(1) saturate(20) hue-rotate(2deg) brightness(1.1);}
+.dragon-img.water {filter:invert(0) sepia(1) saturate(20) hue-rotate(142deg) brightness(1.1);}
+.dragon-img.air   {filter:invert(0) sepia(1) saturate(8) hue-rotate(222deg) brightness(1.2);}
+.dragon-img.earth {filter:invert(0) sepia(1) saturate(6) hue-rotate(10deg) brightness(0.9);}
+.dragon-img.joker-space{filter:invert(0) sepia(1) saturate(8) hue-rotate(95deg) brightness(1.2);}
+.dragon-img.joker-time {filter:invert(0) sepia(1) saturate(10) hue-rotate(0deg) brightness(1.3);}
+
+/* ── Dragon PNG icon ── */
+.dragon-img{display:inline-block;vertical-align:middle;background-size:contain;background-repeat:no-repeat;background-position:center;}
+.dragon-img.fire  {filter:brightness(0) invert(1) sepia(1) saturate(20) hue-rotate(2deg) brightness(1.1);}
+.dragon-img.water {filter:brightness(0) invert(1) sepia(1) saturate(20) hue-rotate(142deg) brightness(1.1);}
+.dragon-img.air   {filter:brightness(0) invert(1) sepia(1) saturate(8) hue-rotate(222deg) brightness(1.2);}
+.dragon-img.earth {filter:brightness(0) invert(1) sepia(1) saturate(6) hue-rotate(10deg) brightness(0.9);}
+.dragon-img.joker-space{filter:brightness(0) invert(1) sepia(1) saturate(8) hue-rotate(95deg) brightness(1.2);}
+.dragon-img.joker-time {filter:brightness(0) invert(1) sepia(1) saturate(10) hue-rotate(0deg) brightness(1.3);}
 </style>
 </head>
 <body>
@@ -366,7 +381,7 @@ body::before{content:'';position:fixed;inset:0;
 <!-- ══ LOBBY ══ -->
 <div class="screen" id="lobbyScreen">
   <div class="logo-area">
-    <div class="logo-dragon">🐉</div>
+    <div class="logo-dragon"><img id="logoDragonImg" width="72" height="72" style="filter:brightness(0) invert(1) sepia(1) saturate(10) hue-rotate(25deg) brightness(1.2);drop-shadow(0 0 12px rgba(255,215,0,.4));"></div>
     <h1>DRAGON TAMER</h1>
     <div class="subtitle">Multiplayer Card Game</div>
   </div>
@@ -381,19 +396,32 @@ body::before{content:'';position:fixed;inset:0;
              maxlength="8" style="text-transform:uppercase">
     </div>
     <div class="ai-row">
-      <label>AI Opponents</label>
+      <label>Players</label>
       <div class="ai-slider-wrap">
-        <input class="ai-slider" type="range" min="1" max="9" value="3" id="aiSlider"
+        <input class="ai-slider" type="range" min="2" max="10" value="3" id="aiSlider"
                oninput="setAI(parseInt(this.value))">
         <span class="ai-count-lbl" id="aiCountLbl">3</span>
       </div>
     </div>
-    <div class="ai-row" style="margin-top:8px;">
-      <label style="white-space:nowrap;">🐉 Dragons to Win</label>
-      <div style="display:flex;gap:6px;flex:1;justify-content:flex-end;">
-        <button id="wd4" class="btn btn-outline wd-btn" onclick="setWinDragons(4)" style="padding:4px 14px;font-size:13px;">4</button>
-        <button id="wd5" class="btn btn-gold wd-btn" onclick="setWinDragons(5)" style="padding:4px 14px;font-size:13px;">5</button>
-        <button id="wd6" class="btn btn-outline wd-btn" onclick="setWinDragons(6)" style="padding:4px 14px;font-size:13px;">6</button>
+    <div class="ai-row" style="margin-top:8px;flex-direction:column;gap:8px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="white-space:nowrap;font-size:13px;color:var(--gold-light);">🃏 Decks</label>
+        <button id="deck1btn" class="btn btn-gold" onclick="setDecks(1)"
+          style="padding:4px 14px;font-size:12px;">1 Deck</button>
+        <button id="deck2btn" class="btn btn-outline" onclick="setDecks(2)"
+          style="padding:4px 14px;font-size:12px;">2 Decks</button>
+        <span id="deckNote" style="font-size:11px;color:rgba(253,246,227,.4);"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <label style="white-space:nowrap;">🐉 Dragons to Win</label>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button id="wd4"  class="btn btn-outline wd-btn" onclick="setWinDragons(4)"  style="padding:4px 10px;font-size:12px;">4</button>
+          <button id="wd5"  class="btn btn-gold wd-btn"    onclick="setWinDragons(5)"  style="padding:4px 10px;font-size:12px;">5</button>
+          <button id="wd6"  class="btn btn-outline wd-btn" onclick="setWinDragons(6)"  style="padding:4px 10px;font-size:12px;">6</button>
+          <button id="wd8"  class="btn btn-outline wd-btn" onclick="setWinDragons(8)"  style="padding:4px 10px;font-size:12px;">8</button>
+          <button id="wd10" class="btn btn-outline wd-btn" onclick="setWinDragons(10)" style="padding:4px 10px;font-size:12px;">10</button>
+          <button id="wd12" class="btn btn-outline wd-btn" onclick="setWinDragons(12)" style="padding:4px 10px;font-size:12px;">12</button>
+        </div>
       </div>
     </div>
     <div class="room-actions">
@@ -404,6 +432,15 @@ body::before{content:'';position:fixed;inset:0;
             style="border-color:rgba(195,155,211,.5);color:#C39BD3;">👁 Watch a Game</button>
     <button class="btn btn-outline btn-full" onclick="showShareModal()"
             style="border-color:rgba(100,200,100,.4);color:#8fdb8f;margin-top:2px;">📱 Share / QR Code</button>
+    <button class="btn btn-outline btn-full"
+            onclick="document.getElementById('rulesOverlay').classList.remove('hidden');setRulesLang(_rulesLang||'he')"
+            style="border-color:rgba(184,134,11,.5);color:var(--gold-light);margin-top:2px;font-size:14px;">📖 חוקי המשחק &nbsp;·&nbsp; Game Rules</button>
+    <div id="rejoinLobbyWrap" class="hidden">
+      <button class="btn btn-gold btn-full" id="rejoinLobbyBtn" onclick="rejoinFromLobby()"
+              style="background:linear-gradient(135deg,#8B0000,#C0392B);color:#FFD700;letter-spacing:1px;">
+        🔄 REJOIN LAST GAME
+      </button>
+    </div>
     <div class="conn-status">
       <div class="conn-dot" id="connDot"></div>
       <span id="connText">Connecting to server...</span>
@@ -416,8 +453,23 @@ body::before{content:'';position:fixed;inset:0;
   <div class="top-bar">
     <span class="game-title">DRAGON TAMER</span>
     <span class="round-badge" id="roundBadge">Round 1</span>
+    <div style="display:flex;align-items:center;gap:6px;">
+      <button onclick="document.getElementById('rulesOverlay').classList.remove('hidden');setRulesLang(_rulesLang||'he')"
+        style="font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;
+        padding:4px 10px;border-radius:6px;border:1px solid rgba(184,134,11,.5);
+        background:rgba(184,134,11,.15);color:var(--gold-light);cursor:pointer;">📖</button>
+      <button onclick="showExitConfirm()"
+        style="font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;
+        padding:4px 10px;border-radius:6px;border:1px solid rgba(180,30,30,.6);
+        background:rgba(140,0,0,.2);color:#ff8888;cursor:pointer;" title="Exit to lobby">✕</button>
+      <button id="rejoinBtn" class="hidden" onclick="doRejoin()"
+        style="font-family:Cinzel,serif;font-size:11px;font-weight:700;letter-spacing:1px;
+        padding:5px 10px;border-radius:6px;border:1px solid rgba(184,134,11,.5);
+        background:rgba(184,134,11,.15);color:var(--gold-light);cursor:pointer;">
+        🔄 REJOIN
+      </button>
+    </div>
   </div>
-  <!-- Reconnect bar — shown when connection drops -->
   <div id="reconnectBar" class="hidden" style="background:#8B0000;color:#FFD700;padding:8px 14px;
     text-align:center;font-family:Cinzel,serif;font-size:13px;font-weight:700;
     letter-spacing:.5px;cursor:pointer;flex-shrink:0;" onclick="connect()">
@@ -439,37 +491,33 @@ body::before{content:'';position:fixed;inset:0;
       </div>
     </div>
 
-    <!-- Player Declaration — always visible -->
+    <!-- Player Declaration -->
     <div class="section" id="declareSection">
       <div class="section-title">👑 Player Declaration</div>
       <div class="declare-leader-line" id="declareLeaderLine">— Waiting for game to start —</div>
       <div class="declare-grid">
         <div class="control-row">
-          <label>Steps</label>
+          <label>Battles</label>
           <div class="btn-group" id="stepsGroup">
             <button class="step-btn" id="step1" onclick="setSteps(1)">1</button>
             <button class="step-btn" id="step2" onclick="setSteps(2)">2</button>
             <button class="step-btn" id="step3" onclick="setSteps(3)">3</button>
             <button class="step-btn" id="step4" onclick="setSteps(4)">4</button>
+            <button class="step-btn hidden" id="step5" onclick="setSteps(5)">5</button>
+            <button class="step-btn hidden" id="step6" onclick="setSteps(6)">6</button>
           </div>
         </div>
         <div class="control-row">
           <label>Element</label>
           <div class="btn-group" id="suitGroup">
-            <button class="suit-btn" id="suitH" onclick="setSuit('Hearts')" title="Fire">♥</button>
-            <button class="suit-btn" id="suitC" onclick="setSuit('Clubs')" title="Water">♣</button>
-            <button class="suit-btn" id="suitD" onclick="setSuit('Diamonds')" title="Air">♦</button>
-            <button class="suit-btn" id="suitS" onclick="setSuit('Spades')" title="Earth">♠</button>
+            <button class="suit-btn" id="suitH" onclick="setSuit('Hearts')" title="Fire">🔥</button>
+            <button class="suit-btn" id="suitC" onclick="setSuit('Clubs')" title="Water">💧</button>
+            <button class="suit-btn" id="suitD" onclick="setSuit('Diamonds')" title="Air" style="color:#aa77ff;"><svg width="22" height="22" viewBox="0 0 80 80" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M14,28 C14,20 20,14 28,14 C36,14 40,20 40,26 C40,32 36,36 30,36 C26,36 23,33 23,29 C23,25 26,22 30,22 C33,22 35,24 35,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M66,28 C66,20 60,14 52,14 C44,14 40,20 40,26 C40,32 44,36 50,36 C54,36 57,33 57,29 C57,25 54,22 50,22 C47,22 45,24 45,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="6" y="38" width="68" height="7" rx="3.5" fill="currentColor"/><path d="M10,48 L70,48 L62,57 L18,57 Z" fill="currentColor"/><path d="M20,60 L60,60 L40,76 Z" fill="currentColor"/></svg></button>
+            <button class="suit-btn" id="suitS" onclick="setSuit('Spades')" title="Earth"><svg width="22" height="22" viewBox="0 0 120 120" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="og" cx="38%" cy="32%" r="65%"><stop offset="0%" stop-color="#1a6aaa"/><stop offset="100%" stop-color="#0a2a55"/></radialGradient><radialGradient id="lg" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#cc8822"/><stop offset="100%" stop-color="#5a3000"/></radialGradient><clipPath id="gc"><circle cx="60" cy="60" r="54"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="url(#og)"/><g clip-path="url(#gc)" fill="url(#lg)"><path d="M8,30 L16,20 L36,22 L40,30 L32,48 L16,46 L10,38 Z"/><path d="M30,64 L40,58 L50,76 L38,96 L28,90 L24,78 Z"/><path d="M54,22 L72,18 L72,26 L66,32 L52,28 Z"/><path d="M54,34 L74,36 L78,50 L68,78 L50,72 L48,56 Z"/><path d="M72,16 L112,20 L104,44 L76,42 L70,24 Z"/><path d="M88,68 L112,72 L98,88 L84,72 Z"/></g><ellipse cx="60" cy="8" rx="52" ry="12" fill="white" opacity="0.85" clip-path="url(#gc)"/><g clip-path="url(#gc)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" fill="none"><ellipse cx="60" cy="60" rx="54" ry="10"/><ellipse cx="60" cy="42" rx="50" ry="8"/><ellipse cx="60" cy="78" rx="50" ry="8"/><ellipse cx="60" cy="60" rx="18" ry="54"/><ellipse cx="60" cy="60" rx="38" ry="54"/></g><circle cx="60" cy="60" r="54" stroke="#cc8822" stroke-width="4" fill="none"/></svg></button>
           </div>
         </div>
       </div>
       <div id="declareWait" class="waiting-declare hidden"></div>
-    </div>
-
-    <!-- Sleeping Phase -->
-    <div class="section hidden" id="sleepingSection">
-      <div class="section-title">😴 Dragon Rest</div>
-      <div id="sleepingContent"></div>
     </div>
 
     <!-- Hand -->
@@ -478,7 +526,7 @@ body::before{content:'';position:fixed;inset:0;
       <div class="hand-scroll" id="handCards"></div>
     </div>
 
-    <!-- Declaration summary (visible during pick/reveal so everyone knows what was declared) -->
+    <!-- Declaration summary -->
     <div class="decl-summary hidden" id="declSummary"></div>
 
     <!-- Battle -->
@@ -502,27 +550,22 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
-<!-- ══ FORCED WAKE OVERLAY ══ -->
-<div class="overlay hidden" id="forcedWakeOverlay">
-  <div class="modal">
-    <h2>⏰ Must Wake Pairs!</h2>
-    <div class="dragon-row">😴→⚔</div>
-    <p id="forcedWakeText">You need more cards for battle. Select pairs to wake.</p>
-    <div id="forcedWakePairs" class="modal-btns"></div>
-  </div>
-</div>
-
 <!-- ══ WAITING MODAL ══ -->
-<div class="overlay hidden" id="waitOverlay">
-  <div class="modal">
+<div class="overlay hidden" id="waitOverlay" style="align-items:flex-end;padding-bottom:0;">
+  <div class="modal" style="max-width:420px;width:100%;border-radius:16px 16px 0 0;padding:20px 20px 28px;">
     <h2>Room Ready</h2>
     <div class="dragon-row">🐉</div>
     <p>Room Code: <strong id="roomCodeDisplay"
        style="color:var(--gold-bright);font-family:Cinzel,serif;font-size:22px;letter-spacing:3px;"></strong><br>
-    Share this code with friends or start now.</p>
-    <div style="display:flex;gap:8px;">
-      <button class="btn btn-outline btn-full" onclick="copyRoomCode(this)">Copy Code</button>
-      <button class="btn btn-gold btn-full" onclick="startGame()">Start Game</button>
+    Share this code with friends — they enter it and tap <strong>Join Room</strong>.</p>
+    <!-- Players in room -->
+    <div id="waitPlayerList" style="margin:10px 0;display:flex;flex-direction:column;gap:5px;"></div>
+    <div id="waitHint" style="font-size:12px;color:rgba(253,246,227,.4);text-align:center;margin-bottom:10px;font-family:Cinzel,serif;letter-spacing:.5px;">
+      Remaining seats will be filled with AI on start
+    </div>
+    <div style="display:flex;gap:6px;">
+      <button class="btn btn-outline" onclick="copyRoomCode(this)" style="flex:1;padding:10px 6px;font-size:11px;letter-spacing:.5px;">Copy Code</button>
+      <button class="btn btn-gold" onclick="startGame()" style="flex:1;padding:10px 6px;font-size:11px;letter-spacing:.5px;">Start Game</button>
     </div>
   </div>
 </div>
@@ -534,14 +577,18 @@ body::before{content:'';position:fixed;inset:0;
     <div class="dragon-row" id="goDragons">🐉🐉🐉🐉</div>
     <p id="goText"></p>
     <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-bottom:16px;">▶ PLAY AGAIN</button>
-    <!-- Last battle snapshot -->
     <div class="hidden" id="goLastBattle" style="margin:10px 0 4px;">
       <div style="font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin-bottom:6px;text-align:center;">— LAST BATTLE —</div>
       <div id="goLastBattleRows"></div>
     </div>
-    <!-- Dragon cards won (shown for winner) -->
-    <div class="go-dragons-row hidden" id="goDragonCards"></div>
-    <!-- All players' final hands -->
+    <div class="hidden" id="goDragonCardsSection" style="margin-top:18px;">
+      <div style="font-family:Cinzel,serif;font-size:13px;font-weight:700;letter-spacing:2px;
+        color:var(--gold);text-align:center;margin-bottom:10px;
+        border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:8px;">
+        🐉 YOUR DRAGON COLLECTION
+      </div>
+      <div class="go-dragons-row" id="goDragonCards"></div>
+    </div>
     <div class="go-all-hands hidden" id="goAllHands"></div>
     <button class="btn btn-gold btn-full" onclick="location.reload()" style="margin-top:16px;">▶ PLAY AGAIN</button>
   </div>
@@ -575,15 +622,20 @@ body::before{content:'';position:fixed;inset:0;
 
 <!-- ══ SPACE DRAGON MODAL ══ -->
 <div class="overlay hidden" id="spaceDragonOverlay">
-  <div class="modal">
+  <div class="modal" style="max-width:380px;">
     <h2>🌌 Space Dragon!</h2>
-    <div class="dragon-row">🌌</div>
-    <p id="spaceDragonText">The Space Dragon warps reality — choose a player to swap seats with:</p>
+    <p id="spaceDragonText" style="margin-bottom:10px;">Choose a player to swap seats with:</p>
+    <div id="spaceTableWrap" style="position:relative;width:100%;height:220px;margin-bottom:12px;border-radius:10px;overflow:hidden;border:1px solid rgba(155,89,182,.3);">
+      <div class="round-table-felt" id="spaceTableFelt"></div>
+      <div class="table-center-info" id="spaceTableCenter">
+        <span class="table-round-lbl" style="font-size:10px;">SWAP?</span>
+      </div>
+    </div>
     <div class="modal-btns" id="spaceDragonBtns"></div>
   </div>
 </div>
 
-<!-- ══ JOKER POWER CHOICE (both Time + Space Dragon in same battle) ══ -->
+<!-- ══ JOKER POWER CHOICE ══ -->
 <div class="overlay hidden" id="jokerPowerOverlay">
   <div class="modal">
     <h2>🃏 Two Joker Powers!</h2>
@@ -630,6 +682,16 @@ body::before{content:'';position:fixed;inset:0;
   </div>
 </div>
 
+<!-- ══ QUEEN FURY OVERLAY ══ -->
+<div class="overlay hidden" id="queenFuryOverlay">
+  <div class="modal" style="border-color:#FFD700;">
+    <h2 style="color:#FFD700;">👑 Queen Fury!</h2>
+    <div class="dragon-row">👑⚔️</div>
+    <p id="queenFuryText">Your Queen vanquished the King! Choose an opponent to steal their top card:</p>
+    <div class="modal-btns" id="queenFuryBtns"></div>
+  </div>
+</div>
+
 <!-- ══ LOVE POWER OVERLAY ══ -->
 <div class="overlay hidden" id="loveOverlay">
   <div class="modal">
@@ -670,32 +732,24 @@ body::before{content:'';position:fixed;inset:0;
 </div>
 
 <script>
-// ══════════════════════════════════════════════════════
-//  CONFIG
-// ══════════════════════════════════════════════════════
 const WS_URL = (window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1')
   ? `ws://${window.location.hostname}:${window.location.port||5000}`
   : `wss://${window.location.host}`;
 
-// ══════════════════════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════════════════════
 let ws=null, myPid=null, myRoomId=null, gameState=null;
-let selectedSteps=3, selectedSuit='Hearts', selectedCardCids=[];
+let selectedSteps=3, selectedSuit='Hearts', selectedCardCids=[], maxSteps=4;
 let aiCount=3, phase='', isSpectator=false, spectatorCount=0;
 let _lastGameStartedAt=0;
-// Dedup keys — Replit's WS proxy triple-sends each outgoing message
-let _lastRevealKey='';    // prevents duplicate step_revealed renders
-let _lastActionAt=0;      // prevents rapid duplicate mainAction() sends
+let _lastRevealKey='';
+let _lastActionAt=0;
 let _hideBattleTimer=null;
-let _rejoining=false;     // BUG1: blocks duplicate rejoin sends
+let _rejoining=false;
 
 const SUIT_SYM  = {Hearts:'♥',Clubs:'♣',Diamonds:'♦',Spades:'♠'};
 const SUIT_EL   = {Hearts:'Fire',Clubs:'Water',Diamonds:'Air',Spades:'Earth'};
 const PHASE_LABELS = {waiting:'Lobby',leader_declare:'Declaring',pick_cards:'Picking',
                       arrange_hand:'Arranging',reveal:'Reveal',end_round:'End Round',game_over:'Game Over'};
 
-// ── Pip layout: [x%, y%] within pip-area for each rank ──
 const PIP_LAYOUTS = {
   1 : [[50,48]],
   2 : [[50,12],[50,88]],
@@ -709,20 +763,15 @@ const PIP_LAYOUTS = {
   10: [[25,13],[75,13],[50,24],[25,38],[75,38],[25,62],[75,62],[50,76],[25,87],[75,87]],
 };
 
-// ══════════════════════════════════════════════════════
-//  WEBSOCKET
-// ══════════════════════════════════════════════════════
 let _reconnectTimer=null;
 let _reconnectAttempts=0;
-let _connecting=false;  // true while WebSocket is being established
-let _heartbeatTimer=null;  // interval for WS keep-alive pings
+let _connecting=false;
+let _heartbeatTimer=null;
 
 function connect() {
-  if(_connecting) return;  // already connecting — don't create a second socket
+  if(_connecting) return;
   _connecting=true;
-  // Cancel any pending reconnect timer
   if(_reconnectTimer){ clearTimeout(_reconnectTimer); _reconnectTimer=null; }
-  // Close stale socket if open
   if(ws && ws.readyState !== WebSocket.CLOSED){
     ws.onclose=null; ws.onerror=null; ws.onmessage=null;
     try{ ws.close(); }catch(e){}
@@ -733,12 +782,21 @@ function connect() {
     _connecting=false;
     _reconnectAttempts=0;
     setConnStatus(true,'Connected');
+    if(!myPid || !myRoomId){
+      try{
+        const _sp=localStorage.getItem('dt_pid');
+        const _sr=localStorage.getItem('dt_room');
+        if(_sp && _sr){ myPid=_sp; myRoomId=_sr; }
+      }catch(e){}
+    }
     if(myPid && myRoomId && !_rejoining) {
       _rejoining=true;
       setConnStatus(true,'Reconnecting...');
-      send({type:'rejoin', pid:myPid, room_id:myRoomId});
+      setTimeout(()=>{
+        if(ws && ws.readyState===WebSocket.OPEN)
+          send({type:'rejoin', pid:myPid, room_id:myRoomId});
+      }, 300);
     }
-    // Keep-alive: ping every 25s so the connection doesn't silently drop
     if(_heartbeatTimer){ clearInterval(_heartbeatTimer); _heartbeatTimer=null; }
     _heartbeatTimer=setInterval(()=>{
       if(ws && ws.readyState===WebSocket.OPEN){
@@ -764,11 +822,10 @@ function connect() {
 }
 
 function scheduleReconnect() {
-  if(_reconnectTimer) return;  // already scheduled
+  if(_reconnectTimer) return;
   _reconnectAttempts++;
-  // Exponential backoff: 3s, 5s, 8s, 12s... capped at 20s, with jitter
-  const base = Math.min(3000 + (_reconnectAttempts - 1) * 2000, 20000);
-  const jitter = Math.random() * 1000;
+  const base = _reconnectAttempts === 1 ? 500 : Math.min(3000 + (_reconnectAttempts - 2) * 2000, 20000);
+  const jitter = Math.random() * 500;
   _reconnectTimer = setTimeout(()=>{ _reconnectTimer=null; connect(); }, base + jitter);
 }
 function send(obj) {
@@ -776,65 +833,88 @@ function send(obj) {
     ws.send(JSON.stringify(obj));
   } else {
     console.warn('send() dropped — ws not open:', obj.type, 'readyState:', ws?.readyState);
-    // Only trigger reconnect if not already in progress
     if(!_connecting && !_reconnectTimer) scheduleReconnect();
   }
 }
 function setConnStatus(ok,text) {
   document.getElementById('connDot').className='conn-dot'+(ok?' connected':' error');
   document.getElementById('connText').textContent=text;
-  // Show/hide the in-game reconnect bar
   const bar=document.getElementById('reconnectBar');
   if(bar) bar.classList.toggle('hidden', ok);
+  const rb=document.getElementById('rejoinBtn');
+  if(rb && myPid && myRoomId) rb.classList.toggle('hidden', ok);
+}
+function doRejoin(){
+  if(myPid && myRoomId){
+    _rejoining=false;
+    connect();
+  }
 }
 
-// ══════════════════════════════════════════════════════
-//  LOBBY
-// ══════════════════════════════════════════════════════
 function setAI(n) {
-  aiCount=Math.max(1,Math.min(9,n||3));
+  aiCount=Math.max(1,Math.min(10,n||3));
   const l=document.getElementById('aiCountLbl'); if(l) l.textContent=aiCount;
   const s=document.getElementById('aiSlider'); if(s) s.value=aiCount;
 }
 let winDragons=5;
+let numDecks = 1;
+
+function setDecks(n){
+  numDecks = n;
+  document.getElementById('deck1btn').className = n===1 ? 'btn btn-gold' : 'btn btn-outline';
+  document.getElementById('deck2btn').className = n===2 ? 'btn btn-gold' : 'btn btn-outline';
+  const note = document.getElementById('deckNote');
+  if(note) note.textContent = n===2 ? '(recommended: 8–12 dragons)' : '';
+  // Auto-set default dragon target
+  setWinDragons(n===2 ? 10 : 5);
+}
+
 function setWinDragons(n){
   winDragons=n;
-  [4,5,6].forEach(v=>{
+  [4,5,6,8,10,12].forEach(v=>{
     const b=document.getElementById('wd'+v);
     if(!b) return;
     b.className='btn wd-btn '+(v===n?'btn-gold':'btn-outline');
-    b.style.padding='4px 14px'; b.style.fontSize='13px';
+    b.style.padding='4px 10px'; b.style.fontSize='12px';
   });
 }
 function getName() { return document.getElementById('playerName').value.trim()||'Player'; }
 function createRoom() {
   send({type:'create_room',name:getName(),
         room_id:document.getElementById('roomCode').value.trim().toUpperCase()||null,
-        ai_count:aiCount, win_dragons:winDragons});
+        ai_count:aiCount, win_dragons:winDragons, num_decks:numDecks});
 }
+
+// FIX A — JOIN ROOM: if saved pid matches this room, rejoin instead of fresh join
 function joinRoom() {
   const r=document.getElementById('roomCode').value.trim().toUpperCase();
   if(!r){alert('Enter a room code to join');return;}
+  try{
+    const _sp=localStorage.getItem('dt_pid');
+    const _sr=localStorage.getItem('dt_room');
+    if(_sp && _sr && _sr===r){
+      myPid=_sp; myRoomId=_sr;
+      _rejoining=false;
+      connect();
+      return;
+    }
+  }catch(e){}
   send({type:'join_room',name:getName(),room_id:r});
 }
+
 function spectateRoom() {
   const r=document.getElementById('roomCode').value.trim().toUpperCase();
   if(!r){openRoomBrowser();return;}
   send({type:'spectate_room',name:getName(),room_id:r});
 }
 
-// ══════════════════════════════════════════════════════
-//  ROOM BROWSER
-// ══════════════════════════════════════════════════════
 let _browserTimer=null;
 function openRoomBrowser() {
   document.getElementById('roomBrowserOverlay').classList.remove('hidden');
   fetchRooms(); _browserTimer=setInterval(fetchRooms,5000);
 }
-// ── SHARE / QR ──────────────────────────────────────────
 let _qrInstance = null;
 function showShareModal() {
-  // Use the public-facing URL (strips any Replit iframe wrapper path)
   const url = window.location.origin + window.location.pathname.replace('/__replco/workspace_iframe.html','') ;
   const cleanUrl = url.endsWith('/') ? url : url + '/';
   document.getElementById('shareUrl').textContent = cleanUrl;
@@ -899,18 +979,52 @@ function renderRoomList(rooms) {
     el.appendChild(c);
   });
 }
-function startGame() { document.getElementById('waitOverlay').classList.add('hidden'); send({type:'start_game'}); }
+function startGame() {
+  document.getElementById('waitOverlay').classList.add('hidden');
+  send({type:'start_game'});
+}
+function updateWaitPlayerList() {
+  const el = document.getElementById('waitPlayerList');
+  if(!el || !gameState) return;
+  const players = Object.values(gameState.players||{}).filter(p=>!p.is_ai);
+  el.innerHTML = players.map(p=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+      border-radius:7px;background:rgba(255,255,255,.04);border:1px solid rgba(184,134,11,.2);">
+      <span style="font-size:14px;">👤</span>
+      <span style="font-family:Cinzel,serif;font-size:13px;color:var(--gold-light);">${p.name}</span>
+      ${p.pid===myPid?'<span style="font-size:10px;color:rgba(253,246,227,.4);margin-left:auto;">You</span>':''}
+    </div>`).join('');
+  const hint = document.getElementById('waitHint');
+  if(hint){
+    const ai = Math.max(0, 10 - players.length);
+    hint.textContent = players.length < 2
+      ? `Waiting for more players… AI will fill remaining seats`
+      : `${players.length} humans ready · AI will fill ${ai} remaining seat${ai!==1?'s':''}`;
+  }
+}
+function _positionWaitModal() {
+  const ov=document.getElementById('waitOverlay');
+  const modal=ov?.querySelector('.modal');
+  if(!modal) return;
+  const vh=window.innerHeight;
+  const mh=modal.scrollHeight;
+  if(mh>=vh*0.9){
+    ov.style.alignItems='flex-start';
+    ov.style.overflowY='auto';
+    modal.style.marginTop='16px';
+    modal.style.marginBottom='16px';
+  } else {
+    ov.style.alignItems='center';
+  }
+}
 function copyRoomCode(btn) {
   navigator.clipboard.writeText(myRoomId).then(()=>{
     if(btn){btn.textContent='Copied!';setTimeout(()=>btn.textContent='Copy Code',1500);}
   });
 }
 
-// ══════════════════════════════════════════════════════
-//  DECLARE CONTROLS
-// ══════════════════════════════════════════════════════
 function setSteps(n) {
-  if(n<1||n>4) return;
+  if(n<1||n>maxSteps) return;
   selectedSteps=n;
   document.querySelectorAll('.step-btn').forEach(b=>b.classList.toggle('active',parseInt(b.textContent)===n));
 }
@@ -937,56 +1051,55 @@ function applyHandSuitHighlight() {
   });
 }
 
-// ══════════════════════════════════════════════════════
-//  MAIN ACTION
-// ══════════════════════════════════════════════════════
 function mainAction() {
-  // Debounce: prevent Replit triple-send from firing 3 actions
   const now = Date.now();
   if (now - _lastActionAt < 350) return;
   _lastActionAt = now;
 
-  // Round ended — main button is "CONTINUE TO NEXT ROUND"
   if(phase==='game_over' || gameState?.phase==='game_over') return;
   if(_awaitingRoundEndContinue){ dismissRoundEnd(); return; }
-
-  // If round-end overlay is showing, ignore main button — CONTINUE handles dismissal
   if(_roundEndOverlayVisible) return;
 
   if (phase==='leader_declare') send({type:'declare',steps:selectedSteps,element:selectedSuit});
   else if (phase==='pick_cards') {
+    if(_roundEndOverlayVisible || _awaitingRoundEndContinue){ dismissRoundEnd(); return; }
+    if(_iPickedThisRound) return;
     if(!selectedCardCids.length){addLog('Select your cards first!','warn');return;}
-    // Engine plays cards in reverse of the submitted order (rev_idx), so reverse
-    // here so that badge "1" (first selected) plays in step 1 as expected.
-    send({type:'pick_cards',card_cids:[...selectedCardCids].reverse()});
+    send({type:'pick_cards',card_cids:[...selectedCardCids]});
   } else if (phase==='arrange_hand') {
     send({type:'ready_arrange'});
     document.getElementById('mainBtn').disabled=true;
     document.getElementById('mainBtn').textContent='Waiting for battle to start...';
   } else if (phase==='reveal') send({type:'reveal'});
-  else if (phase==='sleeping') sendSleepingChoice('pass',null,null,null);
 }
 
-// ══════════════════════════════════════════════════════
-//  MESSAGE HANDLER
-// ══════════════════════════════════════════════════════
 function handleMessage(msg) {
   console.log('←',msg.type,msg);
   switch(msg.type) {
     case 'room_created':
       myPid=msg.pid; myRoomId=msg.room_id;
       if(msg.win_dragons) winDragons=msg.win_dragons;
+      try{ localStorage.setItem('dt_pid', myPid); localStorage.setItem('dt_room', myRoomId); }catch(e){}
       applyState(msg.state); showGameScreen();
       document.getElementById('roomCodeDisplay').textContent=msg.room_id;
       document.getElementById('waitOverlay').classList.remove('hidden');
-      // Show dragon goal in round badge area
+      setTimeout(_positionWaitModal, 50);
+      updateWaitPlayerList();
       { const rb=document.getElementById('roundBadge');
         if(rb) rb.textContent=`Goal: ${winDragons}🐉`; }
       break;
 
     case 'room_joined':
       myPid=msg.pid; myRoomId=msg.room_id;
+      try{ localStorage.setItem('dt_pid', myPid); localStorage.setItem('dt_room', myRoomId); }catch(e){}
       applyState(msg.state); showGameScreen();
+      document.getElementById('roomCodeDisplay').textContent=msg.room_id;
+      document.getElementById('waitOverlay').classList.remove('hidden');
+      setTimeout(_positionWaitModal, 50);
+      updateWaitPlayerList();
+      // Non-creator: hide Start Game button
+      { const sb=document.querySelector('#waitOverlay .btn-gold');
+        if(sb) sb.style.display='none'; }
       break;
 
     case 'spectating':
@@ -1003,19 +1116,34 @@ function handleMessage(msg) {
       if(_lastGameStartedAt&&Date.now()-_lastGameStartedAt<500) break;
       _lastGameStartedAt=Date.now();
       selectedCardCids=[];
-      _confirmedOrder=null;   // fresh game = fresh seating
+      _confirmedOrder=null;
+      document.getElementById('waitOverlay').classList.add('hidden');
+      // Set max battles from server
+      if(msg.max_steps){
+        maxSteps=msg.max_steps;
+        ['step5','step6'].forEach((id,i)=>{
+            const b=document.getElementById(id);
+            if(!b) return;
+            if(maxSteps >= 5+i){ b.classList.remove('hidden'); b.style.display=''; }
+            else b.classList.add('hidden');
+          });
+      }
       addLog(msg.first_leader_pid
         ? `── Game started! ${nameOf(msg.first_leader_pid)} won the initial deal and leads first ──`
         : '── Game started! ──','imp');
       break;
 
     case 'hand_update':
+      if(gameState?.players?.[msg.pid]){
+        const _hc=(msg.hand||[]).length;
+        gameState.players[msg.pid].hand_count=_hc;
+        if(msg.dragon_count!=null) gameState.players[msg.pid].dragon_count=msg.dragon_count;
+      }
+      renderTable();
       if(msg.pid===myPid){
         if(!gameState) break;
-        // Buffer hand_update during round-end review — apply after player clicks CONTINUE
         if(_awaitingRoundEndContinue){
           _pendingHandUpdate=msg;
-          // Still update dragon count for the table display
           if(gameState.players?.[myPid]&&msg.dragon_count!=null)
             gameState.players[myPid].dragon_count=msg.dragon_count;
           renderTable();
@@ -1031,18 +1159,19 @@ function handleMessage(msg) {
     case 'rejoined':
       _rejoining=false;
       _pendingRoundEndMsg=null;
-      var _wasAwaitingContinue=_awaitingRoundEndContinue;
+      const _wasAwaitingContinue=_awaitingRoundEndContinue;
       _awaitingRoundEndContinue=false;
       _roundEndOverlayVisible=false;
       _iPickedThisRound=false;
       _pendingHandUpdate=null;
       document.getElementById('roundEndOverlay').classList.add('hidden');
       myPid=msg.pid; myRoomId=msg.room_id;
-      // Don't override game_over state with a stale snapshot
+      // FIX: always switch to game screen on successful rejoin
+      if(document.getElementById('lobbyScreen') &&
+         !document.getElementById('lobbyScreen').classList.contains('hidden')){
+        showGameScreen();
+      }
       if(phase==='game_over') break;
-      // ── If player was mid-round-review (Continue button showing), sync gameState from
-      //    the snapshot so dismissRoundEnd() advances to the right next phase, then
-      //    restore the Continue overlay rather than jumping into the new phase directly. ──
       if(_wasAwaitingContinue && msg.state){
         if(gameState){
           if(msg.state.players) gameState.players=msg.state.players;
@@ -1056,6 +1185,7 @@ function handleMessage(msg) {
         }
         _awaitingRoundEndContinue=true;
         _roundEndOverlayVisible=true;
+        if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
         document.getElementById('roundEndOverlay').classList.remove('hidden');
         const _mb=document.getElementById('mainBtn');
         if(_mb){ _mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; _mb.disabled=false; }
@@ -1063,17 +1193,13 @@ function handleMessage(msg) {
         addLog('\uD83D\uDD04 Reconnected to game','imp');
         break;
       }
-      // Don't regress to an earlier phase — if client is already further along than
-      // the snapshot, the snapshot is stale (reconnect happened mid-round).
-      // Phase order: sleeping < pick_cards < arrange_hand < reveal < leader_declare (next round)
-      { const PHASE_ORDER={waiting:0,leader_declare:1,sleeping:2,pick_cards:3,
-                            arrange_hand:4,reveal:5,end_round:6,game_over:7};
+      { const PHASE_ORDER={waiting:0,leader_declare:1,pick_cards:2,
+                            arrange_hand:3,reveal:4,end_round:5,game_over:6};
         const snapPhase=msg.state?.phase||'waiting';
         const snapRound=msg.state?.round||1;
         const curRound=gameState?.round||1;
         const curRank=PHASE_ORDER[phase]??0;
         const snapRank=PHASE_ORDER[snapPhase]??0;
-        // Snapshot is stale if: same round but earlier phase, OR earlier round
         const snapIsStale = (snapRound < curRound) ||
                             (snapRound === curRound && snapRank < curRank);
         if(snapIsStale){
@@ -1088,16 +1214,6 @@ function handleMessage(msg) {
         }
       }
       applyState(msg.state);
-      // ── Sleeping phase: if player already acted, hide sleeping UI immediately ──
-      if(msg.state?.phase==='sleeping'){
-        const pendingSleep=msg.state?.pending_sleeping_pids||msg.state?.pending_pids||[];
-        if(!pendingSleep.includes(myPid)){
-          hideSleepingSection();
-          document.getElementById('mainBtn').disabled=true;
-          document.getElementById('mainBtn').textContent='Waiting for others...';
-        }
-      }
-      // ── Pick phase: use pending_pick_pids if server sends it; never use battle_count (stale) ──
       if(msg.state?.phase==='pick_cards'){
         const pending=msg.state?.pending_pick_pids||msg.state?.pending_pids||null;
         if(pending!==null && !pending.includes(myPid)){
@@ -1108,7 +1224,6 @@ function handleMessage(msg) {
           if(pb) pb.textContent='\uD83C\uDCCF Cards submitted \u2014 waiting for others';
         }
       }
-      // ── Arrange phase: if already confirmed, show waiting ──
       if(msg.state?.phase==='arrange_hand'){
         const pending=msg.state?.pending_arrange_pids||[];
         if(!pending.includes(myPid)){
@@ -1121,29 +1236,51 @@ function handleMessage(msg) {
       break;
 
     case 'state':
-      applyState(msg.state); break;
+      clearStuckTimer();
+      // Don't apply a server snapshot while the round-end overlay is still showing —
+      // the player hasn't clicked Continue yet. dismissRoundEnd() sends its own get_state
+      // after clearing the flags, so applyState() will run at the right moment.
+      if(_awaitingRoundEndContinue) break;
+      applyState(msg.state);
+      syncHandCounts(msg.state?.players);
+      if(!_stuckTimerFiring) resetStuckTimer();
+      break;
 
     case 'phase_change':
-      // ── Sync lead_pid whenever server tells us the leader ──
+      if(msg.phase==='leader_declare'){
+        document.getElementById('waitOverlay').classList.add('hidden');
+        setTimeout(()=>send({type:'get_state'}),200);
+        // Update maxSteps as early as possible
+        if(msg.max_steps && msg.max_steps !== maxSteps){
+          maxSteps = msg.max_steps;
+          ['step5','step6'].forEach((id,i)=>{
+            const b=document.getElementById(id);
+            if(!b) return;
+            if(maxSteps >= 5+i){ b.classList.remove('hidden'); b.style.display=''; }
+            else b.classList.add('hidden');
+          });
+        }
+      }
       if(msg.leader_pid&&gameState) gameState.lead_pid=msg.leader_pid;
-      // Buffer leader_declare while round-end overlay is showing
-      if(msg.phase==='leader_declare' && _roundEndOverlayVisible){
-        _bufferedLeaderDeclare=msg;
-        if(gameState){ gameState.phase=msg.phase; gameState.round=msg.round||gameState.round; }
+      if(_roundEndOverlayVisible){
+        // Buffer ALL phase changes while round-end overlay is shown
+        if(msg.phase==='leader_declare') _bufferedLeaderDeclare=msg;
+        if(gameState){ gameState.phase=msg.phase; if(msg.round) gameState.round=msg.round; }
       } else {
         setPhase(msg.phase,msg);
       }
       break;
 
     case 'declaration':
-      // ── Always sync declared_steps, declared_el AND lead_pid from declaration event ──
       if(gameState){
         gameState.declared_steps=msg.steps;
         gameState.declared_el=msg.element;
         gameState.lead_pid=msg.pid;
       }
-      addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${SUIT_SYM[msg.element]}`,'imp');
-      renderTable();
+      if(!_roundEndOverlayVisible){
+        addLog(`👑 ${nameOf(msg.pid)} declares: ${msg.steps} steps · ${SUIT_EL[msg.element]} ${msg.element==='Diamonds'?'[AIR]':msg.element==='Spades'?'[EARTH]':SUIT_ICON[msg.element]}`,'imp');
+        renderTable();
+      }
       break;
 
     case 'cards_picked':
@@ -1152,8 +1289,8 @@ function handleMessage(msg) {
         _iPickedThisRound=true;
         const btn=document.getElementById('mainBtn');
         btn.disabled=true; btn.textContent='Waiting for others...';
+        setTimeout(()=>send({type:'get_state'}), 200);
       } else if(phase==='pick_cards' && !_iPickedThisRound){
-        // Another player picked — re-assert our button state in case something disrupted it
         const need=pickNeed();
         const btn=document.getElementById('mainBtn');
         if(selectedCardCids.length>=need && need>0){
@@ -1165,15 +1302,10 @@ function handleMessage(msg) {
       break;
 
     case 'arrange_ready':
-      if(msg.pid===myPid){
-        // Already handled by mainAction — button disabled there
-      } else {
-        addLog(`${nameOf(msg.pid)} is set`);
-      }
+      if(msg.pid!==myPid) addLog(`${nameOf(msg.pid)} is set`);
       break;
 
     case 'step_revealed': {
-      // Dedup: build a key from step number + card cids; skip if identical to last
       const revKey = (gameState?.round||0) + ':' + msg.step + ':' + (msg.entries||[]).map(e=>e.card?.cid).sort().join(',');
       if (revKey === _lastRevealKey) break;
       _lastRevealKey = revKey;
@@ -1183,10 +1315,8 @@ function handleMessage(msg) {
       }
       if(msg.winner_pid){
         addLog(`Step ${msg.step}: ${nameOf(msg.winner_pid)} wins`,'imp');
-        // Track step wins for round-end overlay
         _stepWins[msg.winner_pid]=(_stepWins[msg.winner_pid]||0)+1;
       }
-      // If this was the last step, update button so player knows round is ending
       if(msg.step >= msg.total_steps){
         const mb=document.getElementById('mainBtn');
         if(mb){ mb.textContent='Round complete…'; mb.disabled=true; }
@@ -1194,39 +1324,37 @@ function handleMessage(msg) {
       break;
     }
 
-    case 'sleeping_choice':
-      if(msg.pid===myPid){
-        // Update our local hand/sleeping state from a full state refresh or just log
-        if(msg.action==='sleep')  addLog(`😴 You put a pair to sleep (${msg.dragon_count||'?'}🐉 total)`,'imp');
-        else if(msg.action==='wake') addLog(`⏰ You woke a sleeping pair`,'imp');
-        else addLog('You passed the sleeping phase.');
-      } else {
-        const n=nameOf(msg.pid);
-        if(msg.action==='sleep')  addLog(`😴 ${n} puts a pair to sleep`);
-        else if(msg.action==='wake') addLog(`⏰ ${n} wakes a pair`);
-      }
-      break;
-
-    case 'forced_wake':
-      if(msg.pid===myPid){
-        addLog(`⏰ You were forced to wake ${msg.pairs_woken?.length||1} pair(s)`,'warn');
-        send({type:'get_state'});
-      } else {
-        addLog(`⏰ ${nameOf(msg.pid)} forced to wake a pair`);
-      }
-      break;
-
-    case 'forced_wake_choose':
-      if(msg.pid===myPid) showForcedWakeOverlay(msg);
-      break;
-
     case 'skip_next_cleared':
-      if(msg.pid===myPid) addLog('⏳ You return from your Time Dragon skip.');
+      if(msg.pid===myPid){
+        addLog('⏳ You are skipping this round (Time Dragon).','imp');
+        const _mb=document.getElementById('mainBtn');
+        const _pb=document.getElementById('phaseBanner');
+        if(_mb){ _mb.textContent='Skipping this round…'; _mb.disabled=true; }
+        if(_pb){ _pb.textContent='⏳ You are skipping this round'; }
+        _iPickedThisRound=true;
+        selectedCardCids=[];
+      } else {
+        addLog(`⏳ ${nameOf(msg.pid)} skips this round (Time Dragon).`);
+      }
       break;
 
     case 'portal_choose_target':
       if(msg.portal_pid===myPid) showPortalModal(msg);
       else addLog(`🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`);
+      break;
+
+    case 'queen_choose_target':
+      if(msg.queen_pid===myPid) showQueenFuryModal(msg);
+      else addLog(`👑 ${nameOf(msg.queen_pid)}'s Queen Fury — choosing a target to steal from...`);
+      break;
+
+    case 'queen_fury_steal':
+      addLog(`👑 Queen Fury! ${msg.queen_name||nameOf(msg.queen_pid)} steals `
+           + `${msg.stolen_card?.label||'a card'} from ${msg.target_name||nameOf(msg.target_pid)}!`,'imp');
+      break;
+
+    case 'portal_steal':
+      addLog(`🌀 ${msg.portal_name||nameOf(msg.portal_pid)} stole ${msg.stolen_card?.label||'a card'} from ${msg.target_name||nameOf(msg.target_pid)}!`,'imp');
       break;
 
     case 'time_dragon_applied':
@@ -1249,6 +1377,7 @@ function handleMessage(msg) {
 
     case 'time_dragon_choose':
       if(msg.pid===myPid){
+        if(!document.getElementById('timeDragonOverlay').classList.contains('hidden')) break;
         showTimeDragonModal(null, msg);
       } else {
         addLog(`\u23F3 ${nameOf(msg.pid)} holds Time Dragon power \u2014 choosing...`);
@@ -1256,7 +1385,6 @@ function handleMessage(msg) {
       break;
 
     case 'joker_choose_power':
-      // Human won a battle with BOTH Time and Space Dragon — must choose which power to use
       if(msg.pid===myPid){
         showJokerPowerModal(msg);
       } else {
@@ -1266,7 +1394,7 @@ function handleMessage(msg) {
 
     case 'seat_swap':
       if(gameState){ gameState.order=msg.new_order; }
-      _confirmedOrder=msg.new_order;   // survives applyState overwrites on rejoin
+      _confirmedOrder=msg.new_order;
       addLog(`\uD83C\uDF0C Seats swapped: ${nameOf(msg.pid_a)} \u2194 ${nameOf(msg.pid_b)}`,'imp');
       renderTable();
       break;
@@ -1278,14 +1406,11 @@ function handleMessage(msg) {
 
     case 'round_end':
       addLog(`── Round ${msg.round} complete ──`);
-      hideSleepingSection();
       if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
       if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
       _pendingRoundEndMsg=null;
-      // Buffer leader_declare until player clicks CONTINUE — set flag immediately.
       _roundEndOverlayVisible=true;
       _awaitingRoundEndContinue=true;
-      // Arm the main button — player continues at their own pace, just like between steps.
       { const mb=document.getElementById('mainBtn');
         const pb=document.getElementById('phaseBanner');
         if(mb){ mb.textContent='CONTINUE TO NEXT ROUND \u25b6'; mb.disabled=false; }
@@ -1301,9 +1426,17 @@ function handleMessage(msg) {
       renderTable(); break;
 
     case 'player_joined':
-      addLog(`${msg.name} joined the room`); break;
+      addLog(`${msg.name} joined the room`);
+      if(gameState && msg.pid && msg.name){
+        if(!gameState.players) gameState.players={};
+        gameState.players[msg.pid]={name:msg.name,pid:msg.pid,is_ai:false,hand_count:0,dragon_count:0,out:false};
+        if(!gameState.order) gameState.order=[];
+        if(!gameState.order.includes(msg.pid)) gameState.order.push(msg.pid);
+      }
+      updateWaitPlayerList();
+      break;
 
-        case 'seat_changed':
+    case 'seat_changed':
       if(gameState){ gameState.order=msg.new_order; if(msg.lead_pid) gameState.lead_pid=msg.lead_pid; }
       _confirmedOrder=msg.new_order;
       renderTable();
@@ -1313,10 +1446,10 @@ function handleMessage(msg) {
     case 'game_over':
       phase='game_over';
       if(gameState) gameState.phase='game_over';
+      try{ localStorage.removeItem('dt_pid'); localStorage.removeItem('dt_room'); }catch(e){}
       { const mb=document.getElementById('mainBtn');
         if(mb){ mb.disabled=true; mb.textContent='Game Over...'; }
       }
-      // Show immediately — no delay to avoid race with reconnect/applyState
       showGameOver(msg);
       break;
 
@@ -1324,9 +1457,23 @@ function handleMessage(msg) {
       renderRoomList(msg.rooms); break;
 
     case 'error':
+      if(_rejoining && msg.msg && msg.msg.includes('not found')) {
+        // Auto-rejoin failed (room gone) — clear stale state and show lobby
+        _rejoining = false;
+        myPid = null; myRoomId = null; gameState = null; isSpectator = false;
+        try { localStorage.removeItem('dt_pid'); localStorage.removeItem('dt_room'); } catch(e){}
+        document.getElementById('gameScreen').classList.add('hidden');
+        document.getElementById('lobbyScreen').classList.remove('hidden');
+        document.getElementById('waitOverlay').classList.add('hidden');
+        document.getElementById('rejoinLobbyWrap').classList.add('hidden');
+        document.querySelectorAll('.spec-banner').forEach(b => b.remove());
+        const rb = document.getElementById('rejoinBtn');
+        if(rb) rb.classList.add('hidden');
+        break;
+      }
       addLog(`⚠ ${msg.msg}`,'warn');
       if(phase==='pick_cards'){
-        _iPickedThisRound=false;   // allow retry after server rejection
+        _iPickedThisRound=false;
         const need=pickNeed();
         const btn=document.getElementById('mainBtn');
         btn.disabled=selectedCardCids.length<need;
@@ -1337,16 +1484,6 @@ function handleMessage(msg) {
   }
 }
 
-// ── Joker modal: strict matching to avoid false positives ──
-function checkJokerModal(ev, msg) {
-  // Time Dragon is auto-resolved by the engine — just log the result, no modal.
-  // Space Dragon interactive choice comes via 'space_dragon_choose_swap' event, not here.
-  // This function is intentionally left as a no-op now.
-}
-
-// ══════════════════════════════════════════════════════
-//  PHASE MANAGEMENT
-// ══════════════════════════════════════════════════════
 function setPhase(newPhase, data) {
   phase=newPhase;
   const banner  = document.getElementById('phaseBanner');
@@ -1355,9 +1492,7 @@ function setPhase(newPhase, data) {
   const phaseLbl = document.getElementById('tablePhaseLbl');
   if(phaseLbl) phaseLbl.textContent = PHASE_LABELS[newPhase]||newPhase;
 
-  // Declaration panel is always visible — just update its state
   updateDeclarePanel(newPhase, data);
-  // Issue 1: show declaration summary bar during pick/reveal so everyone sees what was declared
   const declSum=document.getElementById('declSummary');
   if(declSum){
     if((newPhase==='pick_cards'||newPhase==='reveal')&&gameState){
@@ -1369,20 +1504,8 @@ function setPhase(newPhase, data) {
     } else {
       declSum.classList.add('hidden');
     }
-  }
-  // Show/hide the declare panel — hide it during sleeping so it doesn't block the sleeping UI
-  if(newPhase==='sleeping'){
-    declSec.classList.add('hidden');
-    // Hide battle section during sleeping — but only if not in round-end review
-    // (round_end sets _awaitingRoundEndContinue; player should still see last battle)
-    if(!_awaitingRoundEndContinue){
-      if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-      hideBattle();
-    }
   } else {
     declSec.classList.remove('hidden');
-    hideSleepingSection();
-    // Hide battle during phases that precede battle — prevents stale display
     if(!_awaitingRoundEndContinue &&
        (newPhase==='leader_declare'||newPhase==='pick_cards'||newPhase==='arrange_hand')){
       if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
@@ -1395,19 +1518,22 @@ function setPhase(newPhase, data) {
 
   if(newPhase==='leader_declare'){
     if(_hideBattleTimer){ clearTimeout(_hideBattleTimer); _hideBattleTimer=null; }
-    // Don't hide battle while round-end overlay is showing — player hasn't seen results yet.
     if(!_roundEndOverlayVisible) hideBattle();
-    selectedCardCids=[];   // clear stale badges from previous round's card selection
+    selectedCardCids=[];
+    _iPickedThisRound=false;  // reset for new round
+    // Refresh step buttons based on current maxSteps
+    ['step5','step6'].forEach((id,i)=>{
+    const b=document.getElementById(id);
+    if(!b) return;
+    if(maxSteps >= 5+i){ b.classList.remove('hidden'); b.style.display=''; }
+    else b.classList.add('hidden');
+          });
 
-    // Reset declaration controls to defaults each round — stale values from last round
-    // would cause wrong steps/element to be sent or wrong lightning to show.
     selectedSteps=3; selectedSuit='Hearts';
     setSteps(3); setSuit('Hearts');
-    // Clear stale declared_el so no lightning shows before the new declaration is made
     if(gameState) gameState.declared_el=null;
 
     const leaderPid = data.leader_pid || gameState?.lead_pid;
-    // Ensure gameState stays in sync
     if(leaderPid&&gameState) gameState.lead_pid=leaderPid;
 
     const isMe = leaderPid===myPid;
@@ -1433,30 +1559,30 @@ function setPhase(newPhase, data) {
     const n=data.steps_needed||data.declared_steps||gameState?.declared_steps||2;
     if(gameState) gameState.declared_steps=n;
     banner.className='phase-bar pick';
-    // Clear pick flag for this fresh pick phase; set it again when cards_picked fires for myPid.
-    // Do NOT use battle_count — it reflects stale state since phase_change arrives before hand_update.
-    _iPickedThisRound=false;
-    selectedCardCids=[];
-    const need=pickNeed();
-    banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
-    mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
-    mainBtn.disabled=true;
-    renderHand();
+    // Don't reset _iPickedThisRound if skip_next_cleared already arrived for us
+    if(!_iPickedThisRound){
+      selectedCardCids=[];
+      const need=pickNeed();
+      banner.textContent=`🎴 Select ${need} card${need>1?'s':''} for battle`;
+      mainBtn.textContent=`CONFIRM CARDS (0/${need})`;
+      mainBtn.disabled=true;
+      renderHand();
+    }
+    // If already skipping, banner/button were already set by skip_next_cleared handler
 
   } else if(newPhase==='arrange_hand'){
     banner.className='phase-bar pick';
     banner.textContent='\uD83C\uDCCF Arrange your hand — drag to reorder, then confirm';
     mainBtn.textContent='READY \u2014 START BATTLE \u25b6';
     mainBtn.disabled=false;
-    _tapPickedIdx=null;  // reset any in-progress tap-reorder
+    _tapPickedIdx=null;
+    // FIX B — server sends hand already sorted by canonical order (Princess>Tamer>Wizard)
+    // Do NOT re-sort here — it overrides the server's authoritative order
     renderHand();
 
   } else if(newPhase==='reveal'){
-    // Rejoin gives current_step (0-based already played), so next = current_step+1
     const nextStep = data.next_step || data.step ||
                      (data.current_step != null ? data.current_step + 1 : 1);
-    // If starting from step 1, clear any leftover battle content from previous round
-    // (e.g. when Time Dragon "Forward" skips leader_declare so hideBattle never ran)
     if(nextStep===1) hideBattle();
     banner.className='phase-bar reveal';
     banner.textContent=`⚔ Step ${nextStep} of ${gameState?.declared_steps||'?'}`;
@@ -1466,176 +1592,48 @@ function setPhase(newPhase, data) {
     mainBtn.textContent=`REVEAL STEP ${nextStep}`;
     mainBtn.disabled=false;
 
-  } else if(newPhase==='sleeping'){
-    banner.className='phase-bar declare';
-    const pendingPids = data.pending_pids || data.pending_sleeping_pids || null;
-    const isMyTurn = pendingPids ? pendingPids.includes(myPid) : true;
-
-    // Auto-pass immediately if player has nothing to sleep or wake
-    if(isMyTurn){
-      const me = gameState?.me;
-      const sleeping = me?.sleeping||[];
-      const hand = me?.hand||[];
-      const sleepingCids = new Set((sleeping).flatMap(p=>Array.isArray(p)?p.map(c=>c?.cid):[p?.cid]));
-      const dragons={}, tamers={};
-      hand.forEach(c=>{ if(!c||sleepingCids.has(c.cid)||c.is_joker||!c.suit) return; if(c.is_dragon) dragons[c.suit]=c; if(c.is_tamer) tamers[c.suit]=c; });
-      const eligible = Object.keys(dragons).filter(s=>tamers[s]);
-      if(!sleeping.length && !eligible.length){
-        // Nothing to do — defer to ensure phase var is settled
-        setTimeout(()=>{
-          if(phase==='sleeping') sendSleepingChoice('pass',null,null,null);
-        }, 200);
-        return;
-      }
-    }
-
-    banner.textContent = isMyTurn
-      ? '😴 Dragon Rest — Sleep, Wake, or Pass'
-      : '⏳ Waiting for players to choose...';
-    mainBtn.textContent = 'PASS (DO NOTHING)';
-    mainBtn.disabled = !isMyTurn;
-    document.getElementById('sleepingSection').classList.remove('hidden');
-    try{ renderSleepingSection(isMyTurn); }catch(e){ console.error('renderSleepingSection error:',e); }
-
   } else if(newPhase==='end_round'){
     banner.className='phase-bar end';
     banner.textContent='✅ Round complete';
     mainBtn.textContent='NEXT ROUND';
   }
 
-  // If the player still needs to click "Continue" after the previous round, always
-  // restore that button regardless of what phase just arrived (sleeping, pick_cards, etc.)
-  // The sleeping auto-pass path returns early above, so its button is already correct.
   if(_awaitingRoundEndContinue && !isSpectator) {
     mainBtn.textContent = 'CONTINUE TO NEXT ROUND \u25b6';
     mainBtn.disabled = false;
   }
 }
 
-// ══════════════════════════════════════════════════════
-//  STATE
-// ══════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════
-//  SLEEPING PHASE
-// ══════════════════════════════════════════════════════
-function hideSleepingSection() {
-  document.getElementById('sleepingSection').classList.add('hidden');
-  document.getElementById('sleepingContent').innerHTML='';
-}
-
-function renderSleepingSection(isMyTurn) {
-  const me = gameState?.me;
-  const el = document.getElementById('sleepingContent');
-  if(!el) return;
-  el.innerHTML='';
-
-  const sleeping = me?.sleeping||[];
-  if(sleeping.length){
-    const lbl=document.createElement('div'); lbl.className='sleep-section-lbl';
-    lbl.textContent='😴 Sleeping Pairs — click to Wake'; el.appendChild(lbl);
-    sleeping.forEach((pair,i)=>{
-      const [t,d]=pair;
-      const row=document.createElement('div'); row.className='sleep-pair-row';
-      const cardsDiv=document.createElement('div'); cardsDiv.className='sleep-pair-cards';
-      cardsDiv.appendChild(renderCardEl(t,false,false,-1));
-      cardsDiv.appendChild(renderCardEl(d,false,false,-1));
-      const lbl2=document.createElement('div'); lbl2.className='sleep-pair-label';
-      lbl2.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit||''} pair · protected`;
-      const btn=document.createElement('button'); btn.className='sleep-pair-btn btn-wake';
-      btn.textContent='⏰ WAKE'; btn.disabled=!isMyTurn;
-      btn.onclick=()=>sendSleepingChoice('wake',null,null,i);
-      row.appendChild(cardsDiv); row.appendChild(lbl2); row.appendChild(btn);
-      el.appendChild(row);
-    });
-  }
-
-  const hand = me?.hand||[];
-  const sleepingCids = new Set((sleeping||[]).flatMap(p=>p.map(c=>c.cid)));
-  const dragons={}, tamers={};
-  hand.forEach(c=>{
-    if(sleepingCids.has(c.cid)||c.is_joker||!c.suit) return;
-    if(c.is_dragon) dragons[c.suit]=c;
-    if(c.is_tamer)  tamers[c.suit]=c;
-  });
-  const eligiblePairs=Object.keys(dragons).filter(s=>tamers[s]).map(s=>({tamer:tamers[s],dragon:dragons[s]}));
-
-  if(eligiblePairs.length){
-    const lbl=document.createElement('div'); lbl.className='sleep-section-lbl';
-    lbl.textContent='Hand pairs — click to Sleep'; el.appendChild(lbl);
-    eligiblePairs.forEach(({tamer:t,dragon:d})=>{
-      const row=document.createElement('div'); row.className='sleep-pair-row';
-      const cardsDiv=document.createElement('div'); cardsDiv.className='sleep-pair-cards';
-      cardsDiv.appendChild(renderCardEl(t,false,false,-1));
-      cardsDiv.appendChild(renderCardEl(d,false,false,-1));
-      const lbl2=document.createElement('div'); lbl2.className='sleep-pair-label';
-      lbl2.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit||''} · puts them to sleep`;
-      const btn=document.createElement('button'); btn.className='sleep-pair-btn btn-sleep';
-      btn.textContent='😴 SLEEP'; btn.disabled=!isMyTurn;
-      btn.onclick=()=>sendSleepingChoice('sleep',t.cid,d.cid,null);
-      row.appendChild(cardsDiv); row.appendChild(lbl2); row.appendChild(btn);
-      el.appendChild(row);
-    });
-  }
-
-  if(!sleeping.length && !eligiblePairs.length){
-    const hint=document.createElement('div'); hint.className='sleep-hint';
-    hint.textContent='No pairs available — press PASS to continue.';
-    el.appendChild(hint);
-  } else {
-    const hint=document.createElement('div'); hint.className='sleep-hint';
-    hint.textContent='Sleep protects a pair & keeps dragons safe. Wake returns them to fight.';
-    el.appendChild(hint);
-  }
-}
-
-function sendSleepingChoice(action, tamer_cid, dragon_cid, pair_index) {
-  send({type:'sleeping_choice', action, tamer_cid, dragon_cid, pair_index});
-  document.getElementById('mainBtn').disabled=true;
-  document.querySelectorAll('.sleep-pair-btn').forEach(b=>b.disabled=true);
-}
-
-function showForcedWakeOverlay(msg) {
-  const pairs = msg.pairs_available||[];
-  const needed = msg.pairs_needed||1;
-  document.getElementById('forcedWakeText').textContent=
-    `You have too few cards for battle (need ${msg.steps_needed}, have ${msg.hand_size}). Choose ${needed} pair(s) to wake.`;
-  const container=document.getElementById('forcedWakePairs');
-  container.innerHTML='';
-  const selected=[];
-  pairs.forEach(({index,tamer:t,dragon:d})=>{
-    const btn=document.createElement('button');
-    btn.className='btn btn-outline';
-    btn.style.cssText='text-align:left;font-size:12px;';
-    btn.textContent=`${SUIT_SYM[d.suit]||''} ${d.suit} pair (${t.label}+${d.label})`;
-    btn.onclick=()=>{
-      const i=selected.indexOf(index);
-      if(i>=0){ selected.splice(i,1); btn.classList.remove('active'); }
-      else if(selected.length<needed){ selected.push(index); btn.classList.add('active'); }
-      confirmBtn.disabled=selected.length!==needed;
-    };
-    container.appendChild(btn);
-  });
-  const confirmBtn=document.createElement('button');
-  confirmBtn.className='btn btn-gold btn-full'; confirmBtn.textContent='CONFIRM WAKE';
-  confirmBtn.disabled=true;
-  confirmBtn.onclick=()=>{
-    send({type:'forced_wake_chosen',pair_indices:selected});
-    document.getElementById('forcedWakeOverlay').classList.add('hidden');
-  };
-  container.appendChild(confirmBtn);
-  document.getElementById('forcedWakeOverlay').classList.remove('hidden');
-}
-
 function applyState(state) {
   gameState=state;
-  // Sync declared_el from state — prevents stale lightning showing wrong suit
   if(gameState && state.declared_el !== undefined)
     gameState.declared_el = state.declared_el || null;
-  // If a seat_swap happened after the snapshot was taken, restore the correct order
   if(_confirmedOrder && gameState) gameState.order=_confirmedOrder;
+  // Apply max_steps from state (available after rejoin/reconnect)
+  if(state.max_steps && state.max_steps !== maxSteps){
+    maxSteps = state.max_steps;
+    ['step5','step6'].forEach((id,i)=>{
+      const b=document.getElementById(id);
+      if(!b) return;
+      if(maxSteps >= 5+i){ b.classList.remove('hidden'); b.style.display=''; }
+      else b.classList.add('hidden');
+    });
+  }
   renderTable(); renderHand();
   if(state.phase) setPhase(state.phase,state);
 }
+
+function syncHandCounts(players){
+  if(!gameState||!players) return;
+  Object.entries(players).forEach(([pid,p])=>{
+    if(gameState.players?.[pid]){
+      if(p.hand_count!=null) gameState.players[pid].hand_count=p.hand_count;
+      if(p.dragon_count!=null) gameState.players[pid].dragon_count=p.dragon_count;
+    }
+  });
+  renderTable();
+}
+
 function nameOf(pid) {
   if(!gameState) return pid||'';
   return gameState.players?.[pid]?.name||pid||'';
@@ -1643,12 +1641,15 @@ function nameOf(pid) {
 function showGameScreen() {
   document.getElementById('lobbyScreen').classList.add('hidden');
   document.getElementById('gameScreen').classList.remove('hidden');
+  // Remove any leftover spectator banners from previous sessions
+  document.querySelectorAll('.spec-banner').forEach(b => b.remove());
   if(isSpectator){
     document.querySelector('.action-bar').style.display='none';
     document.querySelector('#handCards').parentElement.classList.add('hidden');
     document.querySelector('#declareSection').classList.add('hidden');
     const specBanner=document.createElement('div');
-    specBanner.style.cssText='background:linear-gradient(90deg,rgba(74,26,107,.85),rgba(74,26,107,.4));padding:8px 14px;text-align:center;font-family:Cinzel,serif;font-size:13px;font-weight:700;letter-spacing:1px;color:#C39BD3;flex-shrink:0;';
+    specBanner.className='spec-banner';
+    specBanner.style.cssText='background:linear-gradient(90deg,rgba(74,26,107,.85),rgba(74,26,107,.4));padding:8px 14px;text-align:center;font-family:Cinzel,serif;font-size:15px;font-weight:700;letter-spacing:1px;color:#C39BD3;flex-shrink:0;';
     specBanner.innerHTML=`👁 SPECTATING · Room ${myRoomId} · <span id="specCount">${spectatorCount}</span> watching`;
     const pb=document.getElementById('phaseBanner');
     pb.parentNode.insertBefore(specBanner,pb);
@@ -1659,9 +1660,6 @@ function updateSpectatorBadge() {
   const el=document.getElementById('specCount'); if(el) el.textContent=spectatorCount;
 }
 
-// ══════════════════════════════════════════════════════
-//  ROUND TABLE
-// ══════════════════════════════════════════════════════
 function renderTable() {
   if(!gameState) return;
   const container=document.getElementById('tableContainer'); if(!container) return;
@@ -1694,35 +1692,15 @@ function renderTable() {
     const y=cy+orbitR*Math.sin(angle);
     const isMe=pid===myPid, isLeader=pid===leadPid, isTurn=pid===isTurnPid;
     const initials=(p.name||'?').slice(0,2).toUpperCase();
-    const d=p.dragon_count||0;
-    const dragonStr='';
     const metaStr=p.out?'❌':`${p.hand_count||0}🃏`;
-    const SUIT_COLOR_T={'Hearts':'#C0392B','Diamonds':'#C0392B','Clubs':'#e8e0d0','Spades':'#e8e0d0'};
-    const SUIT_BG_T={'Hearts':'#fffaf0','Diamonds':'#fffaf0','Clubs':'#1a1e30','Spades':'#1a1e30'};
-    const SUIT_SYM_T={'Hearts':'♥','Clubs':'♣','Diamonds':'♦','Spades':'♠'};
-    const sleeping_pairs=p.sleeping_pairs||[];
-    let sleepingHTML='';
-    if(sleeping_pairs.length>0){
-      const pairsHTML=sleeping_pairs.map(pair=>{
-        const t=pair[0],d2=pair[1];
-        const bg=SUIT_BG_T[d2.suit]||'#1a1e30';
-        const col=SUIT_COLOR_T[d2.suit]||'#e8e0d0';
-        const sym=SUIT_SYM_T[d2.suit]||'';
-        const tRank=t.label.replace(/[♥♣♦♠]/g,'');
-        const dRank=d2.label.replace(/[♥♣♦♠]/g,'');
-        return `<span style="background:rgba(0,0,0,.35);border:1px solid ${col};border-radius:4px;padding:1px 3px;display:inline-flex;gap:2px;align-items:center;"><span style="background:${bg};color:${col};border-radius:2px;font-size:9px;font-family:Cinzel,serif;font-weight:700;padding:1px 3px;">${tRank}${sym}</span><span style="font-size:8px;color:rgba(253,246,227,.5);">😴</span><span style="background:${bg};color:${col};border-radius:2px;font-size:9px;font-family:Cinzel,serif;font-weight:700;padding:1px 3px;">${dRank}${sym}</span></span>`;
-      }).join(' ');
-      sleepingHTML=`<div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:center;margin-top:2px;">${pairsHTML}</div>`;
-    }
 
     const seat=document.createElement('div');
     seat.className='player-seat'+(isMe?' is-me':'')+(isLeader?' is-leader':'')+(p.out?' is-out':'')+(isTurn?' is-turn':'');
     seat.style.left=x+'px'; seat.style.top=y+'px';
-    // Build accum pile HTML
     const accumCards = p.accum || [];
     let pileHTML = '';
     if(accumCards.length > 0){
-      const shown = accumCards.slice(-5); // show last 5 won cards
+      const shown = accumCards.slice(-5);
       const pips = shown.map(c => {
         let cls = 'pile-card-mini ';
         if(c.is_joker) cls += c.joker_type==='space'?'js':'jt';
@@ -1743,7 +1721,6 @@ function renderTable() {
         ${isLeader?'<span class="seat-crown">👑</span>':''}${initials}
       </div>
       <div class="seat-name">${p.name}</div>
-      ${sleepingHTML}
       ${pileHTML}
       <div class="seat-meta">${metaStr}</div>`;
     container.appendChild(seat);
@@ -1755,86 +1732,180 @@ function renderTable() {
     :'⚔ Round Table';
 }
 
-// ══════════════════════════════════════════════════════
-//  CLASSIC CARD RENDERING
-// ══════════════════════════════════════════════════════
-function buildCardPips(origRank, suitSym) {
-  const layout=PIP_LAYOUTS[origRank]; if(!layout) return '';
-  const sz=origRank===1?28:origRank<=3?18:origRank<=6?16:13;
-  return layout.map(([x,y])=>
-    `<span class="pip" style="left:${x}%;top:${y}%;font-size:${sz}px;">${suitSym}</span>`
-  ).join('');
+const SUIT_ICON  = {Hearts:'🔥', Clubs:'💧', Diamonds:'☁️', Spades:'🪨'};
+const DRAGON_IMG_URL = 'data:image/png;base64,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';
+function dragonImg(cls, size) {
+  return `<span class="dragon-img ${cls}" style="width:${size}px;height:${size}px;background-image:url('${DRAGON_IMG_URL}');"></span>`;
+}
+// Set lobby dragon image
+document.addEventListener('DOMContentLoaded', () => {
+  const ld = document.getElementById('logoDragonImg');
+  if(ld) ld.src = DRAGON_IMG_URL;
+});
+
+
+const DRAGON_URL = 'data:image/png;base64,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';
+function dragonImg(suitClass, size) {
+  return `<span class="dragon-img ${suitClass}" style="width:${size}px;height:${size}px;"></span>`;
 }
 
+const AIR_SVG_SM   = `<svg width="13" height="13" viewBox="0 0 80 80" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M14,28 C14,20 20,14 28,14 C36,14 40,20 40,26 C40,32 36,36 30,36 C26,36 23,33 23,29 C23,25 26,22 30,22 C33,22 35,24 35,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M66,28 C66,20 60,14 52,14 C44,14 40,20 40,26 C40,32 44,36 50,36 C54,36 57,33 57,29 C57,25 54,22 50,22 C47,22 45,24 45,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="6" y="38" width="68" height="7" rx="3.5" fill="currentColor"/><path d="M10,48 L70,48 L62,57 L18,57 Z" fill="currentColor"/><path d="M20,60 L60,60 L40,76 Z" fill="currentColor"/></svg>`;
+const AIR_SVG_LG   = `<svg width="22" height="22" viewBox="0 0 80 80" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><path d="M14,28 C14,20 20,14 28,14 C36,14 40,20 40,26 C40,32 36,36 30,36 C26,36 23,33 23,29 C23,25 26,22 30,22 C33,22 35,24 35,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M66,28 C66,20 60,14 52,14 C44,14 40,20 40,26 C40,32 44,36 50,36 C54,36 57,33 57,29 C57,25 54,22 50,22 C47,22 45,24 45,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="6" y="38" width="68" height="7" rx="3.5" fill="currentColor"/><path d="M10,48 L70,48 L62,57 L18,57 Z" fill="currentColor"/><path d="M20,60 L60,60 L40,76 Z" fill="currentColor"/></svg>`;
+const EARTH_SVG_SM = `<svg width="13" height="13" viewBox="0 0 120 120" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="ogs" cx="38%" cy="32%" r="65%"><stop offset="0%" stop-color="#1a6aaa"/><stop offset="100%" stop-color="#0a2a55"/></radialGradient><radialGradient id="lgs" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#cc8822"/><stop offset="100%" stop-color="#5a3000"/></radialGradient><clipPath id="gcs"><circle cx="60" cy="60" r="54"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="url(#ogs)"/><g clip-path="url(#gcs)" fill="url(#lgs)"><path d="M8,30 L16,20 L36,22 L40,30 L32,48 L16,46 L10,38 Z"/><path d="M30,64 L40,58 L50,76 L38,96 L28,90 L24,78 Z"/><path d="M54,22 L72,18 L72,26 L66,32 L52,28 Z"/><path d="M54,34 L74,36 L78,50 L68,78 L50,72 L48,56 Z"/><path d="M72,16 L112,20 L104,44 L76,42 L70,24 Z"/><path d="M88,68 L112,72 L98,88 L84,72 Z"/></g><ellipse cx="60" cy="8" rx="52" ry="12" fill="white" opacity="0.85" clip-path="url(#gcs)"/><circle cx="60" cy="60" r="54" stroke="#cc8822" stroke-width="5" fill="none"/></svg>`;
+const EARTH_SVG_LG = `<svg width="22" height="22" viewBox="0 0 120 120" fill="none" style="display:inline-block;vertical-align:middle;" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="og" cx="38%" cy="32%" r="65%"><stop offset="0%" stop-color="#1a6aaa"/><stop offset="100%" stop-color="#0a2a55"/></radialGradient><radialGradient id="lg" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#cc8822"/><stop offset="100%" stop-color="#5a3000"/></radialGradient><clipPath id="gc"><circle cx="60" cy="60" r="54"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="url(#og)"/><g clip-path="url(#gc)" fill="url(#lg)"><path d="M8,30 L16,20 L36,22 L40,30 L32,48 L16,46 L10,38 Z"/><path d="M30,64 L40,58 L50,76 L38,96 L28,90 L24,78 Z"/><path d="M54,22 L72,18 L72,26 L66,32 L52,28 Z"/><path d="M54,34 L74,36 L78,50 L68,78 L50,72 L48,56 Z"/><path d="M72,16 L112,20 L104,44 L76,42 L70,24 Z"/><path d="M88,68 L112,72 L98,88 L84,72 Z"/></g><ellipse cx="60" cy="8" rx="52" ry="12" fill="white" opacity="0.85" clip-path="url(#gc)"/><g clip-path="url(#gc)" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" fill="none"><ellipse cx="60" cy="60" rx="54" ry="10"/><ellipse cx="60" cy="42" rx="50" ry="8"/><ellipse cx="60" cy="78" rx="50" ry="8"/><ellipse cx="60" cy="60" rx="18" ry="54"/><ellipse cx="60" cy="60" rx="38" ry="54"/></g><circle cx="60" cy="60" r="54" stroke="#cc8822" stroke-width="4" fill="none"/></svg>`;
+const NUMBER_WORD = {1:'ACE',2:'TWO',3:'THREE',4:'FOUR',5:'FIVE',
+  6:'SIX',7:'SEVEN',8:'EIGHT',9:'NINE',10:'TEN'};
+const EARTH_FILTER = ''; // Earth now uses SVG globe, no filter needed
+
+function buildCardPips(origRank, suitSym) { return ''; }
+
 function renderCardEl(card, isPick, isSelected, orderIdx) {
-  let cls='card ';
-  const sym = card.is_joker ? (card.joker_type==='space'?'🌌':'⏳') : SUIT_SYM[card.suit];
-  // 3: Replace 'J' with 'P' for Jacks (Princess)
-  let rankStr = card.is_joker ? '' : card.label.replace(/[♥♣♦♠]/g,'');
-  if(card.orig_rank===11) rankStr='P';
+  let cls = 'card ';
+  if(card.is_joker) cls += card.joker_type==='space' ? 'joker-space' : 'joker-time';
+  else cls += (card.suit||'').toLowerCase();
+  if(isSelected) cls += ' selected';
 
-  if(card.is_joker) cls+=card.joker_type==='space'?'joker-space':'joker-time';
-  else cls+=(card.suit||'').toLowerCase();
-  if(isSelected) cls+=' selected';
+  const el = document.createElement('div');
+  el.className = cls;
+  el.dataset.cid = card.cid;
 
-  let badge='';
-  if(card.is_tamer)         badge='TAMER';
-  else if(card.is_princess) badge='PRINCESS';
-  else if(card.is_portal)   badge='🌀 PORTAL';  // 2: spiral + label on portal
-  else if(card.orig_rank===8) badge='WIZARD';
-
-  // Dragon icon for Ace cards
-  const dragonIcon = (card.is_dragon && !card.is_joker)
-    ? '<span class="ace-dragon-icon">🐉</span>' : '';
-
-  // Badge shows which step this card will play in: pick 1 → step 1, pick 2 → step 2, etc.
-  const orderBadge=(isPick&&orderIdx>=0)?`<span class="card-order">${pickNeed()-orderIdx}</span>`:'';
-
-  // 1: blinking bolt for cards matching the declared dominant element
-  const isDominant = !card.is_joker 
-                     && gameState?.declared_el
-                     && card.suit===gameState.declared_el
-                     && (phase==='pick_cards'||phase==='reveal');
-  const dominantBolt = isDominant ? '<span class="dominant-bolt">⚡</span>' : '';
-
-  let centerHTML='';
+  const isEarth = !card.is_joker && card.suit === 'Spades';
+  // Use SVG icons for Air and Earth; emoji for Fire/Water/Jokers
+  let cornerIcon, iconStyle='', cornerIsHTML=false;
   if(card.is_joker){
-    const lbl=card.joker_type==='space'?'SPACE':'TIME';
-    centerHTML=`<div class="pip-area"><div class="joker-inner">
-      <div class="joker-big-sym">${sym}</div>
-      <div class="joker-label">${lbl}</div>
-      <div class="joker-sub">DRAGON</div>
-    </div></div>`;
-  } else if(card.orig_rank>=11){
-    // Face card: P for Jack/Princess, Q, K
-    const faceLetters={11:'P',12:'Q',13:'K'};
-    centerHTML=`<div class="pip-area"><span class="face-center" style="font-size:${card.orig_rank===13?30:28}px;">${faceLetters[card.orig_rank]||rankStr}</span></div>`;
+    cornerIcon = card.joker_type==='space' ? '🪐' : '🕐';
+  } else if(card.suit==='Diamonds'){
+    cornerIcon = AIR_SVG_SM; cornerIsHTML=true;
+  } else if(card.suit==='Spades'){
+    cornerIcon = EARTH_SVG_SM; cornerIsHTML=true;
   } else {
-    centerHTML=`<div class="pip-area">${buildCardPips(card.orig_rank, sym)}</div>`;
+    cornerIcon = SUIT_ICON[card.suit] || '';
   }
 
-  const el=document.createElement('div');
-  el.className=cls;
-  el.dataset.cid=card.cid;
-  el.innerHTML=`
-    <div class="card-corner card-tl">
-      <span class="corner-rank">${rankStr}</span>
-      <span class="corner-sym">${card.is_joker?'':sym}</span>
-    </div>
+  let rankStr = card.is_joker ? '' : (card.orig_rank===11?'P': card.orig_rank===1?'A': String(card.orig_rank));
+
+  const EL_NAME = {Hearts:'FIRE',Clubs:'WATER',Diamonds:'AIR',Spades:'EARTH'};
+  const EL_COLOR = {Hearts:'#FFE000',Clubs:'#00FFCC',Diamonds:'#aa77ff',Spades:'#cc8822'};
+  const elName  = (!card.is_joker && card.suit) ? EL_NAME[card.suit]  : '';
+  const elColor = (!card.is_joker && card.suit) ? EL_COLOR[card.suit] : '';
+  const elNameHTML = elName
+    ? `<span style="display:block;font-family:'Cinzel',serif;font-size:6px;font-weight:700;
+        letter-spacing:.8px;color:${elColor};opacity:.85;line-height:1;margin-top:1px;">${elName}</span>`
+    : '';
+
+  const cornerHTML = card.is_joker
+    ? `<span class="corner-rank">${cornerIcon}</span>`
+    : `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:0;">
+        <div style="display:flex;flex-direction:row;align-items:center;gap:3px;">
+          <span class="corner-rank">${rankStr}</span><span class="corner-sym"${iconStyle}>${cornerIcon}</span>
+        </div>
+        ${elNameHTML}
+      </div>`;
+
+  const isDominant = !card.is_joker && gameState?.declared_el
+    && card.suit===gameState.declared_el
+    && (phase==='pick_cards'||phase==='reveal');
+  const dominantBolt = isDominant ? '<span class="dominant-bolt">⚡</span>' : '';
+
+  const orderBadge = (isPick&&orderIdx>=0)
+    ? `<span class="card-order">${orderIdx+1}</span>` : '';
+
+  let centerHTML = '';
+  if(card.is_joker) {
+    if(card.joker_type === 'space') {
+      centerHTML = `<div class="card-center">
+        <div class="card-big-icon">${dragonImg('joker-space', 30)}</div>
+        <svg width="68" height="42" viewBox="0 0 68 42" style="margin-top:2px;">
+          <circle cx="5" cy="5" r=".8" fill="#fff" opacity=".5"/>
+          <circle cx="60" cy="4" r=".7" fill="#fff" opacity=".4"/>
+          <defs><radialGradient id="pgS" cx="35%" cy="30%"><stop offset="0%" stop-color="#33dd77" stop-opacity=".9"/><stop offset="100%" stop-color="#003311" stop-opacity=".8"/></radialGradient></defs>
+          <ellipse cx="34" cy="31" rx="11" ry="9" fill="url(#pgS)"/>
+          <ellipse cx="34" cy="31" rx="18" ry="4.5" fill="none" stroke="#33cc77" stroke-width="3" opacity=".28" stroke-dasharray="28 28" stroke-dashoffset="0"/>
+          <ellipse cx="34" cy="31" rx="18" ry="4.5" fill="none" stroke="#aaffcc" stroke-width="1.8" opacity=".7" stroke-dasharray="28 28" stroke-dashoffset="28"/>
+          <ellipse cx="27" cy="25" rx="3.5" ry="2" fill="#fff" opacity=".1"/>
+        </svg>
+        <div class="card-spec-name">Space Dragon</div>
+      </div>`;
+    } else {
+      centerHTML = `<div class="card-center">
+        <div class="card-big-icon">${dragonImg('joker-time', 30)}</div>
+        <svg width="58" height="42" viewBox="0 0 58 42" style="margin-top:2px;">
+          <circle cx="29" cy="27" r="13" fill="#1a1800" stroke="#dddd00" stroke-width="1.5" opacity=".9"/>
+          <line x1="29" y1="16" x2="29" y2="19" stroke="#dddd00" stroke-width="1.2" opacity=".7"/>
+          <line x1="29" y1="35" x2="29" y2="38" stroke="#dddd00" stroke-width="1.2" opacity=".7"/>
+          <line x1="18" y1="27" x2="21" y2="27" stroke="#dddd00" stroke-width="1.2" opacity=".7"/>
+          <line x1="37" y1="27" x2="40" y2="27" stroke="#dddd00" stroke-width="1.2" opacity=".7"/>
+          <line x1="29" y1="27" x2="29" y2="17" stroke="#ffff66" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="29" y1="27" x2="38" y2="27" stroke="#eeee33" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="29" cy="27" r="2" fill="#ffff66"/>
+        </svg>
+        <div class="card-spec-name">Time Dragon</div>
+      </div>`;
+    }
+  } else if(card.is_dragon) {
+    const _dc = (card.suit||'').toLowerCase();
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">${dragonImg(_dc, 36)}</div>
+      <div class="card-spec-name">Dragon</div>
+      <div class="card-spec-sub">${card.suit||''} · Ace</div>
+    </div>`;
+  } else if(card.orig_rank === 13) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">👑</div>
+      <div class="card-spec-name">King</div>
+    </div>`;
+  } else if(card.orig_rank === 12) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">💎</div>
+      <div class="card-spec-name">Queen</div>
+    </div>`;
+  } else if(card.is_princess) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">👸</div>
+      <div class="card-spec-name">Princess</div>
+      <div class="card-spec-sub">Love Power</div>
+    </div>`;
+  } else if(card.is_tamer) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">🧑</div>
+      <div class="card-spec-name">Tamer</div>
+      <div class="card-spec-sub">Controls Dragons</div>
+    </div>`;
+  } else if(card.is_wizard) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">🧙</div>
+      <div class="card-spec-name">Wizard</div>
+      <div class="card-spec-sub">Arcane Arts</div>
+    </div>`;
+  } else if(card.is_portal) {
+    centerHTML = `<div class="card-center">
+      <div class="card-big-icon">🌀</div>
+      <div class="card-spec-name">Portal</div>
+      <div class="card-spec-sub">Steal a Card</div>
+    </div>`;
+  } else {
+    const word = NUMBER_WORD[card.orig_rank] || String(card.orig_rank);
+    const fontSize = word.length >= 7 ? '11px' : word.length >= 5 ? '13px' : '15px';
+    centerHTML = `<div class="card-center">
+      <div class="card-word" style="font-size:${fontSize};">${word}</div>
+    </div>`;
+  }
+
+  el.innerHTML = `
+    <div class="card-corner card-tl">${cornerHTML}</div>
+    <span class="card-orn t"></span>
     ${centerHTML}
-    <div class="card-corner card-br">
-      <span class="corner-rank">${rankStr}</span>
-      <span class="corner-sym">${card.is_joker?'':sym}</span>
-    </div>
-    ${dragonIcon}
     ${dominantBolt}
-    ${badge?`<span class="card-badge">${badge}</span>`:''}
+    <span class="card-orn b"></span>
+    <div class="card-corner card-br">${cornerHTML}</div>
     ${orderBadge}`;
+
   return el;
 }
 
-let _dragSrcIdx = null;        // desktop drag source index
-let _tapPickedIdx = null;      // mobile tap-to-move: index of picked card
+
+let _dragSrcIdx = null;
+let _tapPickedIdx = null;
 
 function renderHand() {
   const me=gameState?.me;
@@ -1843,12 +1914,11 @@ function renderHand() {
   if(!me?.hand) return;
   const alreadyPicked=_iPickedThisRound;
   const isPick=phase==='pick_cards' && !alreadyPicked;
-  const canReorder = phase==='arrange_hand';  // reorder ONLY during arrange_hand phase
+  const canReorder = phase==='arrange_hand';
   const need=isPick ? pickNeed() : (gameState?.declared_steps||0);
   document.getElementById('handTitle').textContent=
     isPick?`Your Hand \u2014 select ${need}`:`Your Hand (${me.hand.length} cards)`;
 
-  // Server sends hand in display order (engine's ordered_hand). Use it directly.
   const cards = me.hand;
 
   cards.forEach((card, idx)=>{
@@ -1856,7 +1926,6 @@ function renderHand() {
     const orderIdx=selectedCardCids.indexOf(card.cid);
     const cardEl=renderCardEl(card,isPick,isSelected,orderIdx);
 
-    // ── Portal steal indicator: leftmost card (shown during arrange_hand) ──
     if(canReorder && idx===0 && me.hand.length>0){
       const dot=document.createElement('span');
       dot.title='Portal target \u2014 leftmost card stolen first';
@@ -1868,13 +1937,8 @@ function renderHand() {
     }
 
     if(canReorder){
-      // ── Tap-picked highlight ──
       if(_tapPickedIdx===idx) cardEl.classList.add('tap-picked');
-
-      // ── Tap-to-move: use click so it works on both mobile and desktop ──
       cardEl.addEventListener('click', ()=>_handleTapReorder(idx));
-
-      // ── Drag-and-drop (desktop) ──
       cardEl.draggable=true;
       cardEl.addEventListener('dragstart', e=>{
         _dragSrcIdx=idx;
@@ -1900,26 +1964,20 @@ function renderHand() {
       });
     }
 
-    // ── Pick-mode click ──
     if(isPick) cardEl.addEventListener('click', ()=>toggleCard(card.cid,need));
-
     el.appendChild(cardEl);
   });
-  // Apply suit highlight if active (leader_declare)
   applyHandSuitHighlight();
 }
 
 function _handleTapReorder(idx){
   if(_tapPickedIdx===null){
-    // First tap: pick up card
     _tapPickedIdx=idx;
     renderHand();
   } else if(_tapPickedIdx===idx){
-    // Tap same card: cancel
     _tapPickedIdx=null;
     renderHand();
   } else {
-    // Second tap: drop here
     const from=_tapPickedIdx;
     _tapPickedIdx=null;
     _moveHandCard(from, idx);
@@ -1931,7 +1989,6 @@ function _moveHandCard(fromIdx, toIdx){
   const [moved]=hand.splice(fromIdx,1);
   hand.splice(toIdx,0,moved);
   gameState.me.hand=hand;
-  // Send new order to server
   send({type:'reorder_hand', cid_list: hand.map(c=>c.cid)});
   renderHand();
 }
@@ -1946,17 +2003,12 @@ function toggleCard(cid, need) {
   renderHand();
 }
 
-// How many cards this player must actually submit: min(declared_steps, hand_size).
-// The engine enforces this same cap in player_pick_cards().
 function pickNeed() {
   const declared=gameState?.declared_steps||0;
   const handSize=gameState?.me?.hand?.length??declared;
   return Math.min(declared, handSize);
 }
 
-// ══════════════════════════════════════════════════════
-//  BATTLE
-// ══════════════════════════════════════════════════════
 function renderStepDots(cur) {
   const total=gameState?.declared_steps||3;
   const el=document.getElementById('stepDots'); el.innerHTML='';
@@ -1972,20 +2024,28 @@ function renderBattleStep(msg) {
   if(msg.step===1) rows.innerHTML='';
   renderStepDots(msg.step);
   document.getElementById('stepNum').textContent=msg.step;
+  setTimeout(()=>{
+    const stepEl=document.getElementById('battleStep_'+msg.step);
+    if(stepEl) stepEl.scrollIntoView({behavior:'smooth', block:'start'});
+    else {
+      const rows=document.getElementById('battleRows');
+      if(rows && rows.lastElementChild)
+        rows.lastElementChild.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+  }, 150);
   const div=document.createElement('div');
-  div.style.cssText='font-family:Cinzel,serif;font-size:11px;color:rgba(253,246,227,.35);text-align:center;margin:4px 0;letter-spacing:2px;';
+  div.id='battleStep_'+msg.step;
+  div.style.cssText='font-family:Cinzel,serif;font-size:14px;font-weight:700;color:rgba(180,200,255,.75);text-align:center;margin:10px 0 6px;letter-spacing:3px;text-shadow:0 0 8px rgba(120,160,255,.4);';
   div.textContent=`— STEP ${msg.step} —`; rows.appendChild(div);
 
-  // Show any duel / special event as a banner in the battle section
   const duelEvents=(msg.special_events||[]).filter(e=>e.includes('⚔️')||e.includes('🧙')||e.includes('🃏'));
   if(duelEvents.length){
     const duelBanner=document.createElement('div');
-    duelBanner.style.cssText='background:rgba(155,89,182,.18);border:1px solid rgba(155,89,182,.45);border-radius:6px;padding:5px 10px;margin:4px 8px;font-size:11px;color:#C39BD3;text-align:center;';
+    duelBanner.style.cssText='background:rgba(155,89,182,.18);border:1px solid rgba(155,89,182,.45);border-radius:6px;padding:6px 12px;margin:4px 8px;font-size:14px;color:#C39BD3;text-align:center;';
     duelBanner.textContent=duelEvents.join(' · ');
     rows.appendChild(duelBanner);
   }
 
-  // BUG2: sort entries by the game's seat order so rows always appear in table order
   const _seatOrder=gameState?.order||[];
   const _entries=[...(msg.entries||[])].sort((a,b)=>{
     const ia=_seatOrder.indexOf(a.pid); const ib=_seatOrder.indexOf(b.pid);
@@ -1999,12 +2059,10 @@ function renderBattleStep(msg) {
     pname.textContent=entry.pid===myPid?'👤 You':nameOf(entry.pid);
     const cardsDiv=document.createElement('div');
     cardsDiv.className='battle-cards';
-    // Main battle card
     const wrap=document.createElement('div');
     wrap.className='battle-card-wrap';
     wrap.appendChild(renderCardEl(entry.card, false, false, -1));
     cardsDiv.appendChild(wrap);
-    // Duel drawn cards (if any — from special_events parsing)
     const duelCards = entry.duel_cards||[];
     duelCards.forEach(dc=>{
       const dw=document.createElement('div');
@@ -2021,6 +2079,27 @@ function renderBattleStep(msg) {
       row.appendChild(wb);
     }
     rows.appendChild(row);
+
+    // Captured card — separate row below portal player
+    const extraCards = entry.extra_cards||[];
+    extraCards.forEach(ec=>{
+      const captRow=document.createElement('div');
+      captRow.className='battle-row';
+      captRow.style.cssText='margin-top:-6px;padding-top:4px;border-top:1px dashed rgba(0,255,204,.2);';
+      const captName=document.createElement('div');
+      captName.className='battle-pname';
+      captName.style.cssText='font-size:11px;color:#00FFCC;opacity:.8;';
+      captName.textContent='🌀 Captured';
+      const captCards=document.createElement('div');
+      captCards.className='battle-cards';
+      const captWrap=document.createElement('div');
+      captWrap.className='battle-card-wrap';
+      captWrap.appendChild(renderCardEl(ec, false, false, -1));
+      captCards.appendChild(captWrap);
+      captRow.appendChild(captName);
+      captRow.appendChild(captCards);
+      rows.appendChild(captRow);
+    });
   });
 
   const banner=document.getElementById('phaseBanner');
@@ -2031,7 +2110,7 @@ function renderBattleStep(msg) {
     const mb=document.getElementById('mainBtn');
     mb.textContent=`REVEAL STEP ${next}`;
     mb.disabled=false;
-    renderStepDots(next);
+    renderStepDots(msg.step);
   } else {
     banner.className='phase-bar end';
     banner.textContent='✅ All steps done — ending round';
@@ -2045,22 +2124,30 @@ function hideBattle() {
   document.getElementById('battleRows').innerHTML='';
 }
 
-// ══════════════════════════════════════════════════════
-//  JOKER MODALS
-// ══════════════════════════════════════════════════════
 function showTimeDragonModal(ev, msg) {
-  // BUG3: "Back in Time" is only impossible on step 1 (no previous step exists)
-  const hasPrev = msg?.has_prev !== undefined ? msg.has_prev : ((msg?.step||1) > 1);
-  document.getElementById('timeDragonText').textContent=
-    hasPrev
-      ? 'The Time Dragon grants you power! Go back and claim the previous step\'s cards, or leap forward and skip your next round.'
-      : 'The Time Dragon grants you power! There\'s no previous step to claim, so you can only leap forward (skip your next round) or do nothing.';
+  const canGoBack = msg?.can_go_back !== undefined ? msg.can_go_back
+                  : (msg?.has_prev && (msg?.step||1) > 1);
+  const reason = msg?.block_reason;
+  let txt;
+  if(canGoBack){
+    txt = "The Time Dragon grants you power! Go back and claim the previous step's cards — or leap forward and skip your next round.";
+  } else if(reason === 'no_prev' || !msg?.has_prev){
+    txt = "This is the first step — there is nothing to go back to. You may leap forward (skip next round) or do nothing.";
+  } else if(reason === 'same_winner'){
+    txt = "You already won the previous step. You may leap forward (skip next round) or do nothing.";
+  } else if(reason === 'had_dragon'){
+    txt = "The previous step involved dragons — the Time Dragon cannot alter a battle where dragons were present. You may still leap forward (skip next round) or do nothing.";
+  } else {
+    txt = "Going back is not possible this turn. You may still leap forward (skip next round) or do nothing.";
+  }
+  document.getElementById('timeDragonText').textContent=txt;
   const backBtn=document.getElementById('timeBackBtn');
-  backBtn.style.opacity=hasPrev?'1':'.35'; backBtn.disabled=!hasPrev;
+  backBtn.style.opacity=canGoBack?'1':'.35';
+  backBtn.disabled=!canGoBack;
   document.getElementById('timeDragonOverlay').classList.remove('hidden');
 }
 
-let _pendingJokerMsg=null;  // stored joker_choose_power msg, used by resolveJokerPower
+let _pendingJokerMsg=null;
 function showJokerPowerModal(msg) {
   _pendingJokerMsg=msg;
   document.getElementById('jokerPowerOverlay').classList.remove('hidden');
@@ -2071,12 +2158,9 @@ function resolveJokerPower(power) {
     send({type:'joker_power_chosen', power:'nothing'});
     addLog('\uD83C\uDCCF Joker powers fade — do nothing.','imp');
   } else if(power==='time'){
-    // Show time dragon modal next
     send({type:'joker_power_chosen', power:'time'});
-    // Time dragon choose event will arrive from server — wait for it
   } else if(power==='space'){
     send({type:'joker_power_chosen', power:'space'});
-    // Space dragon choose event will arrive from server — wait for it
   }
   _pendingJokerMsg=null;
 }
@@ -2086,14 +2170,65 @@ function resolveTimeDragon(choice) {
   const msgs={back:'⏳ Time Dragon: claimed previous step!',forward:'⏳ Time Dragon: skipping next round!',nothing:'⏳ Time Dragon power fades...'};
   addLog(msgs[choice]||'','imp');
 }
+function renderMiniTable(validTargetPids) {
+  const container = document.getElementById('spaceTableWrap');
+  const felt      = document.getElementById('spaceTableFelt');
+  const center    = document.getElementById('spaceTableCenter');
+  if(!container || !gameState) return;
+  container.querySelectorAll('.player-seat').forEach(s=>s.remove());
+  const order   = gameState.order || Object.keys(gameState.players||{});
+  const N       = order.length;
+  const W       = container.offsetWidth  || 320;
+  const H       = container.offsetHeight || 220;
+  const cx = W/2, cy = H/2;
+  const avSize  = N<=4?44:N<=6?38:30;
+  const margin  = avSize/2+28;
+  const orbitR  = Math.min(cx*0.88, cy-margin);
+  const feltR   = Math.max(24, orbitR*0.45);
+  const d = feltR*2;
+  Object.assign(felt.style,{width:d+'px',height:d+'px',left:cx+'px',top:cy+'px'});
+  center.style.left=cx+'px'; center.style.top=cy+'px';
+  const myIdx   = order.indexOf(myPid);
+  const leadPid = gameState.lead_pid;
+  const validSet= new Set(validTargetPids||[]);
+  order.forEach((pid,i)=>{
+    const p = gameState.players[pid]; if(!p||p.out) return;
+    const frac  = (myIdx>=0)?(i-myIdx)/N:i/N;
+    const angle = frac*2*Math.PI + Math.PI/2;
+    const x = cx + orbitR*Math.cos(angle);
+    const y = cy + orbitR*Math.sin(angle);
+    const isMe     = pid===myPid;
+    const isLeader = pid===leadPid;
+    const isTarget = validSet.has(pid);
+    const initials = (p.name||'?').slice(0,2).toUpperCase();
+    const seat = document.createElement('div');
+    seat.className = 'player-seat'+(isMe?' is-me':'')+(isLeader?' is-leader':'')+(isTarget?' is-turn':'');
+    seat.style.left = x+'px'; seat.style.top = y+'px';
+    if(isTarget){ seat.style.cursor='pointer'; seat.addEventListener('click',()=>resolveSpaceDragon(pid)); }
+    seat.innerHTML=`
+      <div class="seat-avatar" style="width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize*.38)}px;${isTarget?'border-color:#9B59B6;box-shadow:0 0 12px rgba(155,89,182,.7);':''}">
+        ${isLeader?'<span class="seat-crown">👑</span>':''}${initials}
+      </div>
+      <div class="seat-name" style="${isTarget?'color:#C39BD3;':''}">${isMe?'You':p.name}</div>
+      ${isTarget?'<div style="font-size:9px;color:#C39BD3;font-family:Cinzel,serif;">tap</div>':''}`;
+    container.appendChild(seat);
+  });
+}
+
 function showSpaceDragonModal(msg) {
-  const btns=document.getElementById('spaceDragonBtns');
-  btns.innerHTML='';
-  (msg.valid_target_pids||[]).forEach(pid=>{
+  const btns     = document.getElementById('spaceDragonBtns');
+  btns.innerHTML = '';
+  const leadPid  = gameState?.lead_pid;
+  const validTargets = msg.valid_target_pids||[];
+  document.getElementById('spaceDragonOverlay').classList.remove('hidden');
+  requestAnimationFrame(()=>renderMiniTable(validTargets));
+  validTargets.forEach(pid=>{
     const btn=document.createElement('button');
     btn.className='btn btn-outline btn-full';
     btn.style.cssText='border-color:#9B59B6;color:#C39BD3;';
-    btn.textContent=`🔄 Swap seats with ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
+    const isLeader=pid===leadPid;
+    const p=gameState?.players?.[pid];
+    btn.textContent=`🔄 Swap with ${isLeader?'👑 ':''}${nameOf(pid)}  (${p?.hand_count??'?'}🃏)`;
     btn.onclick=()=>resolveSpaceDragon(pid);
     btns.appendChild(btn);
   });
@@ -2105,7 +2240,6 @@ function showSpaceDragonModal(msg) {
     passBtn.onclick=()=>resolveSpaceDragon(null);
     btns.appendChild(passBtn);
   }
-  document.getElementById('spaceDragonOverlay').classList.remove('hidden');
 }
 function resolveSpaceDragon(targetPid) {
   document.getElementById('spaceDragonOverlay').classList.add('hidden');
@@ -2113,29 +2247,24 @@ function resolveSpaceDragon(targetPid) {
   addLog(targetPid?`🌌 Space Dragon: swapping with ${nameOf(targetPid)}!`:'🌌 Space Dragon: staying put.','imp');
 }
 
-// ══════════════════════════════════════════════════════
-//  ROUND END SUMMARY  (BUG4)
-// ══════════════════════════════════════════════════════
 let _roundEndTimer=null;
-let _roundEndShowTimer=null;   // setTimeout handle for the delayed overlay display
-let _roundEndOverlayVisible=false;   // true while overlay is shown
-let _awaitingRoundEndContinue=false; // true when main button should fire dismissRoundEnd
-let _bufferedLeaderDeclare=null;     // buffered phase_change:leader_declare
-let _stepWins={};          // pid → wins this round, reset on each round_end call
-let _pendingRoundEndMsg=null;  // stores round_end msg until player clicks CONTINUE
-let _iPickedThisRound=false;   // true after myPid sends cards_picked; cleared each pick phase
-let _confirmedOrder=null;      // most recent seat order from seat_swap; survives applyState
-let _pendingHandUpdate=null;   // hand_update buffered during round-end review
+let _roundEndShowTimer=null;
+let _roundEndOverlayVisible=false;
+let _awaitingRoundEndContinue=false;
+let _bufferedLeaderDeclare=null;
+let _stepWins={};
+let _pendingRoundEndMsg=null;
+let _iPickedThisRound=false;
+let _confirmedOrder=null;
+let _pendingHandUpdate=null;
 function showRoundEndOverlay(msg) {
   const overlay=document.getElementById('roundEndOverlay');
   const title=document.getElementById('roundEndTitle');
   const rowsEl=document.getElementById('roundEndRows');
   const timerEl=document.getElementById('roundEndTimer');
-  // Clear any still-running timer from a previous overlay
   if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
   rowsEl.innerHTML='';
 
-  // Determine who won the most steps this round
   let roundWinnerPid=msg.winner_pid||null;
   if(!roundWinnerPid && Object.keys(_stepWins).length){
     const maxWins=Math.max(...Object.values(_stepWins));
@@ -2145,7 +2274,7 @@ function showRoundEndOverlay(msg) {
   title.textContent=roundWinnerPid
     ? `Round ${msg.round||''} — ${nameOf(roundWinnerPid)} wins!`
     : `Round ${msg.round||''} Complete!`;
-  _stepWins={};  // reset for next round
+  _stepWins={};
 
   const order=(gameState?.order)||Object.keys(gameState?.players||{});
   order.forEach(pid=>{
@@ -2159,20 +2288,21 @@ function showRoundEndOverlay(msg) {
     rowsEl.appendChild(row);
   });
 
-  let secs=5;
-  timerEl.innerHTML='';  // clear timer area — CONTINUE button is already in HTML
+  timerEl.innerHTML='';
   overlay.classList.remove('hidden');
   _roundEndOverlayVisible=true;
 }
 function dismissRoundEnd() {
+  if(!_awaitingRoundEndContinue && !_roundEndOverlayVisible) return; // already dismissed
   if(_roundEndTimer){ clearInterval(_roundEndTimer); _roundEndTimer=null; }
   if(_roundEndShowTimer){ clearTimeout(_roundEndShowTimer); _roundEndShowTimer=null; }
   _roundEndOverlayVisible=false;
   _awaitingRoundEndContinue=false;
   _pendingRoundEndMsg=null;
+  _iPickedThisRound=false;
+  selectedCardCids=[];
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
-  // Apply buffered hand_update (new round's hand) now that player has reviewed last step
   if(_pendingHandUpdate && gameState){
     gameState.me=_pendingHandUpdate;
     if(gameState.players?.[myPid]&&_pendingHandUpdate.dragon_count!=null)
@@ -2180,11 +2310,17 @@ function dismissRoundEnd() {
     _pendingHandUpdate=null;
     renderHand();
   }
-  // Always apply the CURRENT game phase (game may have advanced past leader_declare
-  // during the round-end review window — using the buffered leader_declare would
-  // rewind the UI and leave the player unable to pick cards).
+  // Show buffered declaration log now
+  if(gameState?.declared_steps && gameState?.declared_el && gameState?.lead_pid){
+    const lid = gameState.lead_pid;
+    const el = gameState.declared_el;
+    addLog(`👑 ${nameOf(lid)} declares: ${gameState.declared_steps} steps · ${SUIT_EL[el]} ${el==='Diamonds'?'[AIR]':el==='Spades'?'[EARTH]':SUIT_ICON[el]}`,'imp');
+    renderTable();
+  }
   _bufferedLeaderDeclare=null;
-  if(gameState?.phase) setPhase(gameState.phase, gameState);
+  // Always resync from server after dismissing — AI may have already advanced
+  // the phase beyond what buffered events captured (e.g. leader_declare → pick_cards)
+  setTimeout(()=>{ send({type:'get_state'}); }, 50);
 }
 
 function showPortalModal(msg) {
@@ -2205,6 +2341,24 @@ function showPortalModal(msg) {
   document.getElementById('portalOverlay').classList.remove('hidden');
 }
 
+function showQueenFuryModal(msg) {
+  const btns = document.getElementById('queenFuryBtns');
+  btns.innerHTML = '';
+  (msg.valid_target_pids||[]).forEach(pid => {
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-outline btn-full';
+    btn.style.cssText = 'border-color:#FFD700;color:#FFD700;';
+    btn.textContent = `👑 Steal from ${nameOf(pid)}  (${gameState?.players?.[pid]?.hand_count??'?'}🃏)`;
+    btn.onclick = () => {
+      document.getElementById('queenFuryOverlay').classList.add('hidden');
+      send({type:'queen_fury_target', target_pid: pid});
+      addLog(`👑 Queen Fury: stealing from ${nameOf(pid)}...`,'imp');
+    };
+    btns.appendChild(btn);
+  });
+  document.getElementById('queenFuryOverlay').classList.remove('hidden');
+}
+
 function showLoveModal(msg) {
   const btns=document.getElementById('loveBtns');
   btns.innerHTML='';
@@ -2223,21 +2377,19 @@ function showLoveModal(msg) {
   document.getElementById('loveOverlay').classList.remove('hidden');
 }
 
-// ══════════════════════════════════════════════════════
-//  LOG
-// ══════════════════════════════════════════════════════
 function addLog(msg,type='') {
   const el=document.createElement('div');
   el.className='log-entry'+(type?' '+type:'');
-  el.textContent=msg;
+  // Replace suit symbols with element icons
+  const txt = (msg||'')
+    .replace(/♥/g,'🔥').replace(/♣/g,'💧')
+    .replace(/♦/g,'[AIR]').replace(/♠/g,'[EARTH]');
+  el.textContent=txt;
   const list=document.getElementById('logList');
   list.prepend(el);
   while(list.children.length>60) list.lastChild.remove();
 }
 
-// ══════════════════════════════════════════════════════
-//  GAME OVER
-// ══════════════════════════════════════════════════════
 function showGameOver(msg) {
   try {
     const isMe=msg.winner_pid===myPid;
@@ -2245,8 +2397,7 @@ function showGameOver(msg) {
     document.getElementById('goDragons').textContent='🐉'.repeat(msg.dragons||4);
     document.getElementById('goText').textContent=isMe
       ?`You collected ${msg.dragons} dragon${msg.dragons!==1?'s':''} in round ${msg.round}!`
-      :`${msg.winner_name} collected ${msg.dragons} dragons. Better luck next time!`;
-    // Snapshot the current battle display into the overlay so player can review the last step
+      :`${msg.winner_name} collected ${msg.dragons} dragons in round ${msg.round}. Better luck next time!`;
     try {
       const battleRows=document.getElementById('battleRows');
       const goLastBattle=document.getElementById('goLastBattle');
@@ -2256,7 +2407,6 @@ function showGameOver(msg) {
         goLastBattle.classList.remove('hidden');
       } else { goLastBattle.classList.add('hidden'); }
     } catch(e){ console.error('showGameOver last battle error:',e); }
-    // Show the winner's actual dragon cards
     try {
       const dragonRow=document.getElementById('goDragonCards');
       dragonRow.innerHTML='';
@@ -2268,9 +2418,12 @@ function showGameOver(msg) {
           dragonRow.appendChild(wrap);
         });
         dragonRow.classList.remove('hidden');
-      } else { dragonRow.classList.add('hidden'); }
+        document.getElementById('goDragonCardsSection').classList.remove('hidden');
+      } else {
+        dragonRow.classList.add('hidden');
+        document.getElementById('goDragonCardsSection').classList.add('hidden');
+      }
     } catch(e){ console.error('showGameOver dragons error:',e); }
-    // Show all players' final hands
     try {
       const allHandsEl=document.getElementById('goAllHands');
       allHandsEl.innerHTML='';
@@ -2293,14 +2446,6 @@ function showGameOver(msg) {
               cardsDiv.appendChild(wrap);
             } catch(e){}
           });
-          (p.sleeping||[]).forEach(pair=>{
-            try {
-              const d=pair[1];
-              const wrap=document.createElement('div'); wrap.className='battle-card-wrap';
-              wrap.appendChild(renderCardEl(d,false,false,-1));
-              cardsDiv.appendChild(wrap);
-            } catch(e){}
-          });
           row.appendChild(nameEl); row.appendChild(cardsDiv);
           allHandsEl.appendChild(row);
         });
@@ -2308,9 +2453,7 @@ function showGameOver(msg) {
       } else { allHandsEl.classList.add('hidden'); }
     } catch(e){ console.error('showGameOver allHands error:',e); }
   } catch(e){ console.error('showGameOver error:',e); }
-  // Always show the overlay — force with both class removal and inline style
   const goOverlay = document.getElementById('gameOverOverlay');
-  console.log('showGameOver: showing overlay, element=', goOverlay);
   if(goOverlay){
     goOverlay.classList.remove('hidden');
     goOverlay.style.display='flex';
@@ -2318,15 +2461,11 @@ function showGameOver(msg) {
   }
 }
 
-// ══════════════════════════════════════════════════════
-//  DECLARATION PANEL
-// ══════════════════════════════════════════════════════
 function updateDeclarePanel(phase, data) {
   const isLeader = (data.leader_pid || gameState?.lead_pid) === myPid;
   const isActive = phase === 'leader_declare' && isLeader;
   const leaderPid = data.leader_pid || gameState?.lead_pid;
 
-  // Buttons: active only if I'm leader in declare phase
   document.querySelectorAll('.step-btn').forEach(b => {
     b.classList.toggle('inactive', !isActive);
     if(isActive) b.classList.remove('display-only');
@@ -2335,14 +2474,11 @@ function updateDeclarePanel(phase, data) {
     b.classList.toggle('inactive', !isActive);
     if(isActive) b.classList.remove('display-only');
   });
-  // Clear suit highlight when not actively declaring
   if(!isActive){ _highlightSuit=null; applyHandSuitHighlight(); }
 
-  // If AI declared or game not started — show declared values greyed
   if(phase === 'pick_cards' || phase === 'reveal') {
     const steps = gameState?.declared_steps || 0;
     const el = gameState?.declared_el || '';
-    // Highlight declared values in display-only mode
     document.querySelectorAll('.step-btn').forEach((b,i) => {
       b.classList.remove('active','inactive','display-only');
       if(i+1 === steps) b.classList.add('display-only','active');
@@ -2358,7 +2494,6 @@ function updateDeclarePanel(phase, data) {
     const ll = document.getElementById('declareLeaderLine');
     if(ll) ll.textContent = `👑 ${nameOf(leaderPid)} · ${steps} step${steps>1?'s':''} · ${SUIT_EL[el]||el} ${SUIT_SYM[el]||''}`;
   } else if(phase === 'waiting' || phase === 'end_round') {
-    // All inactive, no highlight
     document.querySelectorAll('.step-btn,.suit-btn').forEach(b => {
       b.classList.remove('active','display-only');
       b.classList.add('inactive');
@@ -2368,35 +2503,300 @@ function updateDeclarePanel(phase, data) {
   }
 }
 
-// ══════════════════════════════════════════════════════
-//  INIT
-// ══════════════════════════════════════════════════════
-  connect();
-  setSteps(3);
-  setSuit('Hearts');
-  window.addEventListener('resize',()=>{if(gameState) renderTable();});
-
-  // ── Anti-freeze: if stuck on AI declare for >4s, request state ──
-  let _stuckTimer=null;
-  function resetStuckTimer(){
-    if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
-    if(phase==='leader_declare' && gameState?.lead_pid && gameState.players?.[gameState.lead_pid]?.is_ai){
-      _stuckTimer=setTimeout(()=>{
-        if(phase==='leader_declare' && gameState?.players?.[gameState.lead_pid]?.is_ai){
-          console.warn('Stuck on AI declare — requesting state');
-          send({type:'get_state'});
-          resetStuckTimer(); // keep retrying every 4s
-        }
-      }, 4000);
+function rejoinFromLobby() {
+  try{
+    const _sp=localStorage.getItem('dt_pid');
+    const _sr=localStorage.getItem('dt_room');
+    if(_sp && _sr){
+      myPid=_sp; myRoomId=_sr;
+      _rejoining=false;
+      connect();
     }
+  }catch(e){}
+}
+
+(function _checkSavedGame(){
+  try{
+    const _sp=localStorage.getItem('dt_pid');
+    const _sr=localStorage.getItem('dt_room');
+    if(_sp && _sr){
+      const wrap=document.getElementById('rejoinLobbyWrap');
+      const btn=document.getElementById('rejoinLobbyBtn');
+      if(wrap) wrap.classList.remove('hidden');
+      if(btn) btn.textContent=`🔄 REJOIN ROOM ${_sr}`;
+    }
+  }catch(e){}
+})();
+
+connect();
+setSteps(3);
+setSuit('Hearts');
+window.addEventListener('resize',()=>{if(gameState) renderTable();});
+
+window.addEventListener('beforeunload', (e) => {
+  if(myPid && myRoomId && phase && phase !== 'waiting' && phase !== 'game_over'){
+    e.preventDefault();
+    e.returnValue = '';
   }
-  const _origSetPhase=setPhase;
-  setPhase=function(p,d){ _origSetPhase(p,d); resetStuckTimer(); };
+});
 
+let _stuckTimer=null;
+let _stuckTimerFiring=false; // guard: prevent get_state response from re-arming the timer
 
+function resetStuckTimer(){
+  if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
+  // Never fire during round-end overlay — player must click Continue
+  if(_roundEndOverlayVisible || _awaitingRoundEndContinue) return;
+  // Never fire when it is the human's turn to act
+  const isMyTurn = (
+    (phase==='leader_declare' && gameState?.lead_pid===myPid) ||
+    (phase==='pick_cards' && !_iPickedThisRound) ||
+    (phase==='arrange_hand')
+  );
+  if(isMyTurn) return;
+  // Never fire for spectators, game-over, or waiting
+  if(isSpectator || phase==='game_over' || phase==='waiting') return;
 
+  // Only fire in 'reveal' — where AI should auto-advance but sometimes stalls
+  if(phase==='reveal'){
+    _stuckTimer=setTimeout(()=>{
+      if(phase!=='reveal') return;
+      if(_roundEndOverlayVisible || _awaitingRoundEndContinue) return;
+      if(isSpectator || phase==='game_over') return;
+      _stuckTimerFiring=true;
+      console.warn('Stuck state detected in reveal — requesting fresh state');
+      send({type:'get_state'});
+      setTimeout(()=>{ _stuckTimerFiring=false; }, 3000);
+    }, 12000);
+  }
+}
 
+function clearStuckTimer(){
+  if(_stuckTimer){ clearTimeout(_stuckTimer); _stuckTimer=null; }
+  _stuckTimerFiring=false;
+}
 
+setPhase=(function(_orig){
+  return function(p,d){
+    _orig(p,d);
+    if(!_stuckTimerFiring) resetStuckTimer();
+  };
+})(setPhase);
+</script>
+<!-- ══ RULES OVERLAY ══ -->
+<div class="overlay hidden" id="rulesOverlay" style="align-items:stretch;overflow-y:auto;padding:0;">
+  <div style="max-width:680px;width:100%;margin:0 auto;background:var(--navy);
+    border-radius:12px;padding:20px;position:relative;min-height:100vh;">
 
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;
+      border-bottom:2px solid rgba(184,134,11,.4);padding-bottom:12px;">
+      <div style="display:flex;gap:8px;">
+        <button id="rulesLangHe" onclick="setRulesLang('he')"
+          style="font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;
+          padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid var(--gold-bright);
+          background:var(--gold-bright);color:var(--navy);">עברית</button>
+        <button id="rulesLangEn" onclick="setRulesLang('en')"
+          style="font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;
+          padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid rgba(184,134,11,.4);
+          background:transparent;color:var(--gold-light);">English</button>
+      </div>
+      <div style="font-family:Cinzel,serif;font-size:18px;font-weight:900;color:var(--gold-bright);">
+        🐉 <span id="rulesTitleTxt">מאלף הדרקונים</span>
+      </div>
+      <button onclick="document.getElementById('rulesOverlay').classList.add('hidden')"
+        style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:var(--cream);
+        font-size:18px;width:32px;height:32px;border-radius:50%;cursor:pointer;">✕</button>
+    </div>
 
-  
+    <!-- Content -->
+    <div id="rulesContent" dir="rtl" style="font-family:Arial,sans-serif;font-size:14px;
+      color:rgba(253,246,227,.85);line-height:1.7;"></div>
+  </div>
+</div>
+
+<script>
+const RULES = {
+  he: `
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;">🎯 מטרת המשחק</h2>
+<p>להיות הראשון להשיג את מספר הדרקונים שהוכרז מראש (ברירת מחדל: <strong>5</strong>).</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">⚙️ הכנת המשחק</h2>
+<p>1. המוביל הראשון נבחר באקראי. שאר השחקנים ממשיכים בסדר השעון.<br>2. כל 54 הקלפים מחולקים שווה בשווה.<br>3. קלפים עודפים — המוביל מספח לקופתו הראשית.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">🔄 מהלך המשחק</h2>
+<p><strong>שלב 1 — הכרזת המוביל:</strong> מספר קרבות (1–4) + יסוד דומיננטי.</p>
+<p><strong>שלב 2 — בחירת קלפי קרב:</strong> כל שחקן בוחר בסתר קלפים בסדר אסטרטגי לקופת הקרב. שחקן עם פחות קלפים ממספר הקרבות — מניח את כולם; לא משתתף בקרבות הנותרים.</p>
+<p><strong>שלב 3 — ניהול הקרבות:</strong> בכל קרב נחשף הקלף העליון מקופת הקרב של כל שחקן בו-זמנית. בעל הערך האפקטיבי הגבוה ביותר מנצח. בתיקו — דו-קרב.</p>
+<p><strong>שלב 4 — סיום המערכה:</strong> לאחר כל הקרבות שהוכרזו, כל שחקן אוסף את קלפי הקרב שלו ומצרף אותם לקופתו הראשית. ההובלה עוברת לשחקן הבא בסדר השעון (אלא אם כן הופעל כוח האהבה).</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">📜 חוקי הקלפים המיוחדים</h2>
+
+<p><strong>🐉 דרקון (A)</strong><br>מנצח את כל הקלפים פרט למאלף. מספר דרקונים — הגבוה מנצח; בתיקו — דו-קרב. ג'וקרים תמיד שווים בערכם לדרקונים רגילים. כל הדרקונים (כולל ג'וקרים) נספרים לניצחון.</p>
+
+<p><strong>🧑 מאלף (2)</strong><br>מנצח דרקון בלבד. מפסיד לכל קלף אחר כשאין דרקון בקרב. מספר מאלפים עם דרקון → דו-קרב ביניהם.</p>
+
+<p><strong>💎 מלכה (Q)</strong><br>מביסה את כל קלפי יסודה בקרב, כולל המלך מאותו יסוד, פרט לקוסם ודרקון. מפסידה למלכים ולקלפים חזקים יותר מיסודות אחרים.<br><strong>זעם המלכה:</strong> אם ניצחה קרב שבו נכח מלך מיסודה — גונבת מיידית את הקלף העליון מקופת יד יריב לבחירתה לקופת הצבירה שלה.</p>
+
+<p><strong>👸 נסיכה (P) — כוח האהבה</strong><br>אם מאלף ונסיכה מופיעים באותו קרב — המאלף זוכה בהובלה במערכה הבאה. שני מאלפים: הנסיכה בוחרת. שתי נסיכות ושני מאלפים: לפי רוב. כוח האהבה שייך לשחקן שהציג את המאלף.</p>
+
+<p><strong>🧙 קוסם (8)</strong><br>מנצח את כל קלפי יסודו עד מלך. מפסיד לדרקונים ולקלפים מיסודות אחרים בעלי ערך גבוה יותר. כשיש דרקון בקרב וקוסם ומאלף מאותו יסוד — הקוסם יורש כוח מאלף ומנצח הדרקון.</p>
+
+<p><strong>🌀 פורטל (9♣)</strong><br>לאחר גילוי הקלפים: שחקן הפורטל גונב קלף עליון מקופת הקופה הראשית של יריב לבחירתו → הקלף הגנוב נכנס לקרב מיידית כשורה נפרדת → המנצח לוקח את כל הקלפים.</p>
+
+<p><strong>🕐 דרקון הזמן</strong><br>הזוכה בוחר: <strong>אחורה</strong> — לקחת קלפי הקרב הקודם (רק אם לא היה דרקון בו). <strong>קדימה</strong> — לדלג על המערכה הבאה. <strong>לא לעשות כלום</strong> — תמיד אפשרי.</p>
+
+<p><strong>🪐 דרקון המרחב</strong><br>הזוכה בוחר לשנות את מקום ישיבתו בשולחן (סדר המשחק משתנה), או לא לעשות כלום.</p>
+
+<p><strong>⭐ בונוס יסוד דומיננטי</strong><br>המוביל מכריז יסוד דומיננטי. לאורך כל המערכה כל קלף מאותו יסוד מקבל +0.5 לערכו — למעט דרקוני הזמן והמרחב שתמיד שווים לדרקונים רגילים.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">⚔️ דו-קרב</h2>
+<p>מתקיים כאשר שניים+ מציגים ערך שווה גבוה ביותר.</p>
+<p>1. כל המתמודדים שולפים קלף עליון מהקופה הראשית ומגלים בו-זמנית.<br>2. הגבוה מנצח. בתיקו — חוזרים עד להכרעה.<br>3. המנצח לוקח את כל קלפי הקרב + כל קלפי הדו-קרב.<br>4. מתמודד ללא קלפים — מודח. אם לכולם אין — המוביל מנצח.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">📖 מונחים</h2>
+<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);min-width:110px;">קופה ראשית</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">הקלפים שבידי השחקן</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">קופת קרב</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">הקלפים שנבחרו להשתתף במערכה</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">קופת צבירה</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">הקלפים שהשחקן זכה בהם במהלך קרבות המערכה</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">מערכה</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">כלל הקרבות שהגדיר מראש המוביל</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">קרב</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">עימות בודד בתוך מערכה</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">יסוד דומיננטי</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">היסוד שהוכרז על ידי המוביל; קלפים מיסוד זה מקבלים +0.5</td></tr>
+</table>
+<table style="width:100%;border-collapse:collapse;font-size:13px;">
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♥ לבבות</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">🔥 אש</td></tr>
+  <tr><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♣ תלתנים</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">💧 מים</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♦ יהלומים</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);"><svg width="16" height="16" viewBox="0 0 80 80" fill="none" style="display:inline-block;vertical-align:middle;margin:0 2px;" xmlns="http://www.w3.org/2000/svg"><path d="M14,28 C14,20 20,14 28,14 C36,14 40,20 40,26 C40,32 36,36 30,36 C26,36 23,33 23,29 C23,25 26,22 30,22 C33,22 35,24 35,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M66,28 C66,20 60,14 52,14 C44,14 40,20 40,26 C40,32 44,36 50,36 C54,36 57,33 57,29 C57,25 54,22 50,22 C47,22 45,24 45,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="6" y="38" width="68" height="7" rx="3.5" fill="currentColor"/><path d="M10,48 L70,48 L62,57 L18,57 Z" fill="currentColor"/><path d="M20,60 L60,60 L40,76 Z" fill="currentColor"/></svg> אוויר</td></tr>
+  <tr><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♠ עלים</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);"><svg width="16" height="16" viewBox="0 0 120 120" fill="none" style="display:inline-block;vertical-align:middle;margin:0 2px;" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="ogrules" cx="38%" cy="32%" r="65%"><stop offset="0%" stop-color="#1a6aaa"/><stop offset="100%" stop-color="#0a2a55"/></radialGradient><radialGradient id="lgrules" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#cc8822"/><stop offset="100%" stop-color="#5a3000"/></radialGradient><clipPath id="gcrules"><circle cx="60" cy="60" r="54"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="url(#ogrules)"/><g clip-path="url(#gcrules)" fill="url(#lgrules)"><path d="M8,30 L16,20 L36,22 L40,30 L32,48 L16,46 L10,38 Z"/><path d="M30,64 L40,58 L50,76 L38,96 L28,90 L24,78 Z"/><path d="M54,22 L72,18 L72,26 L66,32 L52,28 Z"/><path d="M54,34 L74,36 L78,50 L68,78 L50,72 L48,56 Z"/><path d="M72,16 L112,20 L104,44 L76,42 L70,24 Z"/><path d="M88,68 L112,72 L98,88 L84,72 Z"/></g><ellipse cx="60" cy="8" rx="52" ry="12" fill="white" opacity="0.85" clip-path="url(#gcrules)"/><circle cx="60" cy="60" r="54" stroke="#cc8822" stroke-width="4" fill="none"/></svg> אדמה</td></tr>
+</table>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">🏆 ניצחון</h2>
+<p>השחקן הראשון שמגיע למספר הדרקונים שהוכרז (ברירת מחדל: <strong>5</strong>) מנצח.</p>
+`,
+  en: `
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;">🎯 Objective</h2>
+<p>Be the first player to collect the declared number of Dragons (default: <strong>5</strong>).</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">⚙️ Setup</h2>
+<p>1. The first leader is chosen at random. Remaining players follow clockwise.<br>2. All 54 cards are shuffled and dealt equally among all players.<br>3. Leftover cards go to the leader's Main Pile.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">🔄 Game Flow</h2>
+<p><strong>Phase 1 — Declaration:</strong> The leader declares the number of battles (1–4) and the Dominant Element.</p>
+<p><strong>Phase 2 — Selecting Battle Cards:</strong> Each player secretly places cards in strategic order into their Battle Pile. A player with fewer cards than the number of battles places all they have and sits out the remaining battles.</p>
+<p><strong>Phase 3 — Conducting Battles:</strong> In each battle, the top card of every player's Battle Pile is revealed simultaneously. The highest effective value wins. A tie triggers a Duel.</p>
+<p><strong>Phase 4 — End of Round:</strong> After all declared battles have been fought, each player collects their remaining Battle Pile cards and adds them to their Main Pile. The lead passes to the next player clockwise — unless Love Power is in effect.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">📜 Special Card Rules</h2>
+
+<p><strong>🐉 Dragon (A)</strong><br>Beats everything except a Tamer. Multiple Dragons — highest wins; ties → Duel. Jokers always equal regular Dragons in value. All Dragons (including Jokers) count toward victory.</p>
+
+<p><strong>🧑 Tamer (2)</strong><br>Beats Dragons only. Loses to all other cards when no Dragon is present. Multiple Tamers with a Dragon → Duel among them.</p>
+
+<p><strong>💎 Queen (Q)</strong><br>Beats all cards of her own element including the King of that element, except Wizard and Dragon. Loses to Kings and higher-value cards from other elements.<br><strong>Queen Fury:</strong> If the Queen wins a battle in which a King of her own element was present, she immediately steals the top card from any chosen opponent's Main Pile into her Accumulation Pile.</p>
+
+<p><strong>👸 Princess (P) — Love Power</strong><br>If a Tamer and Princess appear in the same battle, the Tamer's player earns the right to lead the next round. Two Tamers: the Princess chooses. Two Princesses, two Tamers: decided by majority. Love Power always belongs to the player who played the Tamer.</p>
+
+<p><strong>🧙 Wizard (8)</strong><br>Beats all cards of its own element up to King. Loses to Dragons and higher-value cards from other elements. When a Wizard beats a same-element Tamer and a Dragon is present, the Wizard inherits full Tamer power and beats the Dragon.</p>
+
+<p><strong>🌀 Portal (9♣)</strong><br>After all cards are revealed: Portal player chooses an opponent and steals the top card from their Main Pile → stolen card enters battle immediately as a separate row → winner takes all cards.</p>
+
+<p><strong>🕐 Time Dragon</strong><br>The winner chooses: <strong>Back</strong> — take the previous battle's cards (only if no Dragon was present there). <strong>Forward</strong> — skip the entire next round. <strong>Do nothing</strong> — always valid.</p>
+
+<p><strong>🪐 Space Dragon</strong><br>The winner may change their seat position at the table (turn order adjusts), or do nothing.</p>
+
+<p><strong>⭐ Dominant Element Bonus</strong><br>The leader declares a Dominant Element. For the entire round, every card of that element receives +0.5 to its value — except Time Dragon and Space Dragon, which always match the value of regular Dragons.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">⚔️ Duel</h2>
+<p>Triggered when two or more players present the highest-value card.</p>
+<p>1. All tied players draw the top card from their Main Pile and reveal simultaneously.<br>2. Highest value wins. Ties repeat until resolved.<br>3. Winner takes all original battle cards + all Duel cards.<br>4. A player with no Main Pile cards is eliminated from the Duel. If all players are out — the current leader wins.</p>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">📖 Terminology</h2>
+<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);min-width:130px;">Main Pile</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">Cards held by a player</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">Battle Pile</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">Cards selected to participate in the current round</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">Accumulation Pile</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">Cards won during the round's battles</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">Round</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">All battles declared by the leading player for that turn</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">Battle</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">A single clash within a round</td></tr>
+  <tr><td style="padding:6px 8px;font-weight:700;border:1px solid rgba(184,134,11,.2);">Dominant Element</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">The element declared by the leader; cards of this element receive +0.5</td></tr>
+</table>
+<table style="width:100%;border-collapse:collapse;font-size:13px;">
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♥ Hearts</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">🔥 Fire</td></tr>
+  <tr><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♣ Clubs</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">💧 Water</td></tr>
+  <tr style="background:rgba(184,134,11,.2);"><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♦ Diamonds</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);"><svg width="16" height="16" viewBox="0 0 80 80" fill="none" style="display:inline-block;vertical-align:middle;margin:0 2px;" xmlns="http://www.w3.org/2000/svg"><path d="M14,28 C14,20 20,14 28,14 C36,14 40,20 40,26 C40,32 36,36 30,36 C26,36 23,33 23,29 C23,25 26,22 30,22 C33,22 35,24 35,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M66,28 C66,20 60,14 52,14 C44,14 40,20 40,26 C40,32 44,36 50,36 C54,36 57,33 57,29 C57,25 54,22 50,22 C47,22 45,24 45,27" stroke="currentColor" stroke-width="5" fill="none" stroke-linecap="round"/><rect x="6" y="38" width="68" height="7" rx="3.5" fill="currentColor"/><path d="M10,48 L70,48 L62,57 L18,57 Z" fill="currentColor"/><path d="M20,60 L60,60 L40,76 Z" fill="currentColor"/></svg> Air</td></tr>
+  <tr><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);">♠ Spades</td><td style="padding:6px 8px;border:1px solid rgba(184,134,11,.2);"><svg width="16" height="16" viewBox="0 0 120 120" fill="none" style="display:inline-block;vertical-align:middle;margin:0 2px;" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="ogrules" cx="38%" cy="32%" r="65%"><stop offset="0%" stop-color="#1a6aaa"/><stop offset="100%" stop-color="#0a2a55"/></radialGradient><radialGradient id="lgrules" cx="40%" cy="30%" r="70%"><stop offset="0%" stop-color="#cc8822"/><stop offset="100%" stop-color="#5a3000"/></radialGradient><clipPath id="gcrules"><circle cx="60" cy="60" r="54"/></clipPath></defs><circle cx="60" cy="60" r="54" fill="url(#ogrules)"/><g clip-path="url(#gcrules)" fill="url(#lgrules)"><path d="M8,30 L16,20 L36,22 L40,30 L32,48 L16,46 L10,38 Z"/><path d="M30,64 L40,58 L50,76 L38,96 L28,90 L24,78 Z"/><path d="M54,22 L72,18 L72,26 L66,32 L52,28 Z"/><path d="M54,34 L74,36 L78,50 L68,78 L50,72 L48,56 Z"/><path d="M72,16 L112,20 L104,44 L76,42 L70,24 Z"/><path d="M88,68 L112,72 L98,88 L84,72 Z"/></g><ellipse cx="60" cy="8" rx="52" ry="12" fill="white" opacity="0.85" clip-path="url(#gcrules)"/><circle cx="60" cy="60" r="54" stroke="#cc8822" stroke-width="4" fill="none"/></svg> Earth</td></tr>
+</table>
+
+<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;margin-top:18px;">🏆 Victory</h2>
+<p>The first player to collect the declared number of <strong>Dragons</strong> (default: 5) wins.</p>
+`
+};
+
+let _rulesLang = 'he';
+function setRulesLang(lang) {
+  _rulesLang = lang;
+  document.getElementById('rulesContent').innerHTML = RULES[lang];
+  document.getElementById('rulesContent').dir = lang==='he' ? 'rtl' : 'ltr';
+  document.getElementById('rulesTitleTxt').textContent = lang==='he' ? 'מאלף הדרקונים' : 'Dragon Tamer';
+  document.getElementById('rulesLangHe').style.cssText = lang==='he'
+    ? 'font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid var(--gold-bright);background:var(--gold-bright);color:var(--navy);'
+    : 'font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid rgba(184,134,11,.4);background:transparent;color:var(--gold-light);';
+  document.getElementById('rulesLangEn').style.cssText = lang==='en'
+    ? 'font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid var(--gold-bright);background:var(--gold-bright);color:var(--navy);'
+    : 'font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid rgba(184,134,11,.4);background:transparent;color:var(--gold-light);';
+}
+// Init Hebrew on load
+document.addEventListener('DOMContentLoaded', ()=>setRulesLang('he'));
+</script>
+
+<!-- ══ EXIT CONFIRM OVERLAY ══ -->
+<div class="overlay hidden" id="exitOverlay" style="align-items:center;justify-content:center;">
+  <div class="modal" style="max-width:320px;text-align:center;">
+    <h2 style="color:#ff8888;">⚠️ Exit Game?</h2>
+    <p style="margin:12px 0 20px;color:rgba(253,246,227,.7);font-size:14px;">
+      You will leave the current game and return to the lobby.<br>
+      <span style="font-size:12px;opacity:.6;">Other players will continue without you.</span>
+    </p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <button class="btn btn-full"
+        onclick="resetToLobby()"
+        style="background:linear-gradient(135deg,#8B0000,#C0392B);color:#FFD700;font-family:Cinzel,serif;font-weight:700;letter-spacing:1px;border:none;padding:10px;">Exit & Reset</button>
+      <button class="btn btn-outline btn-full"
+        onclick="document.getElementById('exitOverlay').classList.add('hidden')"
+        style="border-color:rgba(255,255,255,.2);color:rgba(253,246,227,.5);padding:8px;font-size:12px;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showExitConfirm() {
+  document.getElementById('exitOverlay').classList.remove('hidden');
+}
+
+function resetToLobby() {
+  // Close overlay
+  document.getElementById('exitOverlay').classList.add('hidden');
+  // Clear saved room/pid so no rejoin prompt
+  try {
+    localStorage.removeItem('dt_pid');
+    localStorage.removeItem('dt_room');
+  } catch(e) {}
+  // Reset state
+  myPid = null; myRoomId = null;
+  gameState = null;
+  selectedCardCids = [];
+  _iPickedThisRound = false;
+  // Close websocket — will reconnect fresh
+  if(ws) { try { ws.close(); } catch(e) {} ws = null; }
+  // Hide game screen, show lobby
+  document.getElementById('gameScreen').classList.add('hidden');
+  document.getElementById('lobbyScreen').classList.remove('hidden');
+  document.getElementById('waitOverlay').classList.add('hidden');
+  document.getElementById('rejoinLobbyWrap').classList.add('hidden');
+  // Reconnect fresh
+  setTimeout(connect, 300);
+}
+</script>
+
+</body>
+</html>
+

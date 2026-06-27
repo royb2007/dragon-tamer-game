@@ -22,14 +22,8 @@ logging.basicConfig(level=logging.INFO,
     format='%(asctime)s %(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
-# ══════════════════════════════════════════════════════
-# CONNECTION REGISTRY
-# ══════════════════════════════════════════════════════
 rooms  = RoomManager()
-
-# room_id → set of websockets (players + spectators)
 room_sockets: Dict[str, Set[ServerConnection]] = {}
-# websocket → {pid, room_id, name, is_spectator}
 socket_meta:  Dict[ServerConnection, dict] = {}
 
 
@@ -44,7 +38,6 @@ def _get_room_sockets(room_id: str) -> Set[ServerConnection]:
 
 async def broadcast(room_id: str, message: dict,
                     exclude: ServerConnection = None):
-    """Send a message to every socket in a room."""
     data = json.dumps(message)
     targets = {ws for ws in _get_room_sockets(room_id) if ws is not exclude}
     if targets:
@@ -53,7 +46,6 @@ async def broadcast(room_id: str, message: dict,
 
 
 async def send(ws: ServerConnection, message: dict):
-    """Send a message to one socket."""
     try:
         await ws.send(json.dumps(message))
     except Exception:
@@ -62,16 +54,10 @@ async def send(ws: ServerConnection, message: dict):
 
 async def broadcast_events(room_id: str, events: list,
                             private_ws: ServerConnection = None):
-    """
-    Broadcast a list of engine events.
-    hand_update events are sent only to the relevant player.
-    After broadcasting, auto-trigger AI actions if needed.
-    """
     game = rooms.get_room(room_id)
     if not game:
         return
 
-    # Build pid → ws map
     pid_to_ws: Dict[str, ServerConnection] = {}
     for ws, meta in socket_meta.items():
         if meta.get('room_id') == room_id:
@@ -79,22 +65,16 @@ async def broadcast_events(room_id: str, events: list,
 
     for i, event in enumerate(events):
         if event['type'] == 'hand_update':
-            # Send only to the relevant player
             target_ws = pid_to_ws.get(event['pid'])
             if target_ws:
                 await send(target_ws, event)
         else:
-            # Broadcast to all
             await broadcast(room_id, event)
-        # Yield every 5 events so WebSocket buffers can flush during large batches
         if i % 5 == 4:
             await asyncio.sleep(0)
 
-    # Yield to event loop so WebSocket buffers flush before AI computation
     await asyncio.sleep(0)
 
-    # ── Auto-trigger AI actions ──────────────────────────────
-    # If leader_declare phase and leader is AI → auto-declare
     if game.phase == Phase.LEADER_DECLARE:
         lead_pid = game._lead_pid()
         if lead_pid and lead_pid in game.players and game.players[lead_pid].is_ai:
@@ -102,8 +82,6 @@ async def broadcast_events(room_id: str, events: list,
             if ai_events:
                 await broadcast_events(room_id, ai_events)
 
-    # If reveal phase and no human players are connected → auto-advance
-    # (handles case where human disconnected mid-battle)
     if game.phase == Phase.REVEAL:
         connected_human_pids = {
             meta['pid'] for ws, meta in socket_meta.items()
@@ -118,19 +96,22 @@ async def broadcast_events(room_id: str, events: list,
                                for p in active_players
                                if not p.is_ai)
         if all_disconnected and active_players:
-            # Use any active player's pid to advance the reveal
             reveal_pid = active_players[0].pid
-            await asyncio.sleep(1)  # Brief pause so clients can reconnect
-            if game.phase == Phase.REVEAL:  # Re-check in case state changed
+            await asyncio.sleep(1)
+            if game.phase == Phase.REVEAL:
                 rev_events = game.reveal_step(reveal_pid)
                 for ev in (rev_events or []):
                     t = ev.get('type')
                     if t == 'portal_choose_target':
                         tgts = ev.get('valid_target_pids', [])
                         if tgts:
-                            rev_events2 = game.portal_target_chosen(ev['portal_pid'], tgts[0])
+                            game.portal_target_chosen(ev['portal_pid'], tgts[0])
+                    elif t == 'queen_choose_target':
+                        tgts = ev.get('valid_target_pids', [])
+                        if tgts:
+                            game.queen_portal_target_chosen(ev['queen_pid'], tgts[0])
                     elif t == 'time_dragon_choose':
-                        game.time_dragon_choice(ev['pid'], 'nothing')
+                        game.time_dragon_chosen(ev['pid'], 'nothing')
                     elif t == 'space_dragon_choose_swap':
                         game.space_dragon_swap_chosen(ev['space_pid'], None)
                     elif t == 'joker_choose_power':
@@ -143,30 +124,40 @@ async def broadcast_events(room_id: str, events: list,
                     await broadcast_events(room_id, rev_events)
 
 
-# ══════════════════════════════════════════════════════
-# MESSAGE HANDLERS
-# ══════════════════════════════════════════════════════
+def unique_name(name: str, game) -> str:
+    """Return name, appending -2, -3 etc. if name already taken in this room."""
+    existing = {p.name for p in game.players.values()}
+    if name not in existing:
+        return name
+    i = 2
+    while f"{name}-{i}" in existing:
+        i += 1
+    return f"{name}-{i}"
+
+
 async def handle_create_room(ws, data):
-    room_id    = data.get('room_id') or str(uuid.uuid4())[:8].upper()
-    pid        = data.get('pid') or str(uuid.uuid4())[:8]
-    name       = data.get('name', 'Player')
-    ai_count   = int(data.get('ai_count', 3))
-    win_drag   = int(data.get('win_dragons', 5))
-    max_pl     = 1 + ai_count   # 1 human + N AI opponents
+    room_id      = data.get('room_id') or str(uuid.uuid4())[:8].upper()
+    pid          = data.get('pid') or str(uuid.uuid4())[:8]
+    name         = data.get('name', 'Player')
+    human_count  = int(data.get('ai_count', 3))   # now means "expected humans" (including creator)
+    win_drag     = int(data.get('win_dragons', 5))
+    num_decks    = int(data.get('num_decks', 1))
+    max_pl       = 10  # always allow up to 10 seats total
 
     if rooms.get_room(room_id):
         await send(ws, {'type': 'error', 'msg': 'Room already exists'})
         return
 
-    # Set win goal for this room (4, 5, or 6)
     import game_engine as ge
-    if win_drag in (4, 5, 6):
-        ge.WIN_DRAGONS = win_drag
+    if win_drag in (4, 5, 6, 7, 8, 9, 10, 11, 12):
+        ge.set_win_dragons(win_drag)
 
     game = rooms.create_room(room_id, max_pl)
+    game._human_count = human_count
+    game._num_decks   = num_decks
+    game._stored_num_decks = num_decks  # backup in case _num_decks gets lost
+    name = unique_name(name, game)
     game.add_player(pid, name)
-    game.fill_with_ai(['Aggressive','Balanced','Conservative','Hoarder',
-                        'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger'][:ai_count])
 
     room_sockets[room_id] = {ws}
     socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
@@ -176,9 +167,10 @@ async def handle_create_room(ws, data):
         'room_id': room_id,
         'pid': pid,
         'win_dragons': ge.WIN_DRAGONS,
+        'human_count': human_count,
         'state': game.player_state(pid),
     })
-    log.info(f"Room {room_id} created by {name} ({pid}), win_dragons={ge.WIN_DRAGONS}")
+    log.info(f"Room {room_id} created by {name} ({pid}), expected_humans={human_count}, win_dragons={ge.WIN_DRAGONS}")
 
 
 async def handle_join_room(ws, data):
@@ -191,6 +183,7 @@ async def handle_join_room(ws, data):
         await send(ws, {'type': 'error', 'msg': 'Room not found'})
         return
 
+    name   = unique_name(name, game)
     result = game.add_player(pid, name)
     if not result['ok']:
         await send(ws, {'type': 'error', 'msg': result['error']})
@@ -207,6 +200,7 @@ async def handle_join_room(ws, data):
     })
     await broadcast(room_id, {
         'type': 'player_joined',
+        'pid': pid,
         'name': name,
         'player_count': len(game.players),
     }, exclude=ws)
@@ -220,11 +214,31 @@ async def handle_start_game(ws, data):
         await send(ws, {'type': 'error', 'msg': 'Not in a room'})
         return
     if game.phase != Phase.WAITING:
-        return  # silently ignore duplicate start_game calls
+        return
+
+    # Fill remaining empty seats with AI now (at start time, not room creation)
+    import random as _rand
+    _all_strats = ['Aggressive','Balanced','Conservative','Hoarder',
+                   'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger',
+                   'Maximalist','Minimalist','Opportunist','Purist','DragonHunter']
+    _rand.shuffle(_all_strats)
+    expected_total = getattr(game, '_human_count', 4)  # total players expected
+    actual_humans  = len(game.players)
+    ai_needed      = max(1, expected_total - actual_humans)  # at least 1 AI
+    # Set max_players to actual total so fill_with_ai stops at the right count
+    game.max_players = actual_humans + ai_needed
+    game.fill_with_ai(_all_strats[:ai_needed])
+
+    # Ensure _num_decks is set before start_game (may have been lost on rejoin/reconnect)
+    # Re-read from stored value if available
+    if not hasattr(game, '_num_decks') or game._num_decks is None:
+        game._num_decks = getattr(game, '_stored_num_decks', 1)
+    game._num_decks = getattr(game, '_num_decks', 1)  # safety
+    log.info(f"DEBUG start_game: _num_decks={game._num_decks}, _stored_num_decks={getattr(game,'_stored_num_decks','NOT SET')}, hasattr={hasattr(game,'_num_decks')}")
 
     events = game.start_game()
     await broadcast_events(meta['room_id'], events)
-    log.info(f"Game started in room {meta['room_id']}")
+    log.info(f"Game started in room {meta['room_id']} ({actual_humans} humans + {ai_needed} AI, total={actual_humans+ai_needed}, num_decks={game._num_decks}, max_steps={game._max_steps})")
 
 
 async def handle_declare(ws, data):
@@ -255,7 +269,6 @@ async def handle_reorder_hand(ws, data):
 
     cids   = [int(c) for c in data.get('cid_list', [])]
     events = game.player_reorder_hand(meta['pid'], cids)
-    # hand_reordered only sent back to the player — no broadcast needed
     for ev in events:
         await send(ws, ev)
 
@@ -279,39 +292,19 @@ async def handle_reveal(ws, data):
     await broadcast_events(meta['room_id'], events)
 
 
-async def handle_sleeping_choice(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game: return
-    action     = data.get('action', 'pass')
-    tamer_cid  = data.get('tamer_cid')
-    dragon_cid = data.get('dragon_cid')
-    pair_index = data.get('pair_index')
-    events = game.player_sleeping_choice(
-        meta['pid'], action,
-        tamer_cid  = int(tamer_cid)  if tamer_cid  is not None else None,
-        dragon_cid = int(dragon_cid) if dragon_cid is not None else None,
-        pair_index = int(pair_index) if pair_index is not None else None,
-    )
-    # Yield before broadcasting so client gets the sleeping_choice ack quickly
-    await asyncio.sleep(0)
-    await broadcast_events(meta['room_id'], events)
-
-
-async def handle_forced_wake_chosen(ws, data):
-    meta = socket_meta.get(ws, {})
-    game = rooms.get_room(meta.get('room_id', ''))
-    if not game: return
-    indices = [int(i) for i in data.get('pair_indices', [])]
-    events = game.forced_wake_chosen(meta['pid'], indices)
-    await broadcast_events(meta['room_id'], events)
-
-
 async def handle_portal_target(ws, data):
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
     if not game: return
     events = game.portal_target_chosen(meta['pid'], data.get('target_pid', ''))
+    await broadcast_events(meta['room_id'], events)
+
+
+async def handle_queen_fury_target(ws, data):
+    meta = socket_meta.get(ws, {})
+    game = rooms.get_room(meta.get('room_id', ''))
+    if not game: return
+    events = game.queen_portal_target_chosen(meta['pid'], data.get('target_pid', ''))
     await broadcast_events(meta['room_id'], events)
 
 
@@ -324,7 +317,6 @@ async def handle_princess_choose_tamer(ws, data):
 
 
 async def handle_joker_power(ws, data):
-    """Human player's Time Dragon choice (back/forward/nothing)."""
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
     if not game: return
@@ -336,7 +328,6 @@ async def handle_joker_power(ws, data):
 
 
 async def handle_joker_power_chosen(ws, data):
-    """Human player chose which Joker power to use when both Time and Space Dragon present."""
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
     if not game: return
@@ -346,12 +337,11 @@ async def handle_joker_power_chosen(ws, data):
 
 
 async def handle_space_dragon_swap(ws, data):
-    """Human Space Dragon winner chose which player to swap seats with (or None to pass)."""
     meta = socket_meta.get(ws, {})
     game = rooms.get_room(meta.get('room_id', ''))
     if not game:
         return
-    target_pid = data.get('target_pid') or None  # None means pass
+    target_pid = data.get('target_pid') or None
     events = game.space_dragon_swap_chosen(meta['pid'], target_pid)
     await broadcast_events(meta['room_id'], events)
 
@@ -392,13 +382,11 @@ async def handle_spectate_room(ws, data):
     log.info(f"Spectator '{name}' joined room {room_id} ({spec_count} watching)")
 
 
-_rejoin_ts: Dict[tuple, float] = {}   # (room_id, pid) -> last rejoin epoch
+_rejoin_ts: Dict[tuple, float] = {}
 
 async def handle_rejoin(ws, data):
-    """Re-associate a reconnected WebSocket with an existing room/player."""
     room_id = data.get('room_id', '').upper()
     pid     = data.get('pid', '')
-    # Rate-limit to one rejoin per pid per room per 3 seconds
     key = (room_id, pid)
     now = time.monotonic()
     if now - _rejoin_ts.get(key, 0.0) < 3.0:
@@ -412,13 +400,11 @@ async def handle_rejoin(ws, data):
         await send(ws, {'type': 'error', 'msg': 'Player not found in room'})
         return
     name = game.players[pid].name
-    # Remove any old socket entry for this pid in this room
     stale = [w for w, m in socket_meta.items()
              if m.get('room_id') == room_id and m.get('pid') == pid and w is not ws]
     for w in stale:
         room_sockets.get(room_id, set()).discard(w)
         socket_meta.pop(w, None)
-    # Register new socket
     room_sockets.setdefault(room_id, set()).add(ws)
     socket_meta[ws] = {'pid': pid, 'room_id': room_id, 'name': name}
     await send(ws, {
@@ -437,33 +423,29 @@ async def handle_list_rooms(ws, data):
     await send(ws, {'type': 'rooms', 'rooms': room_list})
 
 
-# ══════════════════════════════════════════════════════
-# MAIN HANDLER
-# ══════════════════════════════════════════════════════
 async def handle_ping(ws, data):
     await send(ws, {'type': 'pong'})
 
 HANDLERS = {
-    'ping':          handle_ping,
-    'create_room':   handle_create_room,
-    'join_room':     handle_join_room,
-    'rejoin':        handle_rejoin,
-    'spectate_room': handle_spectate_room,
-    'start_game':    handle_start_game,
-    'declare':       handle_declare,
-    'pick_cards':    handle_pick_cards,
-    'reorder_hand':  handle_reorder_hand,
-    'ready_arrange': handle_ready_arrange,
-    'reveal':               handle_reveal,
-    'sleeping_choice':      handle_sleeping_choice,
-    'forced_wake_chosen':   handle_forced_wake_chosen,
-    'joker_power':          handle_joker_power,
-    'joker_power_chosen':   handle_joker_power_chosen,
-    'space_dragon_swap':    handle_space_dragon_swap,
-    'portal_target':        handle_portal_target,
+    'ping':                  handle_ping,
+    'create_room':           handle_create_room,
+    'join_room':             handle_join_room,
+    'rejoin':                handle_rejoin,
+    'spectate_room':         handle_spectate_room,
+    'start_game':            handle_start_game,
+    'declare':               handle_declare,
+    'pick_cards':            handle_pick_cards,
+    'reorder_hand':          handle_reorder_hand,
+    'ready_arrange':         handle_ready_arrange,
+    'reveal':                handle_reveal,
+    'joker_power':           handle_joker_power,
+    'joker_power_chosen':    handle_joker_power_chosen,
+    'space_dragon_swap':     handle_space_dragon_swap,
+    'portal_target':         handle_portal_target,
+    'queen_fury_target':     handle_queen_fury_target,
     'princess_choose_tamer': handle_princess_choose_tamer,
-    'get_state':     handle_get_state,
-    'list_rooms':    handle_list_rooms,
+    'get_state':             handle_get_state,
+    'list_rooms':            handle_list_rooms,
 }
 
 
@@ -485,7 +467,6 @@ async def connection_handler(ws: ServerConnection):
                 log.exception(f"Handler error: {e}")
                 await send(ws, {'type': 'error', 'msg': str(e)})
     finally:
-        # Cleanup on disconnect
         meta = socket_meta.pop(ws, {})
         room_id = meta.get('room_id')
         if room_id and room_id in room_sockets:
@@ -493,7 +474,6 @@ async def connection_handler(ws: ServerConnection):
             if not room_sockets[room_id]:
                 room_sockets.pop(room_id, None)
             elif meta.get('is_spectator'):
-                # Notify remaining sockets that spectator count changed
                 await broadcast(room_id, {
                     'type': 'spectator_update',
                     'spectator_count': _spectator_count(room_id),
@@ -503,9 +483,8 @@ async def connection_handler(ws: ServerConnection):
 
 
 async def _http_handler(connection: ServerConnection, request: Request):
-    """Serve index.html for plain HTTP requests; let WS upgrades through."""
     if request.headers.get("Upgrade", "").lower() == "websocket":
-        return None  # hand off to websocket handler
+        return None
     try:
         with open("index.html", "rb") as f:
             body = f.read()
@@ -527,12 +506,20 @@ async def main():
     async with websockets.asyncio.server.serve(
         connection_handler, host, port,
         process_request=_http_handler,
-        ping_interval=None,  # disable built-in ping; Replit proxy drops pong frames → spurious timeouts
+        ping_interval=None,
         ping_timeout=None,
+        reuse_port=True,
     ):
-        await asyncio.Future()  # run forever
+        await asyncio.Future()
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        log.info("Server stopped by user (Ctrl+C)")
+    except Exception as e:
+        log.exception(f"FATAL: Server crashed at top level: {e}")
+        import sys
+        sys.exit(1)  # non-zero exit so watchdog.sh restarts it
 

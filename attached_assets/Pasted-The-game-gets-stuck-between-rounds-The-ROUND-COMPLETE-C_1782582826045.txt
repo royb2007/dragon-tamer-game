@@ -1,0 +1,47 @@
+The game gets stuck between rounds. The "ROUND COMPLETE — CONTINUE WHEN READY" 
+overlay appears, the player clicks Continue, but the game stays frozen — 
+the table center still shows "Picking" and nothing advances. 
+A hard browser refresh fixes it.
+
+TECHNICAL DETAILS:
+
+The client has two flags:
+- _roundEndOverlayVisible (true while overlay is showing)
+- _awaitingRoundEndContinue (true after round_end arrives, cleared when player clicks Continue)
+
+The bug flow:
+1. Server sends: round_end → phase_change(leader_declare) → declaration → phase_change(pick_cards) → cards_picked (all AIs pick immediately)
+2. Client receives round_end → sets _awaitingRoundEndContinue=true, _roundEndOverlayVisible=true
+3. All subsequent phase_change events are BUFFERED (not applied) while overlay is visible
+4. gameState.phase gets updated to the buffered phase but setPhase() is never called
+5. Player clicks Continue → dismissRoundEnd() runs → clears flags → calls setPhase(gameState.phase, gameState)
+6. BUT gameState.phase is now 'pick_cards' (last buffered), and gameState.declared_steps/declared_el 
+   may be stale or missing because the 'declaration' event was also buffered and only partially applied
+7. Result: setPhase('pick_cards') runs but the hand hasn't been updated, 
+   declared_steps is wrong, and the player has no cards to pick from
+
+THE FIX NEEDED:
+
+In dismissRoundEnd(), instead of calling setPhase(gameState.phase, gameState) 
+which relies on potentially stale buffered state, do this:
+
+1. Clear all overlay flags (_roundEndOverlayVisible=false, _awaitingRoundEndContinue=false)
+2. Hide the overlay
+3. Send {type:'get_state'} to server to get fresh authoritative state
+4. In the 'state' message handler: when NOT _awaitingRoundEndContinue, 
+   call applyState() normally — this will call setPhase() with the real current phase 
+   and real current game state including the correct hand, declared_steps, declared_el etc.
+5. Do NOT call setPhase() directly in dismissRoundEnd()
+
+Additionally: the 'state' handler currently has this guard that prevents 
+applyState from running properly after round-end:
+    if(_awaitingRoundEndContinue){ ... breaks early }
+Make sure this guard is already cleared BEFORE the get_state response arrives 
+(it will be, since we clear flags in step 1 before sending get_state).
+
+FILES TO EDIT: index.html (client-side JavaScript only, no server changes needed)
+
+KEY FUNCTIONS:
+- dismissRoundEnd() — around line 2400
+- handleMessage() case 'state' — around line 1800  
+- _awaitingRoundEndContinue, _roundEndOverlayVisible — global flags
