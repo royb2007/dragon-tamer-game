@@ -1236,6 +1236,21 @@ function handleMessage(msg) {
       break;
 
     case 'state':
+      if(_awaitingRoundEndContinue){
+        // Don't call setPhase while round-end is pending — just sync key fields into gameState
+        if(msg.state && gameState){
+          if(msg.state.phase) gameState.phase=msg.state.phase;
+          if(msg.state.round!=null) gameState.round=msg.state.round;
+          if(msg.state.players) gameState.players=msg.state.players;
+          if(msg.state.declared_steps!=null) gameState.declared_steps=msg.state.declared_steps;
+          if(msg.state.declared_el!==undefined) gameState.declared_el=msg.state.declared_el;
+          if(msg.state.lead_pid) gameState.lead_pid=msg.state.lead_pid;
+          if(msg.state.me) gameState.me=msg.state.me;
+          renderTable();
+        }
+        syncHandCounts(msg.state?.players);
+        break;
+      }
       applyState(msg.state);
       syncHandCounts(msg.state?.players); break;
 
@@ -2352,6 +2367,8 @@ function dismissRoundEnd() {
   _roundEndOverlayVisible=false;
   _awaitingRoundEndContinue=false;
   _pendingRoundEndMsg=null;
+  _iPickedThisRound=false;
+  selectedCardCids=[];
   document.getElementById('roundEndOverlay').classList.add('hidden');
   hideBattle();
   if(_pendingHandUpdate && gameState){
