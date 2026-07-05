@@ -242,9 +242,16 @@ def _run_duel(contestants: List[dict], all_players: Dict[str, 'PlayerState'],
                 events.append(f"⚔️ Duel: Tamer beats Dragon! {all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid} wins!")
                 return winner_pid, all_drawn, pid_draws
 
-        best_eff = max(draws[pid].effective_rank(el) for pid in draws)
+        def _duel_eff(card):
+            # Dragons always compare on raw rank (suit-blind) so multiple
+            # dragons of different suits still tie/match correctly in duels.
+            if card.is_dragon:
+                return float(card.rank)
+            return card.effective_rank(el)
+
+        best_eff = max(_duel_eff(draws[pid]) for pid in draws)
         winners = [c for c in active if c['pid'] in draws
-                   and draws[c['pid']].effective_rank(el) == best_eff]
+                   and _duel_eff(draws[c['pid']]) == best_eff]
 
         if len(winners) == 1:
             winner_pid = winners[0]['pid']
@@ -440,23 +447,31 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
         return result
 
     if queens and not has_dragon:
+        any_dominant_queen = any(
+            (el and q_entry['card'].suit == el) for q_entry in queens
+        )
+
         surviving_queens = []
         for q_entry in queens:
             q = q_entry['card']
             q_is_dominant = (el and q.suit == el)
             beaten = False
-            for e in valid:
-                c = e['card']
-                if c is q:
-                    continue
-                if c.suit == q.suit:
-                    if c.is_wizard or c.is_dragon:
-                        beaten = True
-                        break
-                else:
-                    if c.orig_rank == 13 and not q_is_dominant:
-                        beaten = True
-                        break
+            # A non-dominant Queen is beaten outright if a dominant Queen is present
+            if any_dominant_queen and not q_is_dominant:
+                beaten = True
+            else:
+                for e in valid:
+                    c = e['card']
+                    if c is q:
+                        continue
+                    if c.suit == q.suit:
+                        if c.is_wizard or c.is_dragon:
+                            beaten = True
+                            break
+                    else:
+                        if c.orig_rank == 13 and not q_is_dominant:
+                            beaten = True
+                            break
             if not beaten:
                 surviving_queens.append(q_entry)
 
@@ -907,10 +922,12 @@ _SUIT_DISPLAY_ORDER = {'Hearts': 0, 'Diamonds': 1, 'Clubs': 2, 'Spades': 3}
 def _default_sort_key(c: Card) -> tuple:
     if c.is_joker:
         display_rank = 99
+    elif c.is_dragon:
+        display_rank = 15.0
+    elif c.is_tamer:
+        display_rank = 14.5
     elif c.is_princess:
         display_rank = 10.8
-    elif c.is_tamer:
-        display_rank = 10.5
     elif c.is_wizard:
         display_rank = 10.2
     else:

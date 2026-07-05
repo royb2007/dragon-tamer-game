@@ -334,6 +334,7 @@ async def handle_spectate_room(ws, data):
 
 
 _rejoin_ts: Dict[tuple, float] = {}
+_room_last_active: Dict[str, float] = {}  # room_id → monotonic time last socket left
 
 async def handle_rejoin(ws, data):
     room_id = data.get('room_id', '').upper()
@@ -424,11 +425,49 @@ async def connection_handler(ws, path):
             room_sockets[room_id].discard(ws)
             if not room_sockets[room_id]:
                 room_sockets.pop(room_id, None)
+                _room_last_active[room_id] = time.monotonic()
             elif meta.get('is_spectator'):
                 await broadcast(room_id, {
                     'type': 'spectator_update',
                     'spectator_count': _spectator_count(room_id),
                 })
+
+
+async def _cleanup_loop():
+    """Periodically delete abandoned rooms and force GC to prevent memory accumulation."""
+    EMPTY_TTL   = 600   # delete room 10 min after last socket leaves
+    GAMEOVER_TTL = 120  # delete game_over rooms after 2 min
+    INTERVAL    = 300   # run every 5 minutes
+    while True:
+        await asyncio.sleep(INTERVAL)
+        try:
+            now = time.monotonic()
+            to_delete = []
+            for info in rooms.list_rooms():
+                rid = info.get('room_id')
+                if not rid:
+                    continue
+                has_sockets = bool(room_sockets.get(rid))
+                if has_sockets:
+                    continue
+                last = _room_last_active.get(rid, 0.0)
+                game = rooms.get_room(rid)
+                ttl = GAMEOVER_TTL if (game and getattr(game, 'phase', None) == Phase.GAME_OVER) else EMPTY_TTL
+                if now - last >= ttl:
+                    to_delete.append(rid)
+            for rid in to_delete:
+                try:
+                    rooms.delete_room(rid)
+                    _room_last_active.pop(rid, None)
+                    _rejoin_ts.pop(rid, None)  # won't match tuple keys but harmless
+                    log.warning(f"Cleanup: removed abandoned room {rid}")
+                except Exception as ex:
+                    log.warning(f"Cleanup: failed to remove room {rid}: {ex}")
+            gc.collect()
+            if to_delete:
+                log.warning(f"Cleanup: removed {len(to_delete)} rooms, GC done")
+        except Exception as ex:
+            log.warning(f"Cleanup loop error: {ex}")
 
 
 async def _http_handler(path, request_headers):
@@ -460,6 +499,7 @@ async def main():
         reuse_port=True,
     ):
         log.warning(f"server listening on {host}:{port}")
+        asyncio.get_event_loop().create_task(_cleanup_loop())
         await asyncio.Future()
 
 
