@@ -27,6 +27,14 @@ Fixes applied:
   v3.8 fixes:
   - Multiple Queens: duel among Queens only — Kings never enter the Queen duel [Bug #Q1]
   - Queen Fury correctly triggers for the winning Queen after a multi-Queen duel [Bug #Q2]
+  v3.9 — Wizard absorbs the Portal:
+  - Portal card (9♣) removed; all 9s are now Wizards; all 8s become plain number cards
+  - Dominant-element Wizard opens a portal: owner steals top card of chosen opponent's
+    Main Pile; stolen card fights alongside the Wizard (best value wins); winner takes all
+  - Wizard keeps existing powers (overpowers same-suit cards, Tamer inheritance)
+  - Two-deck: multiple dominant Wizards fire in order (leader first, then clockwise)
+  - AI reuses ai_portal_target() logic for wizard-portal target selection
+  - Reuses exact portal_choose_target / portal_steal event types (frontend unchanged)
 """
 import random
 import json
@@ -85,11 +93,11 @@ class Card:
 
     @property
     def is_portal(self) -> bool:
-        return self.orig_rank == 9 and self.suit == 'Clubs'
+        return False  # Portal card removed; Wizards (9s) now open portals when dominant
 
     @property
     def is_wizard(self) -> bool:
-        return self.orig_rank == 8 and not self.is_joker
+        return self.orig_rank == 9 and not self.is_joker
 
     @property
     def is_queen(self) -> bool:
@@ -314,6 +322,8 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
                 combined['has_portal'] = True
             resolved_valid.append(combined)
             portal_card   = next((e['card'] for e in player_entries if e['card'].is_portal), None)
+            wizard_card   = next((e['card'] for e in player_entries if e['card'].is_wizard), None)
+            trigger_card  = portal_card or wizard_card
             stolen_entry  = next((e for e in player_entries if e.get('stolen')), None)
             stolen_card   = stolen_entry['card'] if stolen_entry else None
             stolen_from_name = ''
@@ -324,7 +334,7 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
             best_label    = best_entry['card'].label
             other_labels  = [e['card'].label for e in other_entries]
             result['special_events'].append(
-                f"🌀 {(all_players[pid].name if all_players and pid in all_players else pid)} plays Portal ({portal_card.label if portal_card else '9♣'}) "
+                f"🌀 {(all_players[pid].name if all_players and pid in all_players else pid)} plays Portal ({trigger_card.label if trigger_card else '?'}) "
                 f"+ stolen {stolen_card.label if stolen_card else other_labels[0]}"
                 f"{stolen_from_name} "
                 f"— best card {best_label} competes, winner takes both!")
@@ -397,7 +407,7 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
             if len(joker_types) == 1:
                 result['joker_powers'] = joker_types
                 result['special_events'].append(
-                    f"💕 {(all_players[combat_tamers[0]['pid']].name if all_players and combat_tamers[0]['pid'] in all_players else combat_tamers[0]['pid'])}'s Tamer inherits {joker_types[0]} Dragon power!")
+                    f"🃏 {(all_players[combat_tamers[0]['pid']].name if all_players and combat_tamers[0]['pid'] in all_players else combat_tamers[0]['pid'])}'s Tamer inherits {joker_types[0]} Dragon power!")
             else:
                 result['joker_powers'] = joker_types
                 result['special_events'].append(
@@ -438,7 +448,7 @@ def resolve_step(entries: List[dict], el: Optional[str], lead_pid: str,
         if joker_types:
             result['joker_powers'] = joker_types
             result['special_events'].append(
-                f"💕 {(all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid)}+'s Tamer inherits joker power(s): {joker_types}")
+                f"🃏 {(all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid)}'s Tamer inherits joker power(s): {joker_types}")
         space_j = next((j for j in jokers if j['card'].joker_type == 'space'), None)
         if space_j:
             result['space_dragon_pid'] = winner_pid
@@ -1203,6 +1213,7 @@ class DragonTamerGame:
         self.event_log:      List[str] = []
         self._pending_portal_pid:     Optional[str] = None
         self._pending_portal_entries: List[dict] = []
+        self._pending_wizard_portal_queue: List[dict] = []
         self._pending_queen_portal_pid:     Optional[str] = None
         self._pending_queen_portal_entries: List[dict] = []
         self._pending_queen_portal_si:      int = 0
@@ -1447,25 +1458,52 @@ class DragonTamerGame:
         if not entries:
             return self._end_round()
 
-        portal_entry = next((e for e in entries if e['card'].is_portal), None)
-        if portal_entry:
-            portal_pid    = portal_entry['pid']
-            portal_player = self.players[portal_pid]
-            valid_targets = [p for p in active if p.pid != portal_pid and p.hand]
+        # Dominant-wizard portal: any Wizard whose suit matches the declared element
+        # fires a portal steal before the battle resolves.
+        dominant_wiz_entries = [
+            e for e in entries
+            if e['card'].is_wizard and e['card'].suit == self.declared_el
+        ]
+        if dominant_wiz_entries:
+            # Order: leader first, then clockwise
+            lead_pid = self._lead_pid()
+            n_order  = len(self.order)
+            lead_idx = self.order.index(lead_pid) if lead_pid in self.order else 0
+            def _wiz_order(e):
+                pid = e['pid']
+                if pid not in self.order:
+                    return n_order
+                return (self.order.index(pid) - lead_idx) % n_order
+            dominant_wiz_entries.sort(key=_wiz_order)
 
-            if valid_targets:
-                if not portal_player.is_ai:
-                    self._pending_portal_pid     = portal_pid
+            # Find first wizard whose owner has valid steal targets
+            first_e   = None
+            rest_queue = []
+            for idx, wiz_e in enumerate(dominant_wiz_entries):
+                wiz_pid = wiz_e['pid']
+                targets = [p for p in active if p.pid != wiz_pid and p.hand]
+                if targets:
+                    first_e    = wiz_e
+                    rest_queue = dominant_wiz_entries[idx + 1:]
+                    break
+
+            if first_e:
+                wiz_pid    = first_e['pid']
+                wiz_player = self.players[wiz_pid]
+                targets    = [p for p in active if p.pid != wiz_pid and p.hand]
+                self._pending_wizard_portal_queue = rest_queue
+                if not wiz_player.is_ai:
+                    self._pending_portal_pid     = wiz_pid
                     self._pending_portal_entries = entries
                     return [{
                         'type': 'portal_choose_target',
-                        'portal_pid': portal_pid,
+                        'portal_pid': wiz_pid,
                         'step': si + 1,
-                        'valid_target_pids': [t.pid for t in valid_targets],
+                        'valid_target_pids': [t.pid for t in targets],
                     }]
                 else:
-                    chosen_target = ai_portal_target(portal_player, valid_targets)
-                    return self._execute_portal_steal(portal_pid, chosen_target.pid, entries, si)
+                    chosen = ai_portal_target(wiz_player, targets)
+                    return self._execute_portal_steal(wiz_pid, chosen.pid, entries, si)
 
         return self._resolve_and_finish_step(entries, si)
 
@@ -1547,32 +1585,65 @@ class DragonTamerGame:
 
         return self._finish_step_after_resolve(result, entries, si)
 
-    def _execute_portal_steal(self, portal_pid, target_pid, entries, si):
-        target = self.players[target_pid]
+    def _do_single_steal(self, stealer_pid, target_pid, entries):
+        """Execute one portal/wizard steal. Returns (steal_events, updated_entries)."""
+        target    = self.players[target_pid]
         stealable = list(target.hand)
-
         steal_events = []
         if stealable:
             stealable_cids = {c.cid for c in stealable}
             ordered = [c for c in ordered_hand(target) if c.cid in stealable_cids]
-            stolen = ordered[0]
+            stolen  = ordered[0]
             target.hand.remove(stolen)
             entries = list(entries) + [{
-                'pid': portal_pid,
+                'pid': stealer_pid,
                 'card': stolen,
                 'stolen': True,
                 'stolen_from_pid': target_pid,
                 'stolen_from_name': target.name,
             }]
-            self._log(f"🌀 {self.players[portal_pid].name} used Portal — stole {stolen.label} from {target.name}!")
+            self._log(f"🌀 {self.players[stealer_pid].name} used Portal — stole {stolen.label} from {target.name}!")
             steal_events.append({
                 'type': 'portal_steal',
-                'portal_pid': portal_pid,
-                'portal_name': self.players[portal_pid].name,
+                'portal_pid': stealer_pid,
+                'portal_name': self.players[stealer_pid].name,
                 'target_pid': target_pid,
                 'target_name': target.name,
                 'stolen_card': stolen.to_dict(),
             })
+        return steal_events, entries
+
+    def _execute_portal_steal(self, portal_pid, target_pid, entries, si):
+        steal_events, entries = self._do_single_steal(portal_pid, target_pid, entries)
+
+        # Process the remaining wizard-portal queue (2-deck: multiple dominant Wizards)
+        active = [p for p in self.players.values()
+                  if not p.out and p.pid not in self._skipped_this_round]
+        queue = list(self._pending_wizard_portal_queue)
+        self._pending_wizard_portal_queue = []
+
+        while queue:
+            next_e      = queue.pop(0)
+            next_pid    = next_e['pid']
+            next_player = self.players[next_pid]
+            targets     = [p for p in active if p.pid != next_pid and p.hand]
+            if not targets:
+                continue
+            if not next_player.is_ai:
+                # Human wizard: pause and wait for their target choice
+                self._pending_portal_pid          = next_pid
+                self._pending_portal_entries      = entries
+                self._pending_wizard_portal_queue = queue
+                return steal_events + [{
+                    'type': 'portal_choose_target',
+                    'portal_pid': next_pid,
+                    'step': si + 1,
+                    'valid_target_pids': [t.pid for t in targets],
+                }]
+            else:
+                chosen = ai_portal_target(next_player, targets)
+                more_events, entries = self._do_single_steal(next_pid, chosen.pid, entries)
+                steal_events += more_events
 
         return steal_events + self._resolve_and_finish_step(entries, si)
 
@@ -2371,4 +2442,6 @@ if __name__ == '__main__':
             print("GAME OVER")
             break
     print("\n✅ Engine v3.8 test passed")
+
+
 

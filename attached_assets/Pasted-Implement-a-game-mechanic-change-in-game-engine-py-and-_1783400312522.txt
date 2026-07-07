@@ -1,0 +1,23 @@
+Implement a game mechanic change in game_engine.py (and server.py only if strictly needed). Do NOT touch index.html — the frontend will be updated separately.
+
+THE CHANGE — "Wizard absorbs the Portal":
+1. REMOVE the Portal card entirely (currently the 9 of Clubs/Water). No card has the portal role anymore.
+2. MOVE the Wizard from the 8s to the 9s: all four 9s are now Wizards (8 Wizards in 2-deck games). All 8s become plain number cards. Update card creation, display names, and any sort keys accordingly (Wizard keeps its special sort priority).
+3. NEW WIZARD POWER — when a Wizard's suit matches the round's declared dominant element, that Wizard opens a portal when revealed in battle:
+   - The Wizard's owner chooses ONE opponent (same choose-opponent flow as the old Portal).
+   - The TOP card of that opponent's Main Pile is stolen, blind, into the current battle — exactly the old Portal steal.
+   - The stolen card fights ALONGSIDE the Wizard for its owner: the battle uses the BEST of the two values (if the stolen card is a Dragon or Tamer, its full normal power applies).
+   - When the battle resolves, the stolen card goes to the battle winner's accumulation pile, like every other card on the field (old Portal behavior).
+4. Wizard KEEPS its existing powers (overpowers own-element cards per current rules, Tamer inheritance) IN ADDITION to the portal.
+5. TWO-DECK games: if two dominant-element Wizards are in the same battle, they fire in order: the leader first, then clockwise from the leader.
+6. AI players must handle the new flow: choosing whom to steal from (reuse/adapt the old Portal AI logic per strategy).
+
+CRITICAL COMPATIBILITY REQUIREMENT: reuse the EXACT existing portal event types and payload fields that the frontend already consumes (the portal steal event, stolen-card display data, choose-opponent request/response). The current index.html must keep functioning with zero changes — the same events now originate from a Wizard instead of the 9♣ card.
+
+MEMORY SAFETY (we have OOM history on this Repl):
+- No new per-room history lists, snapshots, or deep copies of hands/piles.
+- Reuse existing event structures; do not add retained state beyond a transient flag for the wizard-portal resolution.
+- Keep websockets==12.0 pinned in requirements.txt.
+- After implementing, run a full 6-player, 2-deck AI game to completion and confirm: no crash, no exit code 137, card integrity checks pass (no duplicated/lost cards through the steal), and memory stays stable.
+
+Report what you changed and the test result. Do not modify any other game rules.

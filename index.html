@@ -3581,6 +3581,7 @@
             if (_roundEndOverlayVisible) {
               // Buffer ALL phase changes while round-end overlay is shown
               if (msg.phase === "leader_declare") _bufferedLeaderDeclare = msg;
+              if (msg.round) updateRoundBadge(msg.round);
               if (gameState) {
                 gameState.phase = msg.phase;
                 if (msg.round) gameState.round = msg.round;
@@ -3669,18 +3670,14 @@
           case "skip_next_cleared":
             if (msg.pid === myPid) {
               addLog("⏳ You are skipping this round (Time Dragon).", "imp");
-              const _mb = document.getElementById("mainBtn");
-              const _pb = document.getElementById("phaseBanner");
-              if (_mb) {
-                _mb.textContent = "Skipping this round…";
-                _mb.disabled = true;
+              _iAmSkippingThisRound = true;
+              if (_awaitingRoundEndContinue || _roundEndOverlayVisible) {
+                // Round-end CONTINUE is on screen — do NOT hijack the button.
+                // The skip UI is applied right after the player clicks Continue.
+                _skipUiPendingAfterContinue = true;
+              } else {
+                applySkipUi();
               }
-              if (_pb) {
-                _pb.textContent = "⏳ You are skipping this round";
-              }
-              _iPickedThisRound = true;
-              selectedCardCids = [];
-              resetStuckTimer(); // arm the watchdog now that we're confirmed skipping
             } else {
               addLog(`⏳ ${nameOf(msg.pid)} skips this round (Time Dragon).`);
             }
@@ -3793,6 +3790,8 @@
 
           case "round_end":
             addLog(`── Round ${msg.round} complete ──`);
+            _iAmSkippingThisRound = false;
+            _skipUiPendingAfterContinue = false;
             _localAccum = {}; // reset accum tracker each round
             setTimeout(() => { try { SFX.roundWin(); } catch(e) {} }, 300);
             if (_hideBattleTimer) {
@@ -4018,12 +4017,7 @@
             _highlightSuit = null;
             applyHandSuitHighlight();
           }
-          if (data.round) {
-            document.getElementById("roundBadge").innerHTML =
-              `Round ${data.round} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
-            const rl = document.getElementById("tableRoundLbl");
-            if (rl) rl.textContent = `Round ${data.round}`;
-          }
+          if (data.round) updateRoundBadge(data.round);
           renderTable();
         } else if (newPhase === "pick_cards") {
           const n =
@@ -4044,6 +4038,7 @@
           }
           // If already skipping, banner/button were already set by skip_next_cleared handler
         } else if (newPhase === "arrange_hand") {
+          if (_iAmSkippingThisRound) { applySkipUi(); renderHand(); return; }
           banner.className = "phase-bar pick";
           banner.innerHTML =
             '<span style="font-size:1.15em;font-weight:900;letter-spacing:2px;">🃏 ARRANGE YOUR HAND</span><br><span style="font-size:0.78em;opacity:0.85;letter-spacing:1px;">ORDER IS IMPORTANT — drag or tap to reorder, then confirm</span>';
@@ -4060,7 +4055,9 @@
             (data.current_step != null ? data.current_step + 1 : 1);
           if (nextStep === 1) hideBattle();
           banner.className = "phase-bar reveal";
-          banner.textContent = `⚔ Get ready for Battle ${nextStep} of ${gameState?.declared_steps || "?"}`;
+          banner.textContent = _iAmSkippingThisRound
+            ? `⏳ Skipping — spectating Battle ${nextStep} of ${gameState?.declared_steps || "?"}`
+            : `⚔ Get ready for Battle ${nextStep} of ${gameState?.declared_steps || "?"}`;
           document.getElementById("battleSection").classList.remove("hidden");
           document.getElementById("stepNum").textContent = nextStep;
           const _st = document.getElementById("stepTotal");
@@ -4985,6 +4982,34 @@
       let _roundEndShowTimer = null;
       let _roundEndOverlayVisible = false;
       let _awaitingRoundEndContinue = false;
+      let _iAmSkippingThisRound = false;
+      let _skipUiPendingAfterContinue = false;
+      function applySkipUi() {
+        _iPickedThisRound = true;
+        selectedCardCids = [];
+        // In reveal phase the skipper keeps an ACTIVE button — with no other
+        // human, nobody else can advance the battles (spectator drives).
+        if (phase === "reveal") { resetStuckTimer(); return; }
+        const _mb = document.getElementById("mainBtn");
+        const _pb = document.getElementById("phaseBanner");
+        if (_mb) {
+          _mb.textContent = "⏳ Skipping — battles will play without you";
+          _mb.disabled = true;
+        }
+        if (_pb) {
+          _pb.className = "phase-bar pick";
+          _pb.textContent = "⏳ You are skipping this round — battles play without you";
+        }
+        resetStuckTimer();
+      }
+      function updateRoundBadge(r) {
+        if (r == null) return;
+        const rb = document.getElementById("roundBadge");
+        if (rb)
+          rb.innerHTML = `Round ${r} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
+        const rl = document.getElementById("tableRoundLbl");
+        if (rl) rl.textContent = `Round ${r}`;
+      }
       let _bufferedLeaderDeclare = null;
       let _stepWins = {};
       let _pendingRoundEndMsg = null;
@@ -5081,6 +5106,11 @@
         }
         _bufferedLeaderDeclare = null;
         if (gameState?.phase) setPhase(gameState.phase, gameState);
+        if (gameState?.round != null) updateRoundBadge(gameState.round);
+        if (_skipUiPendingAfterContinue) {
+          _skipUiPendingAfterContinue = false;
+          applySkipUi();
+        }
       }
 
       function showPortalModal(msg) {
