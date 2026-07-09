@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
-    <title>🐉 Dragon Tamer</title>
+    <title>🐉 The Young Dragon Tamer</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap");
@@ -851,6 +851,27 @@
         color: #eeee33;
       }
 
+      .dominant-bolt.bolt-charged {
+        animation: boltStorm 1.1s ease-in-out infinite;
+        filter: drop-shadow(0 0 4px rgba(180, 130, 255, 0.9));
+        font-size: 22px;
+      }
+      @keyframes boltStorm {
+        0%, 100% { opacity: 0.85; transform: scale(1); }
+        42% { opacity: 0.9; transform: scale(1.02); }
+        48% { opacity: 1; transform: scale(1.3) rotate(-6deg); filter: drop-shadow(0 0 8px rgba(210,160,255,1)); }
+        54% { opacity: 1; transform: scale(1.12) rotate(4deg); }
+        60% { opacity: 0.9; transform: scale(1); }
+      }
+      .card.power-charged {
+        animation: powerSurge 1.7s ease-in-out infinite;
+      }
+      @keyframes powerSurge {
+        0%, 100% { box-shadow: 0 0 5px 1px rgba(255, 215, 100, 0.25); }
+        44% { box-shadow: 0 0 8px 2px rgba(255, 230, 130, 0.5); }
+        50% { box-shadow: 0 0 16px 4px rgba(190, 130, 255, 0.85); }
+        56% { box-shadow: 0 0 8px 2px rgba(255, 230, 130, 0.5); }
+      }
       .dominant-bolt {
         position: absolute;
         top: 3px;
@@ -1453,7 +1474,7 @@
     <div class="screen" id="lobbyScreen">
       <div class="logo-area">
         <div id="lobbyCardBack" style="width:90px;height:128px;border-radius:10px;border:2px solid rgba(184,134,11,.7);box-shadow:0 0 24px rgba(255,215,0,.35),0 8px 24px rgba(0,0,0,.6);margin:0 auto 14px;background-size:cover;background-position:center;"></div>
-        <h1>DRAGON TAMER</h1>
+        <h1>THE YOUNG DRAGON TAMER</h1>
         <div class="subtitle">Multiplayer Card Game</div>
       </div>
       <div class="lobby-card">
@@ -1646,7 +1667,7 @@
     <!-- ══ GAME SCREEN ══ -->
     <div class="screen hidden" id="gameScreen">
       <div class="top-bar">
-        <span class="game-title">DRAGON TAMER</span>
+        <span class="game-title">THE YOUNG DRAGON TAMER</span>
         <span class="round-badge" id="roundBadge">Round 1</span>
         <div style="display: flex; align-items: center; gap: 6px">
           <button
@@ -1959,11 +1980,10 @@
     <button id="soundTestToggle" onclick="toggleSoundPanel()">🎵 TEST</button>
     <div id="soundTestPanel" style="display:none;">
       <h4>🎵 SOUND TEST</h4>
-      <button class="sound-test-btn" onclick="SFX.dragon()">🐉 Dragon captured</button>
       <button class="sound-test-btn" onclick="SFX.duelStart()">⚔️ Duel start</button>
       <button class="sound-test-btn" onclick="SFX.duelWin()">🏆 Duel won</button>
       <button class="sound-test-btn" onclick="SFX.queenFury()">👑 Queen Fury</button>
-      <button class="sound-test-btn" onclick="SFX.portal()">🌀 Portal steal</button>
+      <button class="sound-test-btn" onclick="SFX.portal()">🧙 Wizard portal</button>
       <button class="sound-test-btn" onclick="SFX.timeDragon()">⏳ Time Dragon</button>
       <button class="sound-test-btn" onclick="SFX.spaceDragon()">🌌 Space Dragon</button>
       <button class="sound-test-btn" onclick="SFX.lovePower()">💕 Love Power</button>
@@ -1972,6 +1992,9 @@
       <button class="sound-test-btn" onclick="SFX.gameWin()">🏆 GAME WON!</button>
       <button class="sound-test-btn" onclick="SFX.reveal()">🎲 Battle reveal</button>
       <button class="sound-test-btn" onclick="SFX.pick()">🃏 Card picked</button>
+      <button class="sound-test-btn" onclick="SFX.battleLoss()">💔 Battle loss</button>
+      <button class="sound-test-btn" onclick="SFX.arrangeHand()">🖐 Arrange hand</button>
+      <button class="sound-test-btn" onclick="SFX.stolen()">😱 Card stolen</button>
     </div>
 
     <!-- ══ WAITING MODAL ══ -->
@@ -2093,6 +2116,18 @@
           </div>
           <div id="goLastBattleRows"></div>
         </div>
+        <div
+          class="hidden"
+          id="goDragonTitle"
+          style="
+            font-family: Cinzel, serif;
+            font-size: 12px;
+            letter-spacing: 2px;
+            color: rgba(212, 170, 64, 0.85);
+            margin: 32px 0 14px;
+            text-align: center;
+          "
+        ></div>
         <div class="go-dragons-row hidden" id="goDragonCards"></div>
         <div class="go-all-hands hidden" id="goAllHands"></div>
         <button
@@ -2228,10 +2263,11 @@
     <!-- ══ PORTAL OVERLAY ══ -->
     <div class="overlay hidden" id="portalOverlay">
       <div class="modal">
-        <h2>🌀 Portal Card!</h2>
-        <div class="dragon-row">🌀</div>
+        <h2>🌀 The Wizard Opens a Portal!</h2>
+        <div class="dragon-row">🧙</div>
         <p id="portalText">
-          Your Portal card lets you steal a blind card from an opponent. Choose
+          Your dominant Wizard tears open a portal — steal the top card of a
+          rival's Main Pile, blind. The prize fights alongside your Wizard. Choose
           your target:
         </p>
         <div class="modal-btns" id="portalBtns"></div>
@@ -2529,23 +2565,55 @@
 
       const SFX = {
         // 🐉 Dragon captured — animal roar/scream: harsh noise burst + falling shriek
-        dragon() {
+        // 😱 Card stolen from my hand — sharp snatch: rising zip + thud
+        stolen() {
           const ctx = _getCtx(); if (!ctx) return;
           try {
-            // Noise burst (roar body)
-            const buf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
-            const d = buf.getChannelData(0);
-            for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 0.4);
-            const src2 = ctx.createBufferSource();
-            src2.buffer = buf;
-            const g = ctx.createGain(); g.gain.setValueAtTime(0.6, ctx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-            const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 600; f.Q.value = 0.8;
-            src2.connect(f); f.connect(g); g.connect(ctx.destination);
-            src2.start(); src2.stop(ctx.currentTime + 0.3);
-            // Falling shriek
-            setTimeout(() => _sweep(900, 180, .5, 'sawtooth', .35), 80);
-            setTimeout(() => _sweep(600, 100, .4, 'sawtooth', .2), 250);
+            _sweep(300, 1400, .18, 'sawtooth', .22);
+            setTimeout(() => {
+              const c = _getCtx(); if (!c) return;
+              const o = c.createOscillator(); const g = c.createGain();
+              o.type = 'sine'; o.frequency.setValueAtTime(110, c.currentTime);
+              o.frequency.exponentialRampToValueAtTime(55, c.currentTime + .22);
+              g.gain.setValueAtTime(.5, c.currentTime);
+              g.gain.exponentialRampToValueAtTime(.001, c.currentTime + .25);
+              o.connect(g); g.connect(c.destination);
+              o.start(); o.stop(c.currentTime + .27);
+            }, 190);
+          } catch(e) {}
+        },
+
+        // 💔 Battle loss — two falling minor tones
+        battleLoss() {
+          const ctx = _getCtx(); if (!ctx) return;
+          try {
+            _tone(392, .28, 'sawtooth', .13, 0);
+            _tone(311, .34, 'sawtooth', .12, 140);
+            _tone(262, .42, 'sawtooth', .10, 300);
+          } catch(e) {}
+        },
+
+        // 🖐 Arrange hand — quick card-shuffle ticks
+        arrangeHand() {
+          const ctx = _getCtx(); if (!ctx) return;
+          try {
+            [0, 110, 220, 330].forEach((t, i) => {
+              setTimeout(() => {
+                const c = _getCtx(); if (!c) return;
+                const len = Math.floor(c.sampleRate * 0.045);
+                const buf = c.createBuffer(1, len, c.sampleRate);
+                const d = buf.getChannelData(0);
+                for (let j = 0; j < len; j++) d[j] = (Math.random()*2-1)*Math.pow(1-j/len,1.2);
+                const s2 = c.createBufferSource(); s2.buffer = buf;
+                const f = c.createBiquadFilter(); f.type='bandpass';
+                f.frequency.value = 1800 + i*350; f.Q.value = 1.2;
+                const g = c.createGain();
+                g.gain.setValueAtTime(0.32, c.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.05);
+                s2.connect(f); f.connect(g); g.connect(c.destination);
+                s2.start(); s2.stop(c.currentTime + 0.055);
+              }, t);
+            });
           } catch(e) {}
         },
 
@@ -2753,9 +2821,10 @@
       // ══ SFX serializer — sounds never overlap: each reserves its duration,
       // later sounds wait their turn (or are dropped if the backlog exceeds 2.5s)
       const _SFX_RAW = {};
-      const _SFX_DUR = { dragon: 900, duelStart: 900, duelWin: 700, queenFury: 1100,
+      const _SFX_DUR = { duelStart: 900, duelWin: 700, queenFury: 1100,
         portal: 700, timeDragon: 1200, spaceDragon: 1100, lovePower: 1000,
-        playerWins: 1400, roundWin: 900, gameWin: 1700, reveal: 3200, pick: 150 };
+        playerWins: 1400, roundWin: 900, gameWin: 1700, reveal: 3200, pick: 150,
+        battleLoss: 800, arrangeHand: 600, stolen: 550 };
       let _sfxBusyUntil = 0;
       Object.keys(_SFX_DUR).forEach((name) => {
         if (typeof SFX[name] !== 'function') return;
@@ -2788,7 +2857,6 @@
           if (s.includes('Love Power'))    { SFX.lovePower(); return; }
           if (s.includes('Portal') || s.includes('portal')) { SFX.portal(); return; }
           if (s.includes('Duel won'))      { SFX.duelWin(); return; }
-          if (s.includes('dragon') || s.includes('Dragon')) { SFX.dragon(); return; }
         } catch(e) {}
       }
 
@@ -3318,7 +3386,7 @@
             updateWaitPlayerList();
             {
               const rb = document.getElementById("roundBadge");
-              if (rb) rb.innerHTML = `Goal: ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
+              if (rb) rb.innerHTML = `Goal: ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img"> to win`;
             }
             break;
 
@@ -3651,7 +3719,10 @@
               addLog(`Battle ${msg.step}: ${nameOf(msg.winner_pid)} wins`, "imp");
               _stepWins[msg.winner_pid] = (_stepWins[msg.winner_pid] || 0) + 1;
               if (msg.winner_pid === myPid) setTimeout(() => { try { SFX.playerWins(); } catch(e) {} }, 100);
-              else setTimeout(() => _playSfxForEvents(msg.special_events), 200);
+              else {
+                setTimeout(() => { try { SFX.battleLoss(); } catch(e) {} }, 100);
+                setTimeout(() => _playSfxForEvents(msg.special_events), 250);
+              }
               // Track cards in local accum for display
               const _winEntries = msg.entries || [];
               if (!_localAccum[msg.winner_pid]) _localAccum[msg.winner_pid] = [];
@@ -3687,7 +3758,7 @@
             if (msg.portal_pid === myPid) showPortalModal(msg);
             else
               addLog(
-                `🌀 ${nameOf(msg.portal_pid)} plays Portal — choosing a target...`,
+                `🌀 ${nameOf(msg.portal_pid)}'s Wizard opens a portal — choosing a target...`,
               );
             break;
 
@@ -3705,6 +3776,8 @@
                 `${msg.stolen_card?.label || "a card"} from ${msg.target_name || nameOf(msg.target_pid)}!`,
               "imp",
             );
+            if (msg.target_pid === myPid)
+              setTimeout(() => { try { SFX.stolen(); } catch(e) {} }, 50);
             break;
 
           case "portal_steal":
@@ -3712,6 +3785,8 @@
               `🌀 ${msg.portal_name || nameOf(msg.portal_pid)} stole ${msg.stolen_card?.label || "a card"} from ${msg.target_name || nameOf(msg.target_pid)}!`,
               "imp",
             );
+            if (msg.target_pid === myPid)
+              setTimeout(() => { try { SFX.stolen(); } catch(e) {} }, 50);
             break;
 
           case "time_dragon_applied":
@@ -4039,6 +4114,7 @@
           // If already skipping, banner/button were already set by skip_next_cleared handler
         } else if (newPhase === "arrange_hand") {
           if (_iAmSkippingThisRound) { applySkipUi(); renderHand(); return; }
+          setTimeout(() => { try { SFX.arrangeHand(); } catch(e) {} }, 0);
           banner.className = "phase-bar pick";
           banner.innerHTML =
             '<span style="font-size:1.15em;font-weight:900;letter-spacing:2px;">🃏 ARRANGE YOUR HAND</span><br><span style="font-size:0.78em;opacity:0.85;letter-spacing:1px;">ORDER IS IMPORTANT — drag or tap to reorder, then confirm</span>';
@@ -4184,6 +4260,7 @@
 
         const myIdx = order.indexOf(myPid);
         const leadPid = gameState.lead_pid;
+        const nextLeadPid = gameState.next_lead_pid || null;
         const isTurnPid = phase === "leader_declare" ? leadPid : null;
 
         order.forEach((pid, i) => {
@@ -4247,8 +4324,11 @@
           }
 
           seat.innerHTML = `
-      <div class="seat-avatar" style="width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize * 0.38)}px;">
-        ${isLeader ? '<span class="seat-crown">👑</span>' : ""}${initials}
+      <div class="seat-avatar" style="position:relative;width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize * 0.38)}px;">
+        ${isLeader ? '<span class="seat-crown">👑</span>' : ""}${initials}${
+          pid === nextLeadPid && pid !== leadPid && !p.out
+            ? '<span title="Next leader" style="position:absolute;top:-4px;right:-6px;width:9px;height:9px;background:linear-gradient(135deg,#F2DA8A,#B8860B);transform:rotate(45deg);border:1px solid rgba(255,255,255,.5);box-shadow:0 0 6px rgba(212,170,64,.9);z-index:3;"></span>'
+            : ""}
       </div>
       <div class="seat-name">${p.name}</div>
       ${_fanHTML}
@@ -4385,8 +4465,10 @@
           (phase === "pick_cards" ||
             phase === "arrange_hand" ||
             phase === "reveal");
+        const isCharged = isDominant && (card.is_wizard || card.is_queen);
+        if (isCharged) el.classList.add("power-charged");
         const dominantBolt = isDominant
-          ? '<span class="dominant-bolt">⚡</span>'
+          ? `<span class="dominant-bolt${isCharged ? " bolt-charged" : ""}">⚡</span>`
           : "";
 
         const orderBadge =
@@ -4461,12 +4543,6 @@
       <div class="card-spec-name">Wizard</div>
       <div class="card-spec-sub">Arcane Arts</div>
     </div>`;
-        } else if (card.is_portal) {
-          centerHTML = `<div class="card-center">
-      <div class="card-big-icon">🌀</div>
-      <div class="card-spec-name">Portal</div>
-      <div class="card-spec-sub">Steal a Card</div>
-    </div>`;
         } else {
           const word = NUMBER_WORD[card.orig_rank] || String(card.orig_rank);
           const fontSize =
@@ -4500,9 +4576,13 @@
         const isPick = phase === "pick_cards" && !alreadyPicked;
         const canReorder = phase === "arrange_hand";
         const need = isPick ? pickNeed() : gameState?.declared_steps || 0;
-        document.getElementById("handTitle").textContent = isPick
-          ? `Your Hand \u2014 select ${need}`
-          : `Your Hand (${me.hand.length} cards)`;
+        {
+          const _dr = (me.hand || []).filter((c) => c.is_dragon).length;
+          const _drHTML = ` · ${_dr}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
+          document.getElementById("handTitle").innerHTML = isPick
+            ? `Your Hand \u2014 select ${need}${_drHTML}`
+            : `Your Hand (${me.hand.length} cards${_drHTML})`;
+        }
         const _hc = document.getElementById("handCards");
         if (_hc) _hc.classList.toggle("pick-mode", !!isPick);
 
@@ -4520,7 +4600,7 @@
 
           if (canReorder && idx === 0 && me.hand.length > 0) {
             const dot = document.createElement("span");
-            dot.title = "Portal target \u2014 leftmost card stolen first";
+            dot.title = "Steal target \u2014 leftmost card taken first";
             dot.style.cssText =
               "position:absolute;top:2px;left:50%;transform:translateX(-50%);" +
               "font-size:8px;color:#00CED1;opacity:.8;pointer-events:none;z-index:5;";
@@ -4696,7 +4776,9 @@
 
           const wrap = document.createElement("div");
           wrap.className = "battle-card-wrap";
-          if (entry.card && entry.card.is_portal) wrap.dataset.portal = "true";
+          if (entry.card && (entry.card.is_portal ||
+              (entry.card.is_wizard && (entry.extra_cards || []).length)))
+            wrap.dataset.portal = "true";
           wrap.appendChild(renderCardEl(entry.card, false, false, -1));
           cardsDiv.appendChild(wrap);
           const duelCards = entry.duel_cards || [];
@@ -4762,8 +4844,10 @@
           // Captured card — overlapping below the portal card in same row
           const extraCards = entry.extra_cards || [];
           extraCards.forEach((ec) => {
-            // Find the portal card wrap by its marker
-            const targetWrap = cardsDiv.querySelector('.battle-card-wrap[data-portal="true"]');
+            // Find the portal-bearer wrap (dominant Wizard) — else the main card
+            const targetWrap =
+              cardsDiv.querySelector('.battle-card-wrap[data-portal="true"]') ||
+              cardsDiv.querySelector(".battle-card-wrap");
             if (targetWrap) {
               targetWrap.style.position = "relative";
               targetWrap.style.zIndex = "2";
@@ -5006,7 +5090,7 @@
         if (r == null) return;
         const rb = document.getElementById("roundBadge");
         if (rb)
-          rb.innerHTML = `Round ${r} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
+          rb.innerHTML = `Round ${r} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img"> to win`;
         const rl = document.getElementById("tableRoundLbl");
         if (rl) rl.textContent = `Round ${r}`;
       }
@@ -5209,17 +5293,23 @@
           }
           try {
             const dragonRow = document.getElementById("goDragonCards");
+            const dragonTitle = document.getElementById("goDragonTitle");
             dragonRow.innerHTML = "";
             const dragons = msg.all_dragons || [];
-            if (isMe && dragons.length) {
+            if (dragons.length) {
+              dragonTitle.innerHTML = isMe
+                ? "⚔️ YOUR DRAGON COLLECTION"
+                : `⚔️ ${_esc(msg.winner_name || nameOf(msg.winner_pid)).toUpperCase()}'S DRAGON COLLECTION`;
               dragons.forEach((card) => {
                 const wrap = document.createElement("div");
                 wrap.className = "battle-card-wrap";
                 wrap.appendChild(renderCardEl(card, false, false, -1));
                 dragonRow.appendChild(wrap);
               });
+              dragonTitle.classList.remove("hidden");
               dragonRow.classList.remove("hidden");
             } else {
+              dragonTitle.classList.add("hidden");
               dragonRow.classList.add("hidden");
             }
           } catch (e) {
@@ -5233,15 +5323,37 @@
               const hdr = document.createElement("div");
               hdr.style.cssText =
                 "font-family:Cinzel,serif;font-size:11px;letter-spacing:1px;color:rgba(253,246,227,.4);margin:34px 0 12px;text-align:center;";
-              hdr.textContent = "⚔️ DRAGON COLLECTION · FINAL HANDS";
+              hdr.textContent = "🏅 FINAL STANDINGS";
               allHandsEl.appendChild(hdr);
-              allPlayers.forEach((p) => {
+              // ── Instant standings: winner is crowned 1st; the rest rank by
+              // dragons held, ties broken by cards remaining in the palace.
+              const _standings = [...allPlayers].sort((a, b) => {
+                if (a.pid === msg.winner_pid) return -1;
+                if (b.pid === msg.winner_pid) return 1;
+                if ((b.dragons || 0) !== (a.dragons || 0))
+                  return (b.dragons || 0) - (a.dragons || 0);
+                return ((b.hand || []).length) - ((a.hand || []).length);
+              });
+              const _medals = ["🥇", "🥈", "🥉"];
+              let _prevKey = null, _prevRank = 0;
+              _standings.forEach((p, i) => {
+                if (p.pid === msg.winner_pid) {
+                  p._rank = 1;
+                } else {
+                  const key = `${p.dragons || 0}|${(p.hand || []).length}`;
+                  p._rank = key === _prevKey ? _prevRank : i + 1;
+                  _prevKey = key; _prevRank = p._rank;
+                }
+              });
+              _standings.forEach((p) => {
                 const row = document.createElement("div");
                 row.className = "go-player-row";
                 const nameEl = document.createElement("div");
                 nameEl.className = "go-player-name";
+                const rankBadge =
+                  _medals[p._rank - 1] || `${p._rank}·`;
                 const prefix =
-                  p.pid === msg.winner_pid ? "🏆 " : p.out ? "💀 " : "";
+                  `${rankBadge} ` + (p.out && p.pid !== msg.winner_pid ? "💀 " : "");
                 nameEl.innerHTML = `${prefix}${_esc(p.name)}  ·  ${p.dragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img">`;
                 const cardsDiv = document.createElement("div");
                 cardsDiv.className = "go-player-cards";
@@ -5488,7 +5600,7 @@
               color: var(--gold-bright);
             "
           >
-            <img src="" class="dragon-emoji-img" style="width:1.1em;height:1.1em;vertical-align:middle;display:inline-block;"> <span id="rulesTitleTxt">מאלף הדרקונים</span>
+            <img src="" class="dragon-emoji-img" style="width:1.1em;height:1.1em;vertical-align:middle;display:inline-block;"> <span id="rulesTitleTxt">מאלף הדרקונים הצעיר</span>
           </div>
           <button
             onclick="document.getElementById('rulesOverlay').classList.add('hidden')"
@@ -5525,79 +5637,86 @@
       const RULES = {
         he: `
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;">🎯 מטרת המשחק</h2>
-<p>אסוף את מספר הדרקונים שהוכרז כדי להגן על טירתך ולהביס את אויביך!</p>
+<p>הדרקונים שומרים על הממלכה — ומי אשר יגייס לכוחותיו די מהם, הוא אשר ימלוך בה. לכוד את מספר הדרקונים שנקבע בפתיחת המשחק (כברירת מחדל 5 בחפיסה אחת, 10 בשתיים) כדי להגן על טירתך ולזכות בניצחון. הדרקונים הם האסים של החפיסה — ולצדם שתי חיות אגדיות: דרקון הזמן ודרקון המרחב (הג'וקרים).</p>
 
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🔄 מהלך המערכה &amp; ⭐ הכרזת המוביל</h2>
-<p>בכל מערכה, המוביל התורן פותח בהכרזת מספר הקרבות והיסוד הדומיננטי. כל קלף מאלמנט זה זוכה ביתרון קל בקרב. השחקנים בוחרים קלפים בסתר — קלף אחד לכל קרב — ומסדרים אותם באופן הרצוי, תוך שמירה על סדר הכוחות שנשארים בטירה, למקרה שייקראו לדו-קרב. כשהכול מוכן, הקרב מתחיל — כל השחקנים חושפים קלפיהם בו-זמנית. המנצח בכל קרב אוסף את כל הקלפים שהשתתפו לקופת הצבירה שלו, שנשמרת עד סוף המערכה — ואז חוזרת לארמונו.</p>
+<p>לפני המערכה הראשונה, כל שחקן שולף קלף יחיד מהחפיסה המעורבבת — בעל הקלף הגבוה מוכתר כ<strong>מוביל הראשון</strong>. לאחר מכן נאספת החפיסה, מעורבבת מחדש ומחולקת שווה בשווה בין כל השחקנים; הקלפים הנותרים מצטרפים לארמון המוביל.</p>
+<p>כל סיבוב הוא <strong>מערכה</strong>, המוכרעת על פני מספר קרבות.</p>
+<p><strong>1. המוביל מכריז.</strong> מוביל המערכה מכריז כמה קרבות תכלול המערכה — אחד עד ארבעה בחפיסה אחת, עד חמישה בשתיים — ובוחר את <strong>היסוד הדומיננטי</strong>: אש 🔥, מים 💧, אוויר ${AIR_SVG_SM} או אדמה ${EARTH_SVG_SM}. כל קלף מיסוד זה נלחם עם יתרון קל בקרב.</p>
+<p><strong>2. בחר את כוחותיך וקבע את סדרם.</strong> כל שחקן בוחר קלף אחד לכל קרב שהוכרז, הרחק מעיני יריביו, ומסדר אותם בסדר שבו יילחמו. בחר בתבונה גם את מה שנשאר מאחור — הקלפים שנותרו בטירתך הם <strong>הקופה הראשית</strong> שלך, וסדרם קובע: היד מאורגנת משמאל לימין; הקלף השמאלי ניצב בראש הקופה — ראשון להישלף אם ייקרא דו-קרב... אך גם ראשון להיחטף אם פורטל של יריב או זעם המלכה יפרצו אל ארמונך. שמור על החזקים שבכוחותיך — או חשוף אותם, על אחריותך.</p>
+<p><strong>3. קרב!</strong> הקרבות נערכים אחד אחר השני — כל השחקנים חושפים את קלפיהם בו-זמנית, והקלף החזק כובש את השדה. המנצח אוסף את כל הקלפים שהשתתפו אל <strong>קופת הצבירה</strong> שלו — שלל השמור עד תום המערכה.</p>
+<p><strong>4. המערכה מסתיימת.</strong> כל השלל והכוחות שנותרו שבים אל ארמונו של כל שחקן, וההובלה עוברת לשחקן הבא בשולחן — לפי סדר השעון, אלא אם במהלך המלחמה, הנסיכה העניקה את זכות ההובלה לבחיר ליבה...</p>
 
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">⚔️ דו-קרב</h2>
-<p>במידה ונוצר שיוויון בין הקלפים המובילים — החרבות נשלפות. כל שחקן שולף קלף אחד מראש קופת היד שלו — החזק ביניהם מנצח. אם התיקו נמשך — הדו-קרב נמשך, עד ההכרעה.</p>
+<p>כאשר שני שחקנים או יותר חושפים את הקלף החזק ביותר — החרבות נשלפות. כל מתמודד מושך את הקלף העליון מהקופה הראשית שלו — והחזק מכריע את הקרב וזוכה בכל השלל, כולל קלפי הדו-קרב עצמם. אם הגורל שב ומשווה — המאבק ניטש עד שיוכרע מנצח. מתמודד שארמונו התרוקן, ולא נותר בידו כל קלף — מנמיך את חרבו — ונכנע.</p>
 
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">✨ הקלפים</h2>
 
-<p><strong><img src="" class="dragon-emoji-img" style="width:1.1em;height:1.1em;vertical-align:middle;display:inline-block;"> דרקון</strong><br>הדרקונים הם היצורים האדירים והמסוכנים ביותר בממלכה. הם מביסים בקלות כל יצור חי אחר — פרט למאלף הצעיר, שנבחר ואומן בקפידה למטרה הקדושה: אילוף ואימון של הדרקונים האימתניים. רק איסוף מספר מספיק מהם יבטיח את שגשוג הממלכה.</p>
+<p><strong><img src="" class="dragon-emoji-img" style="width:1.1em;height:1.1em;vertical-align:middle;display:inline-block;"> דרקון — האס והג'וקרים</strong><br>הדרקונים הם היצורים האדירים והמסוכנים ביותר בממלכה. לכל אלמנט דרקון משלו — אש 🔥, מים 💧, אוויר ${AIR_SVG_SM} ואדמה ${EARTH_SVG_SM} — ומעליהם מרחפות שתי חיות אגדיות שאינן כפופות לשום יסוד: דרקון הזמן ודרקון המרחב, שעליהם נרחיב בהמשך. הדרקונים מביסים בקלות כל יצור חי אחר — פרט למאלף הצעיר, שנבחר ואומן למטרה קדושה: הכנעת החיות האימתניות הללו. רק מי שיאסוף די מהם יבטיח את שגשוג ממלכתו.</p>
 
-<p><strong>🧑 מאלף</strong><br>כאמור, המאלף הצעיר הוא היחיד בממלכה שיודע להתמודד עם הדרקונים האיומים — ואפילו לרתום אותם לטובתו.</p>
+<p><strong>🧑 מאלף הדרקונים — ה-2</strong><br>המאלף הצעיר הוא היחיד בממלכה היודע כיצד להתמודד מול הדרקונים האימתניים — ואף לרסנם ולהטותם לטובת ממלכתו. אך מול כל יריב אחר, אין הוא אלא נער פשוט, צנוע במעלה.</p>
 
-<p><strong>👑 מלך</strong><br>לוחם עז בשדה הקרב — מוביל כוחותיו באומץ ונחישות, מוחץ אויבים ללא היסוס. אך גם הוא יודע כי בחזרתו לטירה, שם המלכה היא השולטת. כדאי לו לא לעורר את זעמה... אחרת, הדברים עלולים לצאת משליטה.</p>
+<p><strong>👑 מלך — ה-13</strong><br>לוחם עז-נפש בשדה הקרב — מוביל את כוחותיו באומץ ובנחישות, מכריע כמעט כל יריב ללא היסוס. אך גם הוא יודע שבין חומות הטירה, המלכה היא השליטה העליונה. מוטב לו שלא לעורר את זעמה... אחרת הדברים עלולים לצאת קצת משליטה...</p>
 
-<p><strong>💎 מלכה &amp; זעם המלכה</strong><br>המלכה מוערכת ב-12, אך יש לה צד אכזרי. בזעמה, היא מוחצת את מלך יסודה — וכשהיסוד הדומיננטי זורם בעורקיה, שום מלך בארץ אינו בטוח. כל מעשה זעם כזה פותח שער מיוחד באמצעותו היא מסוגלת לגנוב את קלף הכוננות העליון מטירת יריב — ישר לאוצרה.</p>
+<p><strong>💎 מלכה ו'זעם המלכה' — ה-12</strong><br>ערכה של המלכה הוא 12 — אך יש בה צד סוער. בזעמה, היא גוברת על המלך בן סדרתה; וכאשר יסודה הוא הדומיננטי — אף מלך בשדה אינו בטוח מולה. בכל התפרצות כעס שכזו, נפתח פורטל אל ארמונו של יריב לבחירתה, והקלף העליון מקופתו הראשית יישאב היישר אל אוצרה.</p>
 
-<p><strong>👸 נסיכה</strong><br>הנסיכה אינה נושאת נשק — אך השפעתה מורגשת בשדה הקרב ובחצר המלוכה כאחד. כל אזרח בממלכה היה מוכן להניח את חרבו למענה, אך היא תיתן את ליבה למאלף הצעיר והצנוע — ובכך תעניק לו את הכוח להוביל את המערכה הבאה.</p>
+<p><strong>👸 נסיכה — (J)</strong><br>הנסיכה אינה נושאת כל נשק — אך השפעתה ניכרת בשדה הקרב ובחצר המלוכה כאחד. כל נתין בממלכה יניח את חרבו למענה, אך את ליבה תעניק רק למאלף הצעיר והצנוע — ובכך תקנה לו את היכולת להוביל את המערכה הבאה.</p>
 
-<p><strong>⏳ דרקון הזמן</strong><br>מי שלוכד את המפלצת הזו ניצב בפני בחירה גורלית: לחזור בזמן ולתפוס את הקלפים מהקרב הקודם (בתנאי שלא נוכח בהם דרקון אחר), לקפוץ קדימה ולהחמיץ את כל המערכה הבאה — או פשוט לתת לכוח לדעוך ולא לעשות כלום.</p>
+<p><strong>⏳ דרקון הזמן</strong><br>שני הדרקונים האגדיים — דרקון הזמן ודרקון המרחב — משתווים בעוצמתם לדרקון החזק ביותר הנוכח; ותמיד יילחמו על זכותם לשלוט. מי שלוכד את דרקון הזמן ניצב בפני הכרעה גורלית: לשוב <strong>אחורה</strong> ולבזוז את קלפי הקרב הקודם — אלא אם דרקון אחר חוסם אותו; לזנק <strong>קדימה</strong> ולהחסיר את המערכה הבאה כולה — צופה בקרבות מן הצד. או להניח לכוח לדעוך — ולבחור <strong>בלא-כלום</strong>.</p>
 
-<p><strong>🌌 דרקון המרחב</strong><br>מי ששובה את היצור הזה יכול להעביר את מיקומו בשולחן מיידית — או לבחור להישאר, ולתת לרגע לחלוף.</p>
+<p><strong>🌌 דרקון המרחב</strong><br>מי שלוכד יצור זה, יכול לעוות את חוקי המרחב, ובהרף עין להחליף את מקומו עם כל יריב סביב השולחן — וכך לעצב מחדש את סדר ההובלה. או להישאר על עומדו — ולתת לכוכבים להמשיך במסעם...</p>
 
-<p><strong>🧙 קוסם</strong><br>אמן האמנויות הנסתרות, הקוסם מכופף את חוקי הקרב לרצונו. כישוף אחד מספיק לנצח כל יצור אחר מיסודו — פרט לדרקונים האדירים שנותרים מעבר להישגו — אלא אם יצליח להשתלט על המאלף התמים ויירש ממנו את כוחו לשלוט בחיות אלו.</p>
-
-<p><strong>🌀 פורטל (9♣)</strong><br>שער מסתורי המופיע ללא התראה. כששולפים אותו, הוא פורץ מעבר ישירות אל מבצר של יריב, וגוזל לטובתו אחד מכוחותיו — ישר לשדה הקרב!</p>
+<p><strong>🧙 מכשף — ה-9</strong><br>אמן תורת הנסתר, המכשף מכופף את חוקי הקרב לרצונו. די בלחש אחד כדי לגבור על כל יצור בן יסודו — פרט, כמובן, לדרקונים האדירים, שנותרים מעבר להישג ידו... אלא אם ייקלע לקרב המאלף התמים בן יסודו — ויוריש לו את כוחו לשלוט בחיות הללו. אך אומנותו האמיתית מתעוררת כאשר יסודו מוכרז כדומיננטי, אז הקוסם פורץ פורטל אל מצודת אויב, ושואב את הקלף העליון מקופתו הראשית — היישר אל שדה הקרב, להילחם לצידו. החזק מבין השניים מוביל את ההסתערות.</p>
 
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🏆 ניצחון</h2>
-<p>בסוף כל מערכה, אם שחקן הגיע למספר הדרקונים שהוחלט — הוא מכריז על ניצחונו ועל יכולתו לשמור על הממלכה. סוף המשחק!</p>
+<p>בתום כל מערכה נערכת הספירה: שחקן שאסף את מספר הדרקונים הנדרש, יוכל להגן מעתה על טירתו בבטחון, ולשלח באויביו את היצורים האימתניים כל אימת שיידרש. שאר האצילים מדורגים על פי הדרקונים שבחזקתם. מי ייתן וממלכתך תשגשג לעד!</p>
 `,
         en: `
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;">🎯 The Quest</h2>
-<p>Collect the declared number of Dragons to protect your castle and defeat your enemies!</p>
+<p>Dragons guard the realm — and whoever subdues enough of them rules it. Capture the number of Dragons set at the start of the game (usually 5 with one deck, 10 with two) to protect your castle and claim victory. The Dragons are the Aces of the deck — joined by two legendary beasts, the Time Dragon and the Space Dragon (the Jokers).</p>
 
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🔄 Round Flow &amp; ⭐ Leader's Declaration</h2>
-<p>Each round, the leader opens by declaring the number of battles ahead and the dominant element. Every card of that element gains a slight edge in combat. Players then select their cards in secret — one per battle — and arrange them in the order they wish to play, mindful of the forces remaining in their castle, should a duel be called. When all are ready, battle begins — all players reveal their cards simultaneously. The winner of each battle collects all cards played into his accumulation pile, held until the end of the campaign, when they return to his palace.</p>
+<p>Before the first campaign, each player draws a single card from the shuffled deck — the highest card crowns the <strong>first leader</strong>. The deck is then gathered, shuffled anew, and dealt evenly among all players; any remaining cards join the leader's palace.</p>
+<p>Each round is a <strong>campaign</strong>, fought over several battles.</p>
+<p><strong>1. The Leader declares.</strong> The round's leader announces how many battles the campaign will hold — one to four with a single deck, up to five with two — and names the <strong>dominant element</strong>: Fire 🔥, Water 💧, Air ${AIR_SVG_SM}, or Earth ${EARTH_SVG_SM}. Every card of that element fights with a slight edge in combat.</p>
+<p><strong>2. Choose your forces and set their order.</strong> Each player picks one card for every declared battle, hidden from rival eyes, and arranges them in the order they will fight. Choose wisely what remains behind as well — the cards left in your castle form your <strong>Main Pile</strong>, and their order matters: your hand is ranked <strong>left to right, leftmost first</strong>. The leftmost card stands at the top of the pile — first to be drawn if a duel is called... and first to be seized if a rival's Portal or a Queen's Fury reaches into your palace. Guard your strongest — or expose them at your peril.</p>
+<p><strong>3. Battle!</strong> Battles are revealed one at a time — all players reveal simultaneously, and the strongest card claims the field. The victor gathers every card played into his <strong>accumulation pile</strong>, spoils held until the campaign's end.</p>
+<p><strong>4. The campaign ends.</strong> All spoils and remaining battle forces return to each player's palace, and the lead passes to the next player at the table — unless a Princess has given her heart along the way.</p>
 
-<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">⚔️ Duel</h2>
-<p>When two or more players tie, blades are drawn. Each draws one card from the top of their Main Pile — the stronger wins. If the tie persists, the duel continues until a victor emerges.</p>
+{H2}⚔️ Duel</h2>
+<p>When two or more players tie for the strongest card, blades are drawn. Each duelist pulls the top card of their Main Pile — and the stronger card wins the battle and all its spoils, the duel cards among them. If fate ties again, the duel rages on until a victor emerges. But a duelist whose palace holds no more cards must lower his blade — ⚑ and yield the field.</p>
 
-<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">✨ The Cards</h2>
+{H2}✨ The Cards</h2>
 
-<p><strong><img src="" class="dragon-emoji-img" style="width:1.1em;height:1.1em;vertical-align:middle;display:inline-block;"> Dragon</strong><br>Dragons are the mightiest and most dangerous creatures in the realm. They easily defeat every other living creature — except the young Tamer, who was chosen and carefully trained for the sacred purpose of taming these fearsome beasts. Only collecting enough of them will secure the prosperity of your kingdom.</p>
+<p><strong>{DRG} Dragon — the Ace &amp; Jokers</strong><br>Dragons are the mightiest and most dangerous creatures in the realm. Each element commands a Dragon of its own — Fire 🔥, Water 💧, Air ${AIR_SVG_SM}, and Earth ${EARTH_SVG_SM} — and above them soar two legendary beasts beyond any element: the Time Dragon and the Space Dragon, whose powers are told further on. On the battlefield, the legendary beasts match the might of the strongest Dragon present — never more, never less. Dragons easily defeat every other living creature — except the young Tamer, chosen and trained for the sacred purpose of subduing these fearsome beasts. Only collecting enough of them will secure the prosperity of your kingdom.</p>
 
-<p><strong>🧑 Tamer</strong><br>The young Dragon Tamer is the only one in the realm who knows how to face the fearsome Dragons — and even harness them to his advantage.</p>
+<p><strong>🧑 The Young Tamer — the 2</strong><br>The Dragon Tamer is the only one in the realm who knows how to face the fearsome Dragons — and even turn them to his advantage. Against any other foe, though, he is merely a lad of humble rank.</p>
 
-<p><strong>👑 King</strong><br>A fierce warrior on the battlefield — leading his forces with courage and determination, overpowering his enemies without hesitation. Yet even he knows that back at the castle, the Queen rules supreme. He would be wise not to provoke her fury... for when he does, things tend to spiral beyond his control.</p>
+<p><strong>👑 King — the 13</strong><br>A fierce warrior on the battlefield — leading his forces with courage and determination, overpowering nearly every rival without hesitation. Yet even he knows that back at the castle, the Queen rules supreme. He would be wise not to provoke her fury... for when he does, things tend to spiral beyond his control.</p>
 
-<p><strong>💎 Queen &amp; Queen Fury</strong><br>The Queen is valued at 12, but has a fierce side. In her fury, she overpowers the King of her own element — and when dominant, no King on the field is safe. Every such act of fury opens a special portal through which she seizes the top readiness card from an opponent's castle — straight into her treasury.</p>
+<p><strong>💎 Queen &amp; Queen Fury — the 12</strong><br>The Queen commands a value of 12 — but she has a fierce side. In her fury, she overpowers the King of her own element; and when her element is dominant, no King on the field is safe. Each act of fury opens a portal into the palace of a rival of her choosing, and the top card of his Main Pile vanishes into her treasury.</p>
 
-<p><strong>👸 Princess</strong><br>The Princess carries no weapon — yet her influence is felt across both battlefield and court. Every citizen of the realm would lay down his sword for her, but she will give her heart to the young and humble Tamer — granting him the power to lead the next round.</p>
+<p><strong>👸 Princess — the Jack</strong><br>The Princess carries no weapon — yet her influence is felt across battlefield and court alike. Every citizen of the realm would lay down his sword for her, but she gives her heart only to the young and humble Tamer — granting whoever wins her the power to lead the next campaign.</p>
 
-<p><strong>⏳ Time Dragon</strong><br>Whoever captures this beast faces a fateful choice: travel <strong>Back</strong> and seize the cards from the previous battle — forbidden if another Dragon was present there. Leap <strong>Forward</strong> and sit out the entire next round. Or simply let the power fade — and do <strong>Nothing</strong>.</p>
+<p><strong>⏳ Time Dragon</strong><br>Whoever captures this beast faces a fateful choice: travel <strong>Back</strong> and seize the cards of the previous battle — forbidden if a Dragon stood there. Leap <strong>Forward</strong> and sit out the entire next campaign, watching the battles unfold without you. Or let the power fade — and do <strong>Nothing</strong>.</p>
 
-<p><strong>🌌 Space Dragon</strong><br>Whoever captures this creature may instantly shift their seat at the table — bending the turn order to their will. Or choose to stay, and let the moment pass.</p>
+<p><strong>🌌 Space Dragon</strong><br>Space itself yields to this Dragon's captor. In a blink, he may trade places with any rival at the table — reshaping the order of battle in his favor. Or hold his ground, and let the stars drift on.</p>
 
-<p><strong>🧙 Wizard</strong><br>A master of arcane arts, the Wizard bends the rules of combat to his will. One spell is enough to overpower any other creature of his element — yet the mighty Dragons remain beyond his reach. Unless he manages to take over the unsuspecting Tamer and inherits his power to control those beasts.</p>
+<p><strong>🧙 Wizard — the 9</strong><br>A master of arcane arts, the Wizard bends combat to his will. One spell is enough to overpower any creature of his own element — yet the mighty Dragons remain beyond his reach... unless he ensnares the unsuspecting Tamer of his element and inherits his power over those beasts. And when his element is declared dominant, his true art awakens: the Wizard tears open a <strong>portal</strong> into an enemy's keep, dragging the top card of his Main Pile — blind — onto the battlefield to fight at the Wizard's side. The stronger of the two leads the charge.</p>
 
-<p><strong>🌀 Portal (9♣)</strong><br>A mysterious gateway that appears without warning. When played, it bursts open a passage directly into an opponent's stronghold — seizing one of his forces straight to the battlefield in the Portal owner's favor!</p>
-
-<h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🏆 Victory</h2>
-<p>At the end of each campaign, if a player has reached the declared number of Dragons, he claims victory and proves his ability to protect the realm. Game over!</p>
+{H2}🏆 Victory</h2>
+<p>When a campaign ends, the count is taken: any player who has gathered the Dragons the realm demanded is crowned its protector — and the game ends at once. The remaining lords are ranked by the Dragons in their keeping — may the count honor them. May your castle stand eternal!</p>
 `      };
 
       let _rulesLang = "he";
       function setRulesLang(lang) {
         _rulesLang = lang;
         document.getElementById("rulesContent").innerHTML = RULES[lang];
+        _fillDragonImgs();
         document.getElementById("rulesContent").dir =
           lang === "he" ? "rtl" : "ltr";
         document.getElementById("rulesTitleTxt").textContent =
-          lang === "he" ? "מאלף הדרקונים" : "Dragon Tamer";
+          lang === "he" ? "מאלף הדרקונים הצעיר" : "The Young Dragon Tamer";
         document.getElementById("rulesLangHe").style.cssText =
           lang === "he"
             ? "font-family:Cinzel,serif;font-size:12px;font-weight:700;letter-spacing:1px;padding:5px 14px;border-radius:6px;cursor:pointer;border:2px solid var(--gold-bright);background:var(--gold-bright);color:var(--navy);"

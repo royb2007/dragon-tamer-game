@@ -844,6 +844,51 @@ def ai_pick_cards(player: PlayerState, n: int, el: str) -> List[Card]:
         return result[:n]
     elif strat == 'Minimalist':
         return sorted_h[:n]
+    elif strat == 'Warden':
+        # Middle band: strongest stay home (buried deep), weakest stay
+        # home too (as pile-top decoys for thieves)
+        pool = sorted([c for c in others if not c.is_queen],
+                      key=lambda c: c.effective_rank(el))
+        start = max(0, (len(pool) - n) // 2)
+        result = pool[start:start + n]
+        if len(result) < n: result += queens[:n - len(result)]
+        if len(result) < n: result += wizards_h[:n - len(result)]
+        if len(result) < n: result += [c for c in sorted_h
+                                       if c.cid not in {x.cid for x in result}][:n - len(result)]
+        return result[:n]
+    elif strat == 'Raider':
+        # Plunder tools first: dominant Wizards, then Queens, then value
+        wiz_sorted = sorted(wizards_h, key=lambda c: (c.suit != el, -c.effective_rank(el)))
+        result = wiz_sorted[:n]
+        if len(result) < n: result += queens[:n - len(result)]
+        if len(result) < n: result += [c for c in sorted_h
+                                       if c.cid not in {x.cid for x in result}][:n - len(result)]
+        return result[:n]
+    elif strat == 'Spearhead':
+        # One spear, the rest chaff
+        chaff = sorted(others, key=lambda c: c.effective_rank(el))
+        result = sorted_h[:1] + [c for c in chaff
+                                 if c.cid != (sorted_h[0].cid if sorted_h else -1)][:max(0, n - 1)]
+        if len(result) < n: result += [c for c in sorted_h
+                                       if c.cid not in {x.cid for x in result}][:n - len(result)]
+        return result[:n]
+    elif strat == 'Scholar':
+        # Deploy Tamers while many dragons still roam; otherwise pure value
+        loose = getattr(player, '_dragons_loose', None)
+        total = getattr(player, '_dragons_total', None)
+        hunt = (loose is None or total is None) or (loose >= total / 2)
+        if hunt and tamers:
+            result = tamers[:max(1, n // 2)]
+            result += [c for c in sorted_h
+                       if c.cid not in {x.cid for x in result}][:n - len(result)]
+            return result[:n]
+        non_tamer = [c for c in sorted_h if not c.is_tamer]
+        result = non_tamer[:n]
+        if len(result) < n: result += tamers[:n - len(result)]
+        return result[:n]
+    elif strat == 'Gambler':
+        return (sorted_h[:n] if random.random() < 0.5
+                else sorted(hand, key=lambda c: c.effective_rank(el))[:n])
     elif strat == 'Opportunist':
         prev_max_rank = max(
             (c.effective_rank(el) for c in player.prev_step_cards_seen),
@@ -899,30 +944,54 @@ def ai_declare(player: PlayerState, max_steps: int = 4) -> tuple:
         if not hand: return 'Hearts'
         best = max(hand, key=lambda c: c.rank)
         return best.suit or 'Hearts'
+    def wizard_arm_suit():
+        # Suit of a held Wizard — declaring it awakens his portal.
+        # Prefer the wizard suit with the highest total value (synergy).
+        ws = {c.suit for c in hand if c.is_wizard and c.suit}
+        if not ws:
+            return None
+        return max(ws, key=suit_value)
 
     if strat == 'Aggressive':
-        return max_steps, best_value_suit()
+        return max_steps, (wizard_arm_suit() or best_value_suit())
     elif strat == 'Conservative':
         steps = min(max_steps, 4 if d >= 3 else (2 if d >= 2 else 1))
         return steps, best_value_suit()
     elif strat == 'Bluffer':
-        return (1 if d < 2 else 3), best_value_suit()
+        return (1 if d < 2 else 3), (wizard_arm_suit() or best_value_suit())
     elif strat == 'Diplomat':
         return (2 if d < 3 else max_steps), best_value_suit()
     elif strat == 'DragonHunter':
-        return 3, dragon_suit()
+        # Hunts with his dragons when he has them; otherwise arms a
+        # Wizard's portal to hunt in rival palaces.
+        if any(c.is_dragon and c.suit for c in hand):
+            return 3, dragon_suit()
+        return 3, (wizard_arm_suit() or dragon_suit())
     elif strat == 'Purist':
         el = richest_suit()
         steps = max(1, min(max_steps, suit_count(el)))
         return steps, el
     elif strat == 'Maximalist':
         steps = min(max_steps, max(1, n_hand))
-        return steps, best_value_suit()
+        return steps, (wizard_arm_suit() or best_value_suit())
     elif strat == 'Minimalist':
         return 1, highest_card_suit()
     elif strat == 'Opportunist':
         steps = max_steps if d >= WIN_DRAGONS - 1 else (3 if d >= 2 else 1)
-        return steps, best_value_suit()
+        return steps, (wizard_arm_suit() or best_value_suit())
+    elif strat == 'Warden':
+        # Defensive: short campaigns, no portal schemes
+        return (1 if d < 2 else 2), best_value_suit()
+    elif strat == 'Raider':
+        # Theft economy: always tries to arm his own Wizard
+        return 3, (wizard_arm_suit() or best_value_suit())
+    elif strat == 'Spearhead':
+        # Boosts the element of his single strongest card
+        return 3, highest_card_suit()
+    elif strat == 'Scholar':
+        return min(max_steps, 3), best_value_suit()
+    elif strat == 'Gambler':
+        return random.choice([1, max_steps]), random.choice(SUITS)
     else:
         return 3, best_value_suit()
 
@@ -1033,6 +1102,20 @@ def ai_sort_hand(player: PlayerState) -> None:
         ordered = _assemble(weak, mid, queens, kings, wizards, tamers, dragons)
     elif strat == 'Avenger':
         ordered = _assemble(tamers, dragons, mid, queens, kings, wizards, weak)
+    elif strat == 'Warden':
+        # Junk on top feeds the thieves; treasures buried deepest
+        ordered = _assemble(weak, mid, wizards, kings, queens, dragons, tamers)
+    elif strat == 'Raider':
+        # Protects his loot the same way he takes yours
+        ordered = _assemble(weak, mid, kings, queens, wizards, dragons, tamers)
+    elif strat == 'Spearhead':
+        # Duel-hungry: strong draws first, theft risk accepted
+        ordered = _assemble(kings, queens, mid, wizards, dragons, tamers, weak)
+    elif strat == 'Scholar':
+        ordered = _assemble(mid, weak, kings, queens, wizards, tamers, dragons)
+    elif strat == 'Gambler':
+        ordered = hand[:]
+        random.shuffle(ordered)
     elif strat == 'Maximalist':
         weakest = sorted(hand, key=lambda c: c.effective_rank(None))
         non_dragon_non_weak = [c for c in hand
@@ -1108,6 +1191,14 @@ def ai_portal_target(player, valid_targets):
             m = next((t for t in valid_targets if t.pid == prev), None)
             if m: return m
         return max(valid_targets, key=stealable_count)
+    elif strat == 'Raider':
+        return max(valid_targets, key=lambda p: (stealable_count(p), p.dragon_count))
+    elif strat in ('Spearhead', 'Scholar'):
+        return max(valid_targets, key=lambda p: (p.dragon_count, stealable_count(p)))
+    elif strat == 'Gambler':
+        return random.choice(valid_targets)
+    elif strat == 'Warden':
+        return max(valid_targets, key=stealable_count)
     else:
         return max(valid_targets, key=stealable_count)
 
@@ -1149,6 +1240,12 @@ def ai_space_dragon_swap(player, active_players):
         return max(opponents,
                    key=lambda p: sum(1 for c in p.hand if c.suit != dominant)).pid
     elif strat == 'DragonHunter':  return most_dragons()
+    elif strat == 'Warden':        return None
+    elif strat == 'Spearhead':     return None
+    elif strat == 'Raider':        return most_cards()
+    elif strat == 'Scholar':       return most_dragons()
+    elif strat == 'Gambler':
+        return random.choice([None] + [p.pid for p in opponents])
     else:                          return most_dragons()
 
 
@@ -1176,6 +1273,13 @@ def ai_time_dragon_choice(player, prev_step_cards, prev_step_winner_pid):
     elif strat == 'Opportunist': return 'back' if prev_worth_back else 'forward'
     elif strat == 'Purist':      return 'back' if prev_worth_back else 'forward'
     elif strat == 'DragonHunter':return 'back' if can_go_back else 'forward'
+    elif strat == 'Warden':      return 'back' if prev_worth_back else 'nothing'
+    elif strat == 'Raider':      return 'back' if can_go_back else 'nothing'
+    elif strat == 'Spearhead':   return 'back' if prev_big else 'nothing'
+    elif strat == 'Scholar':     return 'back' if prev_worth_back else 'forward'
+    elif strat == 'Gambler':
+        return random.choice([('back' if can_go_back else 'nothing'),
+                              'forward', 'nothing'])
     else:                        return 'back' if can_go_back else 'nothing'
 
 
@@ -1190,6 +1294,12 @@ def ai_love_tamer_choice(princess_player, tamer_pids, all_players):
     elif strat in ("Balanced", "Purist"):
         def btr(p): return max((c.rank for c in p.hand if c.is_tamer), default=0)
         return max(tamer_players, key=btr).pid
+    elif strat in ("Warden", "Scholar"):
+        return min(tamer_players, key=lambda p: p.dragon_count).pid
+    elif strat == "Raider":
+        return max(tamer_players, key=lambda p: len(p.hand)).pid
+    elif strat == "Gambler":
+        return random.choice(tamer_players).pid
     else:
         return max(tamer_players, key=lambda p: p.dragon_count).pid
 
@@ -1260,7 +1370,8 @@ class DragonTamerGame:
     def fill_with_ai(self, strategies=None):
         all_strats = ['Aggressive','Balanced','Conservative','Hoarder',
                       'Adaptive','AntiDragon','Diplomat','Bluffer','Avenger',
-                      'Maximalist','Minimalist','Opportunist','Purist','DragonHunter']
+                      'Maximalist','Minimalist','Opportunist','Purist','DragonHunter',
+                      'Warden','Raider','Spearhead','Scholar','Gambler']
         i = 0
         import random as _r
         pool = list(strategies or all_strats)
@@ -1270,10 +1381,12 @@ class DragonTamerGame:
             strat = pool[i % len(pool)]
             _AI_NAMES = {
                 'Aggressive':'Yaniv','Balanced':'Chen','Conservative':'Itzik',
-                'Hoarder':'Hadar','Adaptive':'Yotam','AntiDragon':'Meital',
+                'Hoarder':'Hadas','Adaptive':'Yotam','AntiDragon':'Meital',
                 'Diplomat':'Oren','Bluffer':'Shir','Avenger':'Gil',
                 'Maximalist':'Dana','Minimalist':'Amit','Opportunist':'Noa',
                 'Purist':'Alon','DragonHunter':'Lior',
+                'Warden':'Oded','Raider':'Shahar','Spearhead':'Zohar',
+                'Scholar':'Moti','Gambler':'Idan',
             }
             ai_id = f'AI_{i+1}'
             ai_name = _AI_NAMES.get(strat, strat[:4])
@@ -1293,7 +1406,7 @@ class DragonTamerGame:
             for c in deck2:
                 c.cid += max_cid + 1
             deck = deck + deck2
-            self._max_steps = 6
+            self._max_steps = 5
         else:
             self._max_steps = 4
         random.shuffle(deck)
@@ -2006,8 +2119,12 @@ class DragonTamerGame:
     def _apply_seat_swap(self, pid_a, pid_b):
         if pid_a not in self.order or pid_b not in self.order:
             return [{'type': 'error', 'msg': 'Invalid swap pids'}]
+        _lead_before = self._lead_pid() if self.order else None
         ia, ib = self.order.index(pid_a), self.order.index(pid_b)
         self.order[ia], self.order[ib] = self.order[ib], self.order[ia]
+        # lead_idx is positional — remap it so the same player stays leader
+        if _lead_before in self.order:
+            self.lead_idx = self.order.index(_lead_before)
         self._log(f"🌌 {self.players[pid_a].name} swaps seat with {self.players[pid_b].name}!")
         return [{'type': 'seat_swap', 'pid_a': pid_a, 'pid_b': pid_b,
                  'new_order': list(self.order)}]
@@ -2064,7 +2181,18 @@ class DragonTamerGame:
             if ordered:
                 stolen = ordered[0]
                 target.hand.remove(stolen)
-                queen_player.accum.append(stolen)
+                if stolen.cid in target.hand_order:
+                    target.hand_order.remove(stolen.cid)
+                # Prize goes DIRECTLY to the Queen owner's Main Pile,
+                # pinned at the very bottom (rightmost in the hand UI).
+                queen_player.hand.append(stolen)
+                if not queen_player.hand_order:
+                    queen_player.hand_order = [
+                        c.cid for c in ordered_hand(queen_player)
+                        if c.cid != stolen.cid
+                    ]
+                if stolen.cid not in queen_player.hand_order:
+                    queen_player.hand_order.append(stolen.cid)
                 self._log(
                     f"👑 Queen Fury! {queen_player.name} steals "
                     f"{stolen.label} from {target.name}!")
@@ -2076,6 +2204,13 @@ class DragonTamerGame:
                     'target_name': target.name,
                     'stolen_card': stolen.to_dict(),
                 })
+                # Push fresh hands to both players (same schema as _send_hands)
+                for _pid, _pl in ((queen_pid, queen_player), (target_pid, target)):
+                    events.append({
+                        'type': 'hand_update', 'pid': _pid,
+                        'hand': [c.to_dict() for c in ordered_hand(_pl)],
+                        'dragon_count': _pl.dragon_count,
+                    })
         return events
 
     def _end_round(self):
@@ -2217,6 +2352,43 @@ class DragonTamerGame:
     def _lead_pid(self):
         return self.order[self.lead_idx % len(self.order)]
 
+    def _next_lead_pid(self):
+        """Predict who leads the NEXT campaign (read-only mirror of
+        _end_round's lead pass): Love-Power holder overrides; otherwise
+        clockwise from the current leader, skipping out/skip_next players."""
+        try:
+            n = len(self.order)
+            if n == 0:
+                return None
+            def _doomed(p):
+                # out already, or certain to be eliminated at round end
+                if p.out:
+                    return True
+                _claimed = getattr(self, '_claimed_cids', set()) or set()
+                _unclaimed = [c for c in p.battle if c.cid not in _claimed]
+                return not p.hand and not p.accum and not _unclaimed
+            _skip_counts = self.phase != Phase.LEADER_DECLARE
+            if (self.love_right and self.love_right in self.order
+                    and not _doomed(self.players[self.love_right])
+                    and not (self.players[self.love_right].skip_next
+                             and _skip_counts)):
+                return self.love_right
+            idx = (self.lead_idx + 1) % n
+            checked = 0
+            while (_doomed(self.players[self.order[idx]]) or
+                   (_skip_counts and self.players[self.order[idx]].skip_next)):
+                idx = (idx + 1) % n
+                checked += 1
+                if checked >= n:
+                    # everyone alive is skipping — ignore skip_next
+                    idx = (idx + 1) % n
+                    while _doomed(self.players[self.order[idx]]):
+                        idx = (idx + 1) % n
+                    break
+            return self.order[idx]
+        except Exception:
+            return None
+
     def assert_card_integrity(self, context='', entries=None):
         try:
             seen = {}
@@ -2321,6 +2493,10 @@ class DragonTamerGame:
             if (p.is_ai and not p.out and not p.battle and not p.skip_next
                     and p.pid not in self._skipped_this_round):
                 n = min(self.declared_steps, len(p.hand))
+                _total_dragons = 6 * getattr(self, '_num_decks', 1)
+                _captured = sum(pl.dragon_count for pl in self.players.values())
+                p._dragons_total = _total_dragons
+                p._dragons_loose = max(0, _total_dragons - _captured)
                 chosen = ai_pick_cards(p, n, self.declared_el)
                 picks.append((p, chosen))
 
@@ -2351,6 +2527,7 @@ class DragonTamerGame:
             'room_id': self.room_id, 'phase': self.phase,
             'round': self.round,
             'lead_pid': self._lead_pid() if self.order else None,
+            'next_lead_pid': self._next_lead_pid(),
             'declared_steps': self.declared_steps,
             'declared_el': self.declared_el,
             'declared_el_name': SUIT_ELEMENT.get(self.declared_el, ''),
