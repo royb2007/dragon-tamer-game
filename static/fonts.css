@@ -1,0 +1,49 @@
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-tbnTYo.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-gjgTYo.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-jHgTYo.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Cinzel';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url(/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-n_gTYo.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Crimson Text';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/wlpogwHKFkZgtmSR3NB0oRJfaghW.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Crimson Text';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(/fonts/wlp2gwHKFkZgtmSR3NB0oRJvaA.ttf) format('truetype');
+}
+@font-face {
+  font-family: 'Crimson Text';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(/fonts/wlppgwHKFkZgtmSR3NB0oRJXsCx2Cw.ttf) format('truetype');
+}

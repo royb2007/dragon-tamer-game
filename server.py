@@ -475,13 +475,62 @@ async def _cleanup_loop():
             log.warning(f"Cleanup loop error: {ex}")
 
 
+_STATIC = {
+    '/qrcode.min.js':  ('qrcode.min.js',   'application/javascript'),
+    '/fonts.css':      ('static/fonts.css', 'text/css'),
+}
+_FONTS_DIR = 'static/fonts'
+
 async def _http_handler(path, request_headers):
-    """Serve index.html for plain HTTP requests; return None to proceed with WS handshake."""
+    """Serve index.html + static assets; return None to proceed with WS handshake."""
     if request_headers.get("Upgrade", "").lower() == "websocket":
         return None
+
+    # Strip query string
+    clean_path = path.split('?')[0]
+
+    # Static: qrcode.min.js and fonts.css
+    if clean_path in _STATIC:
+        fpath, ctype = _STATIC[clean_path]
+        try:
+            with open(fpath, 'rb') as f:
+                body = f.read()
+            return (200, [
+                ("Content-Type", ctype),
+                ("Content-Length", str(len(body))),
+                ("Cache-Control", "public, max-age=86400"),
+            ], body)
+        except FileNotFoundError:
+            return (404, [], b"Not found")
+
+    # Static: font files
+    if clean_path.startswith('/fonts/'):
+        fname = clean_path[len('/fonts/'):]
+        fpath = os.path.join(_FONTS_DIR, fname)
+        try:
+            with open(fpath, 'rb') as f:
+                body = f.read()
+            return (200, [
+                ("Content-Type", "font/truetype"),
+                ("Content-Length", str(len(body))),
+                ("Cache-Control", "public, max-age=86400"),
+            ], body)
+        except FileNotFoundError:
+            return (404, [], b"Not found")
+
+    # Main game HTML — replace CDN URLs with local paths
     try:
         with open("index.html", "rb") as f:
-            body = f.read()
+            html = f.read().decode("utf-8")
+
+        html = html.replace(
+            'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+            '/qrcode.min.js'
+        ).replace(
+            'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap',
+            '/fonts.css'
+        )
+        body = html.encode("utf-8")
         headers = [
             ("Content-Type", "text/html; charset=utf-8"),
             ("Content-Length", str(len(body))),
