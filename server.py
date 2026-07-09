@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import time
 import uuid
 import gc
@@ -491,6 +492,13 @@ async def main():
     host = os.getenv('HOST', '0.0.0.0')
     port = int(os.getenv('PORT', 8080))
     log.warning(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
+    loop = asyncio.get_event_loop()
+    stop = loop.create_future()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, stop.set_result, None)
+        except NotImplementedError:
+            pass
     async with websockets.serve(
         connection_handler, host, port,
         process_request=_http_handler,
@@ -499,8 +507,9 @@ async def main():
         reuse_port=True,
     ):
         log.warning(f"server listening on {host}:{port}")
-        asyncio.get_event_loop().create_task(_cleanup_loop())
-        await asyncio.Future()
+        loop.create_task(_cleanup_loop())
+        await stop
+        log.warning("Server shutting down cleanly.")
 
 
 if __name__ == '__main__':
