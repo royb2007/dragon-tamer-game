@@ -23,6 +23,9 @@ rooms  = RoomManager()
 room_sockets: Dict[str, Set[Any]] = {}
 socket_meta:  Dict[Any, dict] = {}
 
+# Cache-buster: changes each server start so browsers can't serve stale cached page
+_START_TS = str(int(time.time()))
+
 _GC_COUNTER = 0
 
 def _maybe_gc():
@@ -489,6 +492,14 @@ async def _http_handler(path, request_headers):
     # Strip query string
     clean_path = path.split('?')[0]
 
+    # Cache-bust: redirect bare "/" to "/?v=<start_ts>" so browsers always fetch a fresh page.
+    # This bypasses any stale cached version the browser may be holding from a previous server run.
+    if clean_path == '/' and f'v={_START_TS}' not in path:
+        return (302, [
+            ('Location', f'/?v={_START_TS}'),
+            ('Cache-Control', 'no-store'),
+        ], b'')
+
     # Static: qrcode.min.js and fonts.css
     if clean_path in _STATIC:
         fpath, ctype = _STATIC[clean_path]
@@ -530,6 +541,18 @@ async def _http_handler(path, request_headers):
             'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap',
             '/fonts.css'
         )
+
+        # Self-healing: if old cached page is still in browser (CDN urls → qrcode never loads),
+        # auto-reload once to get fresh page with local assets.
+        _heal = (
+            '<script>setTimeout(function(){'
+            'if(typeof QRCode==="undefined"){'
+            'var k="_dtfx";'
+            'if(!sessionStorage.getItem(k)){sessionStorage.setItem(k,"1");location.reload(true);}'
+            '}},4000);</script>'
+        )
+        html = html.replace('</head>', _heal + '</head>', 1)
+
         body = html.encode("utf-8")
         headers = [
             ("Content-Type", "text/html; charset=utf-8"),
