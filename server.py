@@ -415,6 +415,10 @@ async def connection_handler(ws, path):
             except Exception as e:
                 log.exception(f"Handler error: {e}")
                 await send(ws, {'type': 'error', 'msg': str(e)})
+    except websockets.exceptions.ConnectionClosedError:
+        pass  # Client disconnected without a close frame — normal for browser refreshes
+    except Exception as e:
+        log.warning(f"Connection error: {e}")
     finally:
         meta = socket_meta.pop(ws, {})
         room_id = meta.get('room_id')
@@ -494,9 +498,12 @@ async def main():
     log.warning(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
     loop = asyncio.get_event_loop()
     stop = loop.create_future()
+    def _request_stop():
+        if not stop.done():
+            stop.set_result(None)
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
-            loop.add_signal_handler(sig, stop.set_result, None)
+            loop.add_signal_handler(sig, _request_stop)
         except NotImplementedError:
             pass
     async with websockets.serve(
