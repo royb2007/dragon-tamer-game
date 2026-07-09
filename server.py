@@ -485,7 +485,8 @@ async def _http_handler(path, request_headers):
         headers = [
             ("Content-Type", "text/html; charset=utf-8"),
             ("Content-Length", str(len(body))),
-            ("Cache-Control", "no-cache"),
+            ("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0"),
+            ("Pragma", "no-cache"),
         ]
         return (200, headers, body)
     except FileNotFoundError:
