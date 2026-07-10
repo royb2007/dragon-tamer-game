@@ -2382,8 +2382,12 @@ class DragonTamerGame:
                 if checked >= n:
                     # everyone alive is skipping — ignore skip_next
                     idx = (idx + 1) % n
+                    inner_checked = 0
                     while _doomed(self.players[self.order[idx]]):
                         idx = (idx + 1) % n
+                        inner_checked += 1
+                        if inner_checked >= n:
+                            break
                     break
             return self.order[idx]
         except Exception:
