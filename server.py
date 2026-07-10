@@ -479,72 +479,80 @@ async def _cleanup_loop():
             log.warning(f"Cleanup loop error: {ex}")
 
 
-_STATIC = {
-    '/qrcode.min.js':  ('qrcode.min.js',   'application/javascript'),
-    '/fonts.css':      ('static/fonts.css', 'text/css'),
+# ---------------------------------------------------------------------------
+# Pre-load every file we serve at import time so _http_handler never touches
+# the disk during a request (blocking file I/O on the asyncio event loop was
+# freezing the server in production).
+# ---------------------------------------------------------------------------
+def _load_file(path):
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except Exception as e:
+        log.warning(f"Failed to pre-load {path}: {e}")
+        return None
+
+def _build_html_cache():
+    raw = _load_file("index.html")
+    if raw is None:
+        return None
+    html = raw.decode("utf-8")
+    html = html.replace(
+        'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
+        '/qrcode.min.js'
+    ).replace(
+        'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap',
+        '/fonts.css'
+    )
+    return html.encode("utf-8")
+
+_HTML_BODY   = _build_html_cache()
+_HTML_HEADERS = [
+    ("Content-Type",  "text/html; charset=utf-8"),
+    ("Content-Length", str(len(_HTML_BODY)) if _HTML_BODY else "0"),
+    ("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0"),
+    ("Pragma",        "no-cache"),
+]
+
+_STATIC_CACHE: dict = {}
+_STATIC_TYPES = {
+    '/qrcode.min.js': ('qrcode.min.js',   'application/javascript'),
+    '/fonts.css':     ('static/fonts.css', 'text/css'),
 }
+for _url, (_fpath, _ctype) in _STATIC_TYPES.items():
+    _data = _load_file(_fpath)
+    if _data is not None:
+        _STATIC_CACHE[_url] = (_ctype, _data)
+
 _FONTS_DIR = 'static/fonts'
+if os.path.isdir(_FONTS_DIR):
+    for _fname in os.listdir(_FONTS_DIR):
+        _data = _load_file(os.path.join(_FONTS_DIR, _fname))
+        if _data is not None:
+            _STATIC_CACHE[f'/fonts/{_fname}'] = ('font/truetype', _data)
+
+log.warning(f"Pre-loaded {len(_STATIC_CACHE)} static assets + HTML ({len(_HTML_BODY) if _HTML_BODY else 0} bytes)")
+
 
 async def _http_handler(path, request_headers):
-    """Serve index.html + static assets; return None to proceed with WS handshake."""
+    """Serve pre-cached files; return None to let websockets handle WS upgrades."""
     if request_headers.get("Upgrade", "").lower() == "websocket":
         return None
 
-    # Strip query string
     clean_path = path.split('?')[0]
 
-    # Static: qrcode.min.js and fonts.css
-    if clean_path in _STATIC:
-        fpath, ctype = _STATIC[clean_path]
-        try:
-            with open(fpath, 'rb') as f:
-                body = f.read()
-            return (200, [
-                ("Content-Type", ctype),
-                ("Content-Length", str(len(body))),
-                ("Cache-Control", "public, max-age=86400"),
-            ], body)
-        except FileNotFoundError:
-            return (404, [], b"Not found")
-
-    # Static: font files
-    if clean_path.startswith('/fonts/'):
-        fname = clean_path[len('/fonts/'):]
-        fpath = os.path.join(_FONTS_DIR, fname)
-        try:
-            with open(fpath, 'rb') as f:
-                body = f.read()
-            return (200, [
-                ("Content-Type", "font/truetype"),
-                ("Content-Length", str(len(body))),
-                ("Cache-Control", "public, max-age=86400"),
-            ], body)
-        except FileNotFoundError:
-            return (404, [], b"Not found")
-
-    # Main game HTML — replace CDN URLs with local paths
-    try:
-        with open("index.html", "rb") as f:
-            html = f.read().decode("utf-8")
-
-        html = html.replace(
-            'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js',
-            '/qrcode.min.js'
-        ).replace(
-            'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap',
-            '/fonts.css'
-        )
-
-        body = html.encode("utf-8")
-        headers = [
-            ("Content-Type", "text/html; charset=utf-8"),
+    if clean_path in _STATIC_CACHE:
+        ctype, body = _STATIC_CACHE[clean_path]
+        return (200, [
+            ("Content-Type",   ctype),
             ("Content-Length", str(len(body))),
-            ("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0"),
-            ("Pragma", "no-cache"),
-        ]
-        return (200, headers, body)
-    except FileNotFoundError:
-        return (404, [], b"Not found")
+            ("Cache-Control",  "public, max-age=86400"),
+        ], body)
+
+    # Everything else → main game HTML
+    if _HTML_BODY is None:
+        return (404, [], b"index.html not found")
+    return (200, _HTML_HEADERS, _HTML_BODY)
 
 
 async def main():
