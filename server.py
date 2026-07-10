@@ -400,11 +400,15 @@ HANDLERS = {
 
 
 async def connection_handler(ws, path):
+    peer = getattr(ws, 'remote_address', '?')
+    log.warning(f"Connected: {peer}")
     try:
         async for raw in ws:
             try:
                 data = json.loads(raw)
                 msg_type = data.get('type', '')
+                if msg_type != 'ping':
+                    log.warning(f"MSG [{msg_type}] from {peer}")
                 handler = HANDLERS.get(msg_type)
                 if handler:
                     await handler(ws, data)
@@ -413,7 +417,7 @@ async def connection_handler(ws, path):
             except json.JSONDecodeError:
                 await send(ws, {'type': 'error', 'msg': 'Invalid JSON'})
             except Exception as e:
-                log.exception(f"Handler error: {e}")
+                log.exception(f"Handler error [{msg_type}]: {e}")
                 await send(ws, {'type': 'error', 'msg': str(e)})
     except websockets.exceptions.ConnectionClosedError:
         pass  # Client disconnected without a close frame — normal for browser refreshes
@@ -560,8 +564,8 @@ async def main():
     async with websockets.serve(
         connection_handler, host, port,
         process_request=_http_handler,
-        ping_interval=None,
-        ping_timeout=None,
+        ping_interval=20,
+        ping_timeout=60,
         reuse_port=True,
     ):
         log.warning(f"server listening on {host}:{port}")
