@@ -245,10 +245,22 @@ def _run_duel(contestants: List[dict], all_players: Dict[str, 'PlayerState'],
                 events.append(f"⚔️ Duel: Tamer beats Dragon! {all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid} wins!")
                 return winner_pid, all_drawn, pid_draws
             else:
-                best_t = max(tamer_drawers, key=lambda c: draws[c['pid']].effective_rank(el))
-                winner_pid = best_t['pid']
-                events.append(f"⚔️ Duel: Tamer beats Dragon! {all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid} wins!")
-                return winner_pid, all_drawn, pid_draws
+                # Multiple Tamers beat the Dragon(s). Compare the Tamers by value;
+                # if they tie, the tied Tamers REDRAW — the Dragon(s) and any
+                # weaker Tamers drop out of the duel.
+                best_t_eff = max(draws[c['pid']].effective_rank(el) for c in tamer_drawers)
+                top_tamers = [c for c in tamer_drawers
+                              if draws[c['pid']].effective_rank(el) == best_t_eff]
+                if len(top_tamers) == 1:
+                    winner_pid = top_tamers[0]['pid']
+                    events.append(f"⚔️ Duel: Tamer beats Dragon! {all_players[winner_pid].name if all_players and winner_pid in all_players else winner_pid} wins!")
+                    return winner_pid, all_drawn, pid_draws
+                dropped = [c for c in active if c not in top_tamers]
+                for c in dropped:
+                    events.append(f"⚔️ Duel: {all_players[c['pid']].name if all_players and c['pid'] in all_players else c['pid']} loses — out of duel")
+                active = top_tamers
+                events.append(f"⚔️ Duel: {len(top_tamers)} Tamers tied — they redraw!")
+                continue
 
         def _duel_eff(card):
             # Dragons always compare on raw rank (suit-blind) so multiple
@@ -2382,12 +2394,8 @@ class DragonTamerGame:
                 if checked >= n:
                     # everyone alive is skipping — ignore skip_next
                     idx = (idx + 1) % n
-                    inner_checked = 0
                     while _doomed(self.players[self.order[idx]]):
                         idx = (idx + 1) % n
-                        inner_checked += 1
-                        if inner_checked >= n:
-                            break
                     break
             return self.order[idx]
         except Exception:
@@ -2623,5 +2631,6 @@ if __name__ == '__main__':
             print("GAME OVER")
             break
     print("\n✅ Engine v3.8 test passed")
+
 
 
