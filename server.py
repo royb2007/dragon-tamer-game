@@ -23,9 +23,6 @@ rooms  = RoomManager()
 room_sockets: Dict[str, Set[Any]] = {}
 socket_meta:  Dict[Any, dict] = {}
 
-# Cache-buster: changes each server start so browsers can't serve stale cached page
-_START_TS = str(int(time.time()))
-
 _GC_COUNTER = 0
 
 def _maybe_gc():
