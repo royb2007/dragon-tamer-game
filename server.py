@@ -536,10 +536,17 @@ log.warning(f"Pre-loaded {len(_STATIC_CACHE)} static assets + HTML ({len(_HTML_B
 
 async def _http_handler(path, request_headers):
     """Serve pre-cached files; return None to let websockets handle WS upgrades."""
-    if request_headers.get("Upgrade", "").lower() == "websocket":
+    log.warning(f"HTTP path type={type(path).__name__} repr={repr(path)[:120]}")
+    try:
+        upgrade = request_headers.get("Upgrade", "").lower()
+    except Exception:
+        upgrade = ""
+    if upgrade == "websocket":
         return None
 
-    clean_path = path.split('?')[0]
+    # Safely coerce path to string regardless of websockets version
+    raw_path = path.path if hasattr(path, 'path') else str(path)
+    clean_path = raw_path.split('?')[0]
 
     if clean_path in _STATIC_CACHE:
         ctype, body = _STATIC_CACHE[clean_path]
@@ -557,7 +564,7 @@ async def _http_handler(path, request_headers):
 
 async def main():
     host = os.getenv('HOST', '0.0.0.0')
-    port = int(os.getenv('PORT', 8080))
+    port = int(os.getenv('PORT', 5000))
     log.warning(f"Dragon Tamer Server starting on {host}:{port} (HTTP + WS)")
     loop = asyncio.get_event_loop()
     stop = loop.create_future()
