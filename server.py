@@ -518,6 +518,8 @@ _STATIC_CACHE: dict = {}
 _STATIC_TYPES = {
     '/qrcode.min.js': ('qrcode.min.js',   'application/javascript'),
     '/fonts.css':     ('static/fonts.css', 'text/css'),
+    '/music/celestial-dawn.mp3':    ('static/music/celestial-dawn.mp3',    'audio/mpeg'),
+    '/music/battle-of-legends.mp3': ('static/music/battle-of-legends.mp3', 'audio/mpeg'),
 }
 for _url, (_fpath, _ctype) in _STATIC_TYPES.items():
     _data = _load_file(_fpath)

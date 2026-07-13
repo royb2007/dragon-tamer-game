@@ -1440,7 +1440,7 @@
       }
       /* ── SOUND SYSTEM ── */
       #soundTestPanel {
-        position:fixed;bottom:70px;right:14px;
+        position:fixed;bottom:70px;left:14px;
         background:rgba(10,18,40,.97);border:1px solid rgba(184,134,11,.6);
         border-radius:10px;padding:12px 14px;z-index:9999;min-width:200px;
         box-shadow:0 4px 20px rgba(0,0,0,.7);font-family:Cinzel,serif;
@@ -1454,7 +1454,7 @@
       }
       .sound-test-btn:hover { background:rgba(184,134,11,.35); }
       #muteBtn {
-        position:fixed;bottom:14px;right:14px;width:42px;height:42px;
+        position:fixed;bottom:14px;left:14px;width:42px;height:42px;
         border-radius:50%;background:rgba(10,18,40,.92);
         border:1px solid rgba(184,134,11,.5);color:var(--gold-light);
         font-size:20px;cursor:pointer;z-index:9999;
@@ -1462,11 +1462,30 @@
         box-shadow:0 2px 8px rgba(0,0,0,.5);
       }
       #soundTestToggle {
-        position:fixed;bottom:62px;right:58px;background:rgba(10,18,40,.85);
+        position:fixed;bottom:62px;left:58px;background:rgba(10,18,40,.85);
         border:1px solid rgba(184,134,11,.4);color:var(--gold-light);
         font-family:Cinzel,serif;font-size:9px;padding:3px 7px;
         border-radius:4px;cursor:pointer;z-index:9999;letter-spacing:1px;
       }
+      #audioSettingsPanel {
+        position:fixed;bottom:70px;left:14px;
+        background:rgba(10,18,40,.97);border:1px solid rgba(184,134,11,.6);
+        border-radius:10px;padding:12px 14px;z-index:9999;min-width:190px;
+        box-shadow:0 4px 20px rgba(0,0,0,.7);font-family:Cinzel,serif;
+      }
+      #audioSettingsPanel h4 { color:var(--gold-bright);font-size:11px;letter-spacing:2px;margin:0 0 10px;text-align:center; }
+      .audio-toggle-btn {
+        display:flex;width:100%;justify-content:space-between;align-items:center;
+        background:rgba(184,134,11,.15);
+        border:1px solid rgba(184,134,11,.4);color:var(--ivory);
+        font-family:Cinzel,serif;font-size:11px;padding:6px 10px;
+        border-radius:4px;cursor:pointer;margin-bottom:6px;
+      }
+      .audio-toggle-btn:last-child { margin-bottom:0; }
+      .audio-toggle-btn:hover { background:rgba(184,134,11,.35); }
+      .audio-toggle-state { font-weight:700; }
+      .audio-toggle-state.is-on { color:#7CD87C; }
+      .audio-toggle-state.is-off { color:#E06666; }
     </style>
   </head>
   <body>
@@ -1976,7 +1995,18 @@
     </div>
 
     <!-- ══ SOUND UI ══ -->
-    <button id="muteBtn" onclick="toggleMute()" title="Toggle sound">🔊</button>
+    <audio id="musicPeace" src="/music/celestial-dawn.mp3" loop preload="auto"></audio>
+    <audio id="musicWar" src="/music/battle-of-legends.mp3" loop preload="auto"></audio>
+    <button id="muteBtn" onclick="toggleAudioSettings()" title="Audio settings">🔊</button>
+    <div id="audioSettingsPanel" style="display:none;">
+      <h4>🔊 AUDIO</h4>
+      <button class="audio-toggle-btn" id="musicToggleBtn" onclick="toggleMusicMute()">
+        <span>🎵 Music</span><span class="audio-toggle-state is-on" id="musicToggleState">ON</span>
+      </button>
+      <button class="audio-toggle-btn" id="sfxToggleBtn" onclick="toggleSfxMute()">
+        <span>🔔 Sound Effects</span><span class="audio-toggle-state is-on" id="sfxToggleState">ON</span>
+      </button>
+    </div>
     <button id="soundTestToggle" onclick="toggleSoundPanel()">🎵 TEST</button>
     <div id="soundTestPanel" style="display:none;">
       <h4>🎵 SOUND TEST</h4>
@@ -2500,37 +2530,136 @@
 
       // ══ SOUND ENGINE ══
       let _audioCtx = null;
-      let _muted = false;
+      let _sfxMuted = false;
 
       function _getCtx() {
         try {
-          if (_muted) return null;
+          if (_sfxMuted) return null;
           if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
           if (_audioCtx.state === 'suspended') _audioCtx.resume();
           return _audioCtx;
         } catch(e) { return null; }
       }
 
-      function toggleMute() {
-        _muted = !_muted;
-        const btn = document.getElementById('muteBtn');
-        if (btn) {
-          btn.textContent = _muted ? '🔇' : '🔊';
-          btn.style.background = _muted ? 'rgba(180,30,30,.7)' : 'rgba(10,18,40,.92)';
-        }
-        if (_audioCtx) {
-          if (_muted) _audioCtx.suspend();
-          else _audioCtx.resume();
-        }
+      // ── Shared mute button opens a small modal with two independent
+      // toggles (music / sound effects) rather than muting directly.
+      function toggleAudioSettings() {
+        const panel = document.getElementById('audioSettingsPanel');
+        const soundTestPanel = document.getElementById('soundTestPanel');
+        if (soundTestPanel) soundTestPanel.style.display = 'none'; // keep only one popup open at a time
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
       }
       function toggleSoundPanel() {
         const p = document.getElementById('soundTestPanel');
+        const audioPanel = document.getElementById('audioSettingsPanel');
+        if (audioPanel) audioPanel.style.display = 'none';
         p.style.display = p.style.display === 'none' ? 'block' : 'none';
       }
 
+      function _updateMuteBtnIcon() {
+        const btn = document.getElementById('muteBtn');
+        if (!btn) return;
+        if (_sfxMuted && _musicMuted) {
+          btn.textContent = '🔇';
+          btn.style.background = 'rgba(180,30,30,.7)';
+        } else if (_sfxMuted || _musicMuted) {
+          btn.textContent = '🔉';
+          btn.style.background = 'rgba(180,120,30,.7)';
+        } else {
+          btn.textContent = '🔊';
+          btn.style.background = 'rgba(10,18,40,.92)';
+        }
+      }
+      function _setToggleLabel(id, isOn) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = isOn ? 'ON' : 'OFF';
+        el.classList.toggle('is-on', isOn);
+        el.classList.toggle('is-off', !isOn);
+      }
+      function toggleSfxMute() {
+        _sfxMuted = !_sfxMuted;
+        if (_audioCtx) {
+          if (_sfxMuted) _audioCtx.suspend();
+          else _audioCtx.resume();
+        }
+        _setToggleLabel('sfxToggleState', !_sfxMuted);
+        _updateMuteBtnIcon();
+      }
+      function toggleMusicMute() {
+        _musicMuted = !_musicMuted;
+        _setToggleLabel('musicToggleState', !_musicMuted);
+        _updateMuteBtnIcon();
+        _updateMusicForScreen();
+      }
+
+      // ══ BACKGROUND MUSIC ══
+      // Two looping tracks: calm on the lobby, more energetic once a game
+      // is underway. Browsers block audio-with-sound before any user
+      // interaction, so playback only begins after the first click/key/
+      // touch anywhere on the page — same restriction every site has.
+      let _musicMuted = false;
+      let _musicStarted = false;
+      let _inActiveGame = false; // true only from the game_started event until back at lobby
+      const MUSIC_VOLUME = 0.35;
+
+      function _playTrack(id, shouldPlay) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!shouldPlay) { el.pause(); return; }
+        if (_musicMuted) return;
+        el.volume = MUSIC_VOLUME;
+        el.play().catch(() => {}); // ignore autoplay rejection; retried on next interaction
+      }
+      function _updateMusicForScreen() {
+        if (!_musicStarted) return;
+        const lobby = document.getElementById('lobbyScreen');
+        const lobbyVisible = lobby && !lobby.classList.contains('hidden');
+        if (lobbyVisible) _inActiveGame = false; // reset once back at lobby, ready for next game
+        if (_musicMuted) {
+          _playTrack('musicPeace', false);
+          _playTrack('musicWar', false);
+          return;
+        }
+        const wantWar = !lobbyVisible && _inActiveGame;
+        _playTrack('musicPeace', !wantWar);
+        _playTrack('musicWar', wantWar);
+      }
+      function _tryStartMusic() {
+        if (_musicStarted) return;
+        _musicStarted = true;
+        _updateMusicForScreen();
+      }
+      ['click', 'keydown', 'touchstart'].forEach((evt) =>
+        document.addEventListener(evt, _tryStartMusic, { once: true })
+      );
+
+      // Sound-test button/panel: lobby-only. muteBtn stays visible everywhere.
+      // Watches lobbyScreen's class via MutationObserver so this stays correct
+      // no matter which existing code path toggles screens (several do).
+      // Also drives which music track plays, for the same reason.
+      function _updateSoundTestVisibility() {
+        const lobby = document.getElementById('lobbyScreen');
+        const toggle = document.getElementById('soundTestToggle');
+        const panel = document.getElementById('soundTestPanel');
+        if (!lobby || !toggle || !panel) return;
+        const lobbyVisible = !lobby.classList.contains('hidden');
+        toggle.style.display = lobbyVisible ? '' : 'none';
+        if (!lobbyVisible) panel.style.display = 'none';
+        _updateMusicForScreen();
+      }
+      (function() {
+        const lobby = document.getElementById('lobbyScreen');
+        if (lobby) {
+          new MutationObserver(_updateSoundTestVisibility)
+            .observe(lobby, { attributes: true, attributeFilter: ['class'] });
+        }
+        _updateSoundTestVisibility();
+      })();
+
       function _tone(freq, dur, type, gain, fadeOut) {
         type = type||'sine'; gain = gain||0.4; fadeOut = fadeOut!==false;
-        if (_muted) return;
+        if (_sfxMuted) return;
         const ctx = _getCtx(); if (!ctx) return;
         try {
           const osc = ctx.createOscillator();
@@ -2547,7 +2676,7 @@
 
       function _sweep(f1, f2, dur, type, gain) {
         type = type||'sine'; gain = gain||0.35;
-        if (_muted) return;
+        if (_sfxMuted) return;
         const ctx = _getCtx(); if (!ctx) return;
         try {
           const osc = ctx.createOscillator();
@@ -2830,7 +2959,7 @@
         if (typeof SFX[name] !== 'function') return;
         _SFX_RAW[name] = SFX[name].bind(SFX);
         SFX[name] = function () {
-          if (_muted) return;
+          if (_sfxMuted) return;
           const now = Date.now();
           const dur = _SFX_DUR[name];
           if (now >= _sfxBusyUntil) {
@@ -2840,7 +2969,7 @@
             const wait = _sfxBusyUntil - now;
             if (wait > 2500) return; // backlog too long — drop
             _sfxBusyUntil += dur;
-            setTimeout(() => { if (!_muted) _SFX_RAW[name](); }, wait);
+            setTimeout(() => { if (!_sfxMuted) _SFX_RAW[name](); }, wait);
           }
         };
       });
@@ -3419,6 +3548,10 @@
             renderTable();
             showGameScreen();
             if (msg.state?.phase) setPhase(msg.state.phase, msg.state);
+            // Spectator may join mid-game — go straight to battle music if so,
+            // rather than waiting for a game_started event that already fired
+            _inActiveGame = !!(msg.state?.phase && msg.state.phase !== 'waiting');
+            _updateMusicForScreen();
             addLog(
               `👁 Watching room ${msg.room_id} (${spectatorCount} watching)`,
               "imp",
@@ -3442,6 +3575,8 @@
             selectedCardCids = [];
             _confirmedOrder = null;
             _localAccum = {}; // reset accum on new game
+            _inActiveGame = true; // battle music starts now, not at room-create
+            _updateMusicForScreen();
             document.getElementById("waitOverlay").classList.add("hidden");
             // Set max battles from server
             if (msg.max_steps) {
@@ -4327,7 +4462,7 @@
       <div class="seat-avatar" style="position:relative;width:${avSize}px;height:${avSize}px;font-size:${Math.round(avSize * 0.38)}px;">
         ${isLeader ? '<span class="seat-crown">👑</span>' : ""}${initials}${
           pid === nextLeadPid && pid !== leadPid && !p.out
-            ? '<span title="Next leader" style="position:absolute;top:-4px;right:-6px;width:9px;height:9px;background:linear-gradient(135deg,#F2DA8A,#B8860B);transform:rotate(45deg);border:1px solid rgba(255,255,255,.5);box-shadow:0 0 6px rgba(212,170,64,.9);z-index:3;"></span>'
+            ? '<span title="Next leader" style="position:absolute;top:-4px;right:-6px;width:9px;height:9px;font-size:9px;line-height:9px;display:flex;align-items:center;justify-content:center;color:#FF5C9E;filter:drop-shadow(0 0 4px rgba(255,92,158,.9));z-index:3;">💗</span>'
             : ""}
       </div>
       <div class="seat-name">${p.name}</div>
@@ -5819,5 +5954,7 @@
     </script>
   </body>
 </html>
+
+
 
 
