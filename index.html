@@ -641,6 +641,49 @@
         box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5);
       }
 
+      /* ── LEADER DRAFT OVERLAY (initial card-draw animation) ── */
+      .draft-card-wrap {
+        position: absolute;
+      }
+      .draft-card-flip {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.6s cubic-bezier(0.4, 0.1, 0.3, 1);
+      }
+      .draft-card-flip.flipped {
+        transform: rotateY(180deg);
+      }
+      .draft-card-face {
+        position: absolute;
+        inset: 0;
+        backface-visibility: hidden;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .draft-card-back {
+        background-size: cover;
+        background-position: center;
+        border: 2px solid rgba(184, 134, 11, 0.6);
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+      }
+      .draft-card-front {
+        transform: rotateY(180deg);
+      }
+      .draft-card-wrap.winner-pulse .draft-card-flip {
+        animation: draftWinnerPulse 0.9s ease-in-out 2;
+      }
+      @keyframes draftWinnerPulse {
+        0%,
+        100% {
+          filter: drop-shadow(0 0 0 rgba(255, 215, 0, 0));
+        }
+        50% {
+          filter: drop-shadow(0 0 16px rgba(255, 215, 0, 0.95));
+        }
+      }
+
       /* Element backgrounds */
       .card.hearts {
         background: linear-gradient(155deg, #280500, #720f00, #380900);
@@ -3597,6 +3640,8 @@
                 : "── Game started! ──",
               "imp",
             );
+            if (msg.leader_cards && msg.first_leader_pid)
+              showLeaderDraftAnimation(msg.leader_cards, msg.first_leader_pid);
             break;
 
           case "hand_update":
@@ -4479,6 +4524,110 @@
             spectatorCount > 0
               ? `⚔ Round Table &nbsp;<span style="font-size:10px;color:#C39BD3;background:rgba(74,26,107,.4);padding:1px 6px;border-radius:3px;">👁 ${spectatorCount}</span>`
               : "⚔ Round Table";
+      }
+
+      // ── LEADER DRAFT ANIMATION ──
+      // Shows each player's opening card-draw (used to pick the first
+      // leader) as face-down cards on the table that flip all at once,
+      // then highlights the winner. Purely a client-side visual: the
+      // server already sends every drawn card + the winner in the single
+      // game_started event, so this adds no new server-side work at all.
+      // Reuses renderTable()'s exact seat-position math so cards land
+      // exactly where each player's seat is.
+      function showLeaderDraftAnimation(leaderCards, firstLeaderPid) {
+        if (!leaderCards || !gameState) return;
+        const container = document.getElementById("tableContainer");
+        if (!container) return;
+        // Use leaderCards' own keys for seat order, NOT gameState.order —
+        // at this exact moment gameState.order may still only list the
+        // human player(s); AI seats haven't been added to it yet (that
+        // happens via a separate get_state round-trip the client makes
+        // right after this). leaderCards, however, already contains every
+        // player including AI, in the correct seat order, straight from
+        // the server's self.order at game-start time.
+        const order = Object.keys(leaderCards);
+        const N = order.length;
+        if (!N) return;
+        const W = container.offsetWidth || 300,
+          H = container.offsetHeight || 260;
+        const cx = W / 2,
+          cy = H / 2;
+        const avSize = N <= 4 ? 50 : N <= 6 ? 44 : 36;
+        const margin = avSize / 2 + 32;
+        const orbitR = Math.min(cx * 0.9, cy - margin);
+        const myIdx = order.indexOf(myPid);
+
+        // Scale the card down as player count grows, so cards near a
+        // crowded table don't overlap — same principle as avSize above.
+        const scale = N <= 4 ? 0.62 : N <= 6 ? 0.5 : 0.4;
+        const CW = 88,
+          CH = 126; // base card size (matches --card-w/--card-h)
+        const scaledW = CW * scale,
+          scaledH = CH * scale;
+
+        document.getElementById("draftOverlay")?.remove(); // clear any stray leftover
+
+        const overlay = document.createElement("div");
+        overlay.id = "draftOverlay";
+        overlay.style.cssText =
+          "position:absolute;inset:0;z-index:45;pointer-events:none;";
+
+        order.forEach((pid, i) => {
+          const card = leaderCards[pid];
+          if (!card) return;
+          const frac = myIdx >= 0 ? (i - myIdx) / N : i / N;
+          const angle = frac * 2 * Math.PI + Math.PI / 2;
+          const x = cx + orbitR * Math.cos(angle);
+          const y = cy + orbitR * Math.sin(angle);
+
+          const wrap = document.createElement("div");
+          wrap.className = "draft-card-wrap";
+          wrap.style.cssText = `left:${x}px;top:${y}px;width:${scaledW}px;height:${scaledH}px;transform:translate(-50%,-50%);perspective:600px;`;
+
+          const flip = document.createElement("div");
+          flip.className = "draft-card-flip";
+
+          const back = document.createElement("div");
+          back.className = "draft-card-face draft-card-back";
+          back.style.backgroundImage = `url(${CARD_BACK_URL})`;
+
+          const front = document.createElement("div");
+          front.className = "draft-card-face draft-card-front";
+          const cardEl = renderCardEl(card, false, false, 0);
+          cardEl.style.width = CW + "px";
+          cardEl.style.height = CH + "px";
+          cardEl.style.transform = `scale(${scale})`;
+          cardEl.style.transformOrigin = "top left";
+          cardEl.style.pointerEvents = "none";
+          front.appendChild(cardEl);
+
+          flip.appendChild(back);
+          flip.appendChild(front);
+          wrap.appendChild(flip);
+          if (pid === firstLeaderPid) wrap.dataset.winner = "1";
+          overlay.appendChild(wrap);
+        });
+
+        container.appendChild(overlay);
+
+        // Brief beat face-down, then flip all at once (per AstRoy's choice)
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            overlay
+              .querySelectorAll(".draft-card-flip")
+              .forEach((el) => el.classList.add("flipped"));
+          }, 250);
+        });
+
+        // Pulse-highlight the winning card once the flip settles
+        setTimeout(() => {
+          overlay
+            .querySelector('.draft-card-wrap[data-winner="1"]')
+            ?.classList.add("winner-pulse");
+        }, 900);
+
+        // Clean up and hand off to the normal leader-declare UI
+        setTimeout(() => overlay.remove(), 2600);
       }
 
       const SUIT_ICON = {
