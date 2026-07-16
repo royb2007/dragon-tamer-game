@@ -275,7 +275,7 @@
       }
       .top-bar .round-badge {
         font-size: 13px;
-        color: rgba(253, 246, 227, 0.55);
+        color: rgba(253, 246, 227, 0.85);
       }
       .phase-bar {
         padding: 9px 16px;
@@ -1488,6 +1488,7 @@
         vertical-align: middle;
         display: inline-block;
         object-fit: contain;
+        filter: drop-shadow(0 0 1.5px rgba(255,255,255,.9)) drop-shadow(0 0 3px rgba(255,255,255,.5));
       }
       @keyframes cardPulse {
         0%, 100% { box-shadow: 0 0 12px rgba(255,215,0,.25); transform: scale(1); }
@@ -1742,7 +1743,7 @@
     <div class="screen hidden" id="gameScreen">
       <div class="top-bar">
         <span class="game-title">THE YOUNG DRAGON TAMER</span>
-        <span class="round-badge" id="roundBadge">Round 1</span>
+        <span class="round-badge" id="roundBadge">Campaign 1</span>
         <div style="display: flex; align-items: center; gap: 6px">
           <button
             onclick="document.getElementById('rulesOverlay').classList.remove('hidden');setRulesLang(_rulesLang||'he')"
@@ -1828,7 +1829,7 @@
           <div class="round-table-wrap" id="tableContainer">
             <div class="round-table-felt" id="tableFelt"></div>
             <div class="table-center-info" id="tableCenterInfo">
-              <span class="table-round-lbl" id="tableRoundLbl">Round 1</span>
+              <span class="table-round-lbl" id="tableRoundLbl">Campaign 1</span>
               <span class="table-phase-lbl" id="tablePhaseLbl">Lobby</span>
             </div>
           </div>
@@ -2073,7 +2074,7 @@
       <button class="sound-test-btn" onclick="SFX.spaceDragon()">🌌 Space Dragon</button>
       <button class="sound-test-btn" onclick="SFX.lovePower()">💕 Love Power</button>
       <button class="sound-test-btn" onclick="SFX.playerWins()">🎴 Player wins</button>
-      <button class="sound-test-btn" onclick="SFX.roundWin()">✅ Round complete</button>
+      <button class="sound-test-btn" onclick="SFX.roundWin()">✅ Campaign complete</button>
       <button class="sound-test-btn" onclick="SFX.gameWin()">🏆 GAME WON!</button>
       <button class="sound-test-btn" onclick="SFX.reveal()">🎲 Battle reveal</button>
       <button class="sound-test-btn" onclick="SFX.pick()">🃏 Card picked</button>
@@ -2238,7 +2239,7 @@
             onclick="resolveTimeDragon('back')"
             style="border-color: #e8a020; color: #e8a020"
           >
-            ⬅ Back in Time — Claim the previous step's cards
+            ⬅ Back in Time — Claim the previous battle's cards
           </button>
           <button
             class="btn btn-outline btn-full"
@@ -2332,7 +2333,7 @@
     <div class="overlay hidden" id="roundEndOverlay" style="position:relative;">
       <div id="roundEndCardBack" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:140px;height:200px;border-radius:12px;background-size:cover;background-position:center;opacity:0.12;pointer-events:none;z-index:0;"></div>
       <div class="modal" style="position:relative;z-index:1;">
-        <h2 id="roundEndTitle">Round Complete!</h2>
+        <h2 id="roundEndTitle">Campaign Complete!</h2>
         <div id="roundEndRows" style="margin: 14px 0"></div>
         <div class="round-end-timer" id="roundEndTimer"></div>
         <button
@@ -2503,7 +2504,7 @@
         pick_cards: "Picking",
         arrange_hand: "Arranging",
         reveal: "Reveal",
-        end_round: "End Round",
+        end_round: "End Campaign",
         game_over: "Game Over",
       };
 
@@ -3727,7 +3728,7 @@
                 .classList.remove("hidden");
               const _mb = document.getElementById("mainBtn");
               if (_mb) {
-                _mb.textContent = "CONTINUE TO NEXT ROUND \u25b6";
+                _mb.textContent = "CONTINUE TO NEXT CAMPAIGN \u25b6";
                 _mb.disabled = false;
               }
               setConnStatus(true, "Reconnected");
@@ -3987,7 +3988,7 @@
               const icon = "\u23F3";
               if (choice === "back")
                 addLog(
-                  `${icon} ${nameOf(msg.pid)} claims previous step's cards!`,
+                  `${icon} ${nameOf(msg.pid)} claims previous battle's cards!`,
                   "imp",
                 );
               else if (choice === "forward")
@@ -4056,7 +4057,7 @@
             break;
 
           case "round_end":
-            addLog(`── Round ${msg.round} complete ──`);
+            addLog(`── Campaign ${msg.round} complete ──`);
             _iAmSkippingThisRound = false;
             _skipUiPendingAfterContinue = false;
             _localAccum = {}; // reset accum tracker each round
@@ -4076,13 +4077,13 @@
               const mb = document.getElementById("mainBtn");
               const pb = document.getElementById("phaseBanner");
               if (mb) {
-                mb.textContent = "CONTINUE TO NEXT ROUND \u25b6";
+                mb.textContent = "CONTINUE TO NEXT CAMPAIGN \u25b6";
                 mb.disabled = false;
               }
               if (pb) {
                 pb.className = "phase-bar end";
                 pb.textContent =
-                  "\u2705 Round complete \u2014 continue when ready";
+                  "\u2705 Campaign complete \u2014 continue when ready";
               }
             }
             break;
@@ -4264,6 +4265,7 @@
           if (leaderPid && gameState) gameState.lead_pid = leaderPid;
 
           const isMe = leaderPid === myPid;
+          banner.classList.remove("hidden");
           banner.className = "phase-bar declare";
           banner.innerHTML = isMe
             ? '<span style="font-size:1.15em;font-weight:900;letter-spacing:2px;">👑 Declare element and battle count for next campaign!</span>'
@@ -4293,6 +4295,7 @@
             gameState?.declared_steps ||
             2;
           if (gameState) gameState.declared_steps = n;
+          banner.classList.remove("hidden");
           banner.className = "phase-bar pick";
           // Don't reset _iPickedThisRound if skip_next_cleared already arrived for us
           if (!_iPickedThisRound) {
@@ -4307,6 +4310,7 @@
         } else if (newPhase === "arrange_hand") {
           if (_iAmSkippingThisRound) { applySkipUi(); renderHand(); return; }
           setTimeout(() => { try { SFX.arrangeHand(); } catch(e) {} }, 0);
+          banner.classList.remove("hidden");
           banner.className = "phase-bar pick";
           banner.innerHTML =
             '<span style="font-size:1.15em;font-weight:900;letter-spacing:2px;">🃏 ARRANGE YOUR HAND</span><br><span style="font-size:0.78em;opacity:0.85;letter-spacing:1px;">ORDER IS IMPORTANT — drag or tap to reorder, then confirm</span>';
@@ -4322,10 +4326,13 @@
             data.step ||
             (data.current_step != null ? data.current_step + 1 : 1);
           if (nextStep === 1) hideBattle();
-          banner.className = "phase-bar reveal";
-          banner.textContent = _iAmSkippingThisRound
-            ? `⏳ Skipping — spectating Battle ${nextStep} of ${gameState?.declared_steps || "?"}`
-            : `⚔ Get ready for Battle ${nextStep} of ${gameState?.declared_steps || "?"}`;
+          if (_iAmSkippingThisRound) {
+            banner.classList.remove("hidden");
+            banner.className = "phase-bar reveal";
+            banner.textContent = `⏳ Skipping — spectating Battle ${nextStep} of ${gameState?.declared_steps || "?"}`;
+          } else {
+            banner.classList.add("hidden"); // redundant with the "REVEAL BATTLE" button + battle header, per AstRoy
+          }
           document.getElementById("battleSection").classList.remove("hidden");
           document.getElementById("stepNum").textContent = nextStep;
           const _st = document.getElementById("stepTotal");
@@ -4334,13 +4341,14 @@
           mainBtn.textContent = `REVEAL BATTLE ${nextStep}`;
           mainBtn.disabled = false;
         } else if (newPhase === "end_round") {
+          banner.classList.remove("hidden");
           banner.className = "phase-bar end";
-          banner.textContent = "✅ Round complete";
-          mainBtn.textContent = "NEXT ROUND";
+          banner.textContent = "✅ Campaign complete";
+          mainBtn.textContent = "NEXT CAMPAIGN";
         }
 
         if (_awaitingRoundEndContinue && !isSpectator) {
-          mainBtn.textContent = "CONTINUE TO NEXT ROUND \u25b6";
+          mainBtn.textContent = "CONTINUE TO NEXT CAMPAIGN \u25b6";
           mainBtn.disabled = false;
         }
       }
@@ -5180,12 +5188,13 @@
         const total = gameState?.declared_steps || 3;
         if (msg.step < total) {
           const next = msg.step + 1;
-          banner.textContent = `⚔ Get ready for Battle ${next} of ${total}`;
+          banner.classList.add("hidden"); // redundant with the "REVEAL BATTLE" button + battle header, per AstRoy
           const mb = document.getElementById("mainBtn");
           mb.textContent = `REVEAL BATTLE ${next}`;
           mb.disabled = false;
           renderStepDots(msg.step);
         } else {
+          banner.classList.remove("hidden");
           banner.className = "phase-bar end";
           banner.textContent = "✅ All steps done — ending round";
           document.getElementById("mainBtn").textContent =
@@ -5386,9 +5395,9 @@
         if (r == null) return;
         const rb = document.getElementById("roundBadge");
         if (rb)
-          rb.innerHTML = `Round ${r} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img"> to win`;
+          rb.innerHTML = `Campaign ${r} · ${winDragons}<img src="${DRAGON_IMG_URL}" class="dragon-emoji-img"> to win`;
         const rl = document.getElementById("tableRoundLbl");
-        if (rl) rl.textContent = `Round ${r}`;
+        if (rl) rl.textContent = `Campaign ${r}`;
       }
       let _bufferedLeaderDeclare = null;
       let _stepWins = {};
@@ -5416,8 +5425,8 @@
           if (leaders.length === 1) roundWinnerPid = leaders[0];
         }
         title.textContent = roundWinnerPid
-          ? `Round ${msg.round || ""} — ${nameOf(roundWinnerPid)} wins!`
-          : `Round ${msg.round || ""} Complete!`;
+          ? `Campaign ${msg.round || ""} — ${nameOf(roundWinnerPid)} wins!`
+          : `Campaign ${msg.round || ""} Complete!`;
         _stepWins = {};
 
         const order = gameState?.order || Object.keys(gameState?.players || {});
