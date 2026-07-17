@@ -115,8 +115,17 @@ class Card:
         if self.is_joker or not self.suit or not leading_suit:
             return float(self.rank)
         if self.suit == leading_suit:
-            # Dominant Queen gets +1.5 (beats all Kings); others get +0.5
-            return self.rank + 1.5 if self.is_queen else self.rank + 0.5
+            # Dominant Queen gets +1.8 (13.8, so she numerically exceeds a
+            # dominant King's 13.5 — makes "Queen beats King" visually
+            # intuitive from the displayed value alone); others get +0.5.
+            # NOTE: the actual Queen-vs-King win condition below is still a
+            # separate explicit rule, not derived from this number — a Queen
+            # beats her own-suit King even without dominance (where her raw
+            # value stays 12, still less than 13), so that rule can't be
+            # replaced by a pure numeric comparison. This bump only makes
+            # the DOMINANT-beats-any-King case read intuitively as "her
+            # number is bigger."
+            return self.rank + 1.8 if self.is_queen else self.rank + 0.5
         return float(self.rank)
 
     def to_dict(self) -> dict:

@@ -612,11 +612,14 @@
 ══════════════════════════════════ */
       .hand-scroll {
         display: flex;
-        gap: 7px;
+        gap: 0;
         overflow-x: auto;
         overflow-y: visible;
         padding: 20px 2px 6px 2px;
         scrollbar-width: thin;
+      }
+      .hand-scroll .card:not(:first-child) {
+        margin-left: calc(var(--card-w) * -0.06);
       }
       .hand-scroll::-webkit-scrollbar {
         height: 3px;
@@ -639,6 +642,7 @@
         border-color: var(--gold-bright) !important;
         transform: translateY(-7px);
         box-shadow: 0 6px 20px rgba(255, 215, 0, 0.5);
+        z-index: 10;
       }
 
       /* ── LEADER DRAFT OVERLAY (initial card-draw animation) ── */
@@ -2651,32 +2655,29 @@
 
       // ══ BACKGROUND MUSIC ══
       // Two looping tracks: calm on the lobby, more energetic once a game
-      // is underway. Browsers block audio-with-sound before any user
-      // interaction, so playback only begins after the first click/key/
-      // touch anywhere on the page — same restriction every site has.
+      // is underway. Browsers block AUDIBLE sound before any user
+      // interaction, but DO allow autoplaying muted audio — so the relevant
+      // track actually starts playing (silently) from page load, advancing
+      // in real time, and gets unmuted on the first click/key/touch rather
+      // than starting fresh at that point. This gives the impression the
+      // music has been playing the whole time, since technically it has.
       let _musicMuted = false;
-      let _musicStarted = false;
+      let _musicStarted = false; // true once audible sound is allowed (post first interaction)
       let _inActiveGame = false; // true only from the game_started event until back at lobby
       const MUSIC_VOLUME = 0.35;
 
-      function _playTrack(id, shouldPlay) {
+      function _playTrack(id, shouldBeRelevant) {
         const el = document.getElementById(id);
         if (!el) return;
-        if (!shouldPlay) { el.pause(); return; }
-        if (_musicMuted) return;
+        el.muted = !_musicStarted; // audible only once the browser allows it — independent of the user's own mute choice below
+        if (!shouldBeRelevant || _musicMuted) { el.pause(); return; }
         el.volume = MUSIC_VOLUME;
-        el.play().catch(() => {}); // ignore autoplay rejection; retried on next interaction
+        el.play().catch(() => {}); // muted autoplay is allowed by every browser; this should always succeed
       }
       function _updateMusicForScreen() {
-        if (!_musicStarted) return;
         const lobby = document.getElementById('lobbyScreen');
         const lobbyVisible = lobby && !lobby.classList.contains('hidden');
         if (lobbyVisible) _inActiveGame = false; // reset once back at lobby, ready for next game
-        if (_musicMuted) {
-          _playTrack('musicPeace', false);
-          _playTrack('musicWar', false);
-          return;
-        }
         const wantWar = !lobbyVisible && _inActiveGame;
         _playTrack('musicPeace', !wantWar);
         _playTrack('musicWar', wantWar);
@@ -2684,11 +2685,12 @@
       function _tryStartMusic() {
         if (_musicStarted) return;
         _musicStarted = true;
-        _updateMusicForScreen();
+        _updateMusicForScreen(); // unmutes whichever track is already playing
       }
       ['click', 'keydown', 'touchstart'].forEach((evt) =>
         document.addEventListener(evt, _tryStartMusic, { once: true })
       );
+      _updateMusicForScreen(); // kick off muted autoplay immediately, before any interaction
 
       // Sound-test button/panel: lobby-only. muteBtn stays visible everywhere.
       // Watches lobbyScreen's class via MutationObserver so this stays correct
@@ -4742,13 +4744,26 @@
           cornerIcon = SUIT_ICON[card.suit] || "";
         }
 
-        let rankStr = card.is_joker
-          ? ""
-          : card.orig_rank === 11
-            ? "P"
-            : card.orig_rank === 1
-              ? "A"
-              : String(card.orig_rank);
+        const isDominant =
+          !card.is_joker &&
+          gameState?.declared_el &&
+          phase !== 'leader_declare' &&
+          card.suit === gameState.declared_el &&
+          (phase === "pick_cards" ||
+            phase === "arrange_hand" ||
+            phase === "reveal");
+
+        // Show the card's real numeric value everywhere (Princess=11, Ace/Dragon=14)
+        // instead of letter abbreviations, and when the card is currently dominant,
+        // show its true effective combat value — matching the engine's own
+        // effective_rank formula exactly: +0.5 for any dominant card, +1.5 for a
+        // dominant Queen specifically (she alone can overpower any King).
+        let rankStr = "";
+        if (!card.is_joker) {
+          let displayRank = card.rank;
+          if (isDominant) displayRank = card.is_queen ? card.rank + 1.8 : card.rank + 0.5;
+          rankStr = String(displayRank);
+        }
 
         const EL_NAME = {
           Hearts: "FIRE",
@@ -4778,14 +4793,6 @@
         ${elNameHTML}
       </div>`;
 
-        const isDominant =
-          !card.is_joker &&
-          gameState?.declared_el &&
-          phase !== 'leader_declare' &&
-          card.suit === gameState.declared_el &&
-          (phase === "pick_cards" ||
-            phase === "arrange_hand" ||
-            phase === "reveal");
         const isCharged = isDominant && (card.is_wizard || card.is_queen);
         if (isCharged) el.classList.add("power-charged");
         const dominantBolt = isDominant
