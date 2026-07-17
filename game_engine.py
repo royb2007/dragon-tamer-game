@@ -400,8 +400,16 @@ def resolve_step(
             resolved_valid.append(player_entries[0])
         else:
             tamer_entries = [e for e in player_entries if e["card"].is_tamer]
+            wizard_entries = [e for e in player_entries if e["card"].is_wizard]
             if step_has_dragon and tamer_entries:
                 best_entry = tamer_entries[0]
+            elif step_has_dragon and wizard_entries:
+                # A Wizard's eligibility to inherit Tamer power against a
+                # Dragon depends on his OWN card being recognized as a
+                # Wizard — don't let a higher-raw-value stolen card (e.g. a
+                # Dragon/Joker he pulled via his own Portal) silently
+                # replace him as the representative and erase that identity.
+                best_entry = wizard_entries[0]
             else:
                 best_entry = max(
                     player_entries,
@@ -3320,6 +3328,7 @@ if __name__ == "__main__":
             print("GAME OVER")
             break
     print("\n✅ Engine v3.8 test passed")
+
 
 
 
