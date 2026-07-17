@@ -4377,6 +4377,23 @@
         renderTable();
         renderHand();
         if (state.phase) setPhase(state.phase, state);
+        // Reconnect recovery: the battle-reveal display is normally built up
+        // live, one call per battle, and isn't otherwise reconstructable from
+        // a single state snapshot. Replaying the server's stored history for
+        // this round through the exact same rendering function used live
+        // rebuilds the full "battles so far" log exactly as it looked before
+        // the disconnect. Only do this when the display is actually missing
+        // the latest battle — get_state is also called routinely during
+        // normal play, and re-running this every time would rebuild the
+        // whole battle log needlessly (visible flicker) even when nothing's
+        // actually out of sync.
+        if (state.step_history && state.step_history.length) {
+          const latestStep = state.step_history[state.step_history.length - 1].step;
+          const alreadyShown = document.getElementById("battleStep_" + latestStep);
+          if (!alreadyShown) {
+            state.step_history.forEach((histEntry) => renderBattleStep(histEntry));
+          }
+        }
       }
 
       function syncHandCounts(players) {
@@ -5955,7 +5972,9 @@
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🔄 מהלך המערכה &amp; ⭐ הכרזת המוביל</h2>
 <p>לפני המערכה הראשונה, כל שחקן שולף קלף יחיד מהחפיסה המעורבבת — בעל הקלף הגבוה מוכתר כ<strong>מוביל הראשון</strong>. לאחר מכן נאספת החפיסה, מעורבבת מחדש ומחולקת שווה בשווה בין כל השחקנים; הקלפים הנותרים מצטרפים לארמון המוביל.</p>
 <p>כל סיבוב הוא <strong>מערכה</strong> <span class="en-tag">(Round)</span>, המוכרעת על פני מספר <strong>קרבות</strong> <span class="en-tag">(Battles)</span>.</p>
-<p><strong>1. המוביל מכריז.</strong> מוביל המערכה מכריז כמה קרבות תכלול המערכה — אחד עד ארבעה בחפיסה אחת, עד חמישה בשתיים — ובוחר את <strong>היסוד הדומיננטי</strong>: אש 🔥, מים 💧, אוויר ${AIR_SVG_SM} או אדמה ${EARTH_SVG_SM}. כל קלף מיסוד זה נלחם עם יתרון קל בקרב.</p>
+<p><strong>1. המוביל מכריז.</strong> מוביל המערכה מכריז כמה קרבות תכלול המערכה — אחד עד ארבעה בחפיסה אחת, עד חמישה בשתיים — ובוחר את <strong>היסוד הדומיננטי</strong>: אש 🔥, מים 💧, אוויר ${AIR_SVG_SM} או אדמה ${EARTH_SVG_SM}.</p>
+<p>היסוד הדומיננטי מעניק לקלפים מסדרה זו כח מיוחד: חצי נקודת ערך אשר מעניקה להם את היכולת להתגבר על קלפים בעלי אותו ניקוד מסדרות (יסודות) אחרות.</p>
+<p>ישנם 2 קלפים עם זאת, אשר שואבים מהיסוד השולט כח מיוחד: <strong>המלכה</strong> <span class="en-tag">(Queen)</span>, אשר מסוגלת באמצעותו להתגבר על כל מלך ואף לשבות קלף מטירת האויב, <strong>והקוסם</strong> <span class="en-tag">(Wizard)</span> - שפורץ באמצעותו <strong>פורטל</strong> <span class="en-tag">(Portal)</span> מיוחד המגייס לשורותיו את כח הכוננות של אחד ממתחריו (הסבר מפורט בתיאור הקלפים).</p>
 <p><strong>2. בחר את כוחותיך וקבע את סדרם.</strong> כל שחקן בוחר קלף אחד לכל קרב שהוכרז, הרחק מעיני יריביו, ומסדר אותם בסדר שבו יילחמו. בחר בתבונה גם את מה שנשאר מאחור — הקלפים שנותרו בטירתך הם <strong>הקופה הראשית</strong> <span class="en-tag">(Your Hand)</span> שלך, וסדרם קובע: הקופה מאורגנת משמאל לימין; הקלף השמאלי ניצב בראש הקופה — ראשון להישלף אם ייקרא דו-קרב... אך גם ראשון להיחטף אם <strong>פורטל</strong> <span class="en-tag">(Portal)</span> של יריב או <strong>זעם המלכה</strong> <span class="en-tag">(Queen Fury)</span> יפרצו אל ארמונך. שמור על החזקים שבכוחותיך — או חשוף אותם, על אחריותך.</p>
 <p><strong>3. קרב!</strong> הקרבות נערכים אחד אחר השני — כל השחקנים חושפים את קלפיהם בו-זמנית, והקלף החזק כובש את השדה. המנצח אוסף את כל הקלפים שהשתתפו אל <strong>קופת הצבירה</strong> שלו — שלל השמור עד תום המערכה.</p>
 <p><strong>4. המערכה מסתיימת.</strong> כל השלל והכוחות שנותרו שבים אל ארמונו של כל שחקן, וההובלה עוברת לשחקן הבא בשולחן — לפי סדר השעון, אלא אם במהלך המלחמה, הנסיכה העניקה את זכות ההובלה לבחיר ליבה...</p>
@@ -5999,7 +6018,9 @@
 <h2 style="color:#D4AA40;font-family:Cinzel,serif;border-bottom:1px solid rgba(184,134,11,.3);padding-bottom:6px;text-align:center;margin-top:18px;">🔄 Round Flow &amp; ⭐ Leader's Declaration</h2>
 <p>Before the first campaign, each player draws a single card from the shuffled deck — the highest card crowns the <strong>first leader</strong>. The deck is then gathered, shuffled anew, and dealt evenly among all players; any remaining cards join the leader's palace.</p>
 <p>Each round is a <strong>campaign</strong> (shown in-game as "Round"), fought over several <strong>battles</strong>.</p>
-<p><strong>1. The Leader declares.</strong> The round's leader announces how many battles the campaign will hold — one to four with a single deck, up to five with two — and names the <strong>dominant element</strong>: Fire 🔥, Water 💧, Air ${AIR_SVG_SM}, or Earth ${EARTH_SVG_SM}. Every card of that element fights with a slight edge in combat.</p>
+<p><strong>1. The Leader declares.</strong> The round's leader announces how many battles the campaign will hold — one to four with a single deck, up to five with two — and names the <strong>dominant element</strong>: Fire 🔥, Water 💧, Air ${AIR_SVG_SM}, or Earth ${EARTH_SVG_SM}.</p>
+<p>The dominant element grants cards of that suit a special power: half a point of value, giving them the ability to overcome cards of the same rank from other elements (suits).</p>
+<p>Two cards, however, draw an even greater power from the ruling element: the <strong>Queen</strong> <span class="en-tag">(Queen)</span>, who through it can overpower any King and even seize a card from a rival's castle, and <strong>the Wizard</strong> <span class="en-tag">(Wizard)</span> - who through it tears open a special <strong>Portal</strong> <span class="en-tag">(Portal)</span> that recruits into his ranks the readied strength of one of his rivals (a full explanation awaits in the Cards section).</p>
 <p><strong>2. Choose your forces and set their order.</strong> Each player picks one card for every declared battle, hidden from rival eyes, and arranges them in the order they will fight. Choose wisely what remains behind as well — the cards left in your castle form your <strong>Main Pile</strong> (shown in-game as "Your Hand"), and their order matters: your Main Pile is ranked <strong>left to right, leftmost first</strong>. The leftmost card stands at the top of the pile — first to be drawn if a duel is called... and first to be seized if a rival's Portal or a Queen's Fury reaches into your palace. Guard your strongest — or expose them at your peril.</p>
 <p><strong>3. Battle!</strong> Battles are revealed one at a time — all players reveal simultaneously, and the strongest card claims the field. The victor gathers every card played into his <strong>accumulation pile</strong>, spoils held until the campaign's end.</p>
 <p><strong>4. The campaign ends.</strong> All spoils and remaining battle forces return to each player's palace, and the lead passes to the next player at the table — unless a Princess has given her heart along the way.</p>

@@ -448,6 +448,7 @@ def resolve_step(
 
     wizard_inherited_tamer: Optional[dict] = None
     wizard_displaced_tamer: Optional[dict] = None
+    wizard_inheritances: List[dict] = []
 
     if has_dragon and wizards and tamers:
         for w_entry in wizards:
@@ -456,19 +457,28 @@ def resolve_step(
                 (t for t in tamers if t["card"].suit == w.suit), None
             )
             if same_suit_tamer:
-                wizard_inherited_tamer = w_entry
-                wizard_displaced_tamer = same_suit_tamer
+                wizard_inheritances.append(
+                    {"wizard": w_entry, "tamer": same_suit_tamer}
+                )
                 result["special_events"].append(
                     f"🧙 {(all_players[w_entry['pid']].name if all_players and w_entry['pid'] in all_players else w_entry['pid'])}'s Wizard ({w.label}) inherits Tamer power "
                     f"from {(all_players[same_suit_tamer['pid']].name if all_players and same_suit_tamer['pid'] in all_players else same_suit_tamer['pid'])}!"
                 )
-                break
+                # NOTE: no break — every same-suit wizard qualifies independently.
+                # A single break here meant a second equally-qualified wizard
+                # was silently dropped rather than dueling for the inheritance.
 
     combat_tamers = list(tamers)
-    if wizard_inherited_tamer and wizard_displaced_tamer:
+    if wizard_inheritances:
+        displaced = [inh["tamer"] for inh in wizard_inheritances]
         combat_tamers = [
-            e for e in combat_tamers if e is not wizard_displaced_tamer
-        ] + [wizard_inherited_tamer]
+            e for e in combat_tamers if not any(e is d for d in displaced)
+        ] + [inh["wizard"] for inh in wizard_inheritances]
+        # Keep back-compat single-entry variables pointing at the first
+        # inheritance, only used below for a "which duelist is a Wizard?"
+        # label check that we've since made list-aware.
+        wizard_inherited_tamer = wizard_inheritances[0]["wizard"]
+        wizard_displaced_tamer = wizard_inheritances[0]["tamer"]
 
     if love_tamers and princesses:
         if len(love_tamers) == 1 and len(princesses) == 1:
@@ -495,9 +505,12 @@ def resolve_step(
 
     if has_dragon and len(combat_tamers) == 1:
         result["winner_pid"] = combat_tamers[0]["pid"]
+        _is_wizard_winner = any(
+            combat_tamers[0] is inh["wizard"] for inh in wizard_inheritances
+        )
         result["special_events"].append(
             f"⚔️ {(all_players[combat_tamers[0]['pid']].name if all_players and combat_tamers[0]['pid'] in all_players else combat_tamers[0]['pid'])}'s "
-            f"{'Wizard' if combat_tamers[0] is wizard_inherited_tamer else 'Tamer'} "
+            f"{'Wizard' if _is_wizard_winner else 'Tamer'} "
             f"beats all dragons!"
         )
         joker_types = [j["card"].joker_type for j in jokers if j["card"].joker_type]
@@ -525,7 +538,7 @@ def resolve_step(
     if has_dragon and len(combat_tamers) > 1:
 
         def tamer_combat_rank(e):
-            if e is wizard_inherited_tamer:
+            if any(e is inh["wizard"] for inh in wizard_inheritances):
                 return 2.5 if (el and e["card"].suit == el) else 2.0
             return e["card"].effective_rank(el)
 
@@ -1695,6 +1708,7 @@ class DragonTamerGame:
         self.step_entries: List[dict] = []
         self.prev_step_cards: List[Card] = []
         self.prev_step_winner: Optional[str] = None
+        self.step_history: List[dict] = []  # completed step_revealed events, current round only — lets a reconnecting client rebuild what it missed
         self.event_log: List[str] = []
         self._pending_portal_pid: Optional[str] = None
         self._pending_portal_entries: List[dict] = []
@@ -2345,6 +2359,7 @@ class DragonTamerGame:
                         "special_events": result["special_events"],
                         "love_right_pid": result["love_right_pid"],
                     }
+                    self.step_history.append(step_event)
                     return [
                         step_event,
                         {
@@ -2413,6 +2428,7 @@ class DragonTamerGame:
                         "special_events": result["special_events"],
                         "love_right_pid": result["love_right_pid"],
                     }
+                    self.step_history.append(step_event)
                     return [
                         step_event,
                         {
@@ -2460,6 +2476,7 @@ class DragonTamerGame:
             "special_events": result["special_events"],
             "love_right_pid": result["love_right_pid"],
         }
+        self.step_history.append(step_event)
 
         space_j = next((e for e in entries if e["card"].joker_type == "space"), None)
         if space_j and winner_pid:
@@ -2906,6 +2923,7 @@ class DragonTamerGame:
         self.phase = Phase.LEADER_DECLARE
         self.prev_step_cards = []
         self.prev_step_winner = None
+        self.step_history = []
         self._claimed_cids = set()  # free memory
 
         events = [
@@ -3203,6 +3221,7 @@ class DragonTamerGame:
             "pending_arrange_pids": list(self._pending_arrange_pids),
             "max_steps": getattr(self, "_max_steps", 4),
             "num_decks": getattr(self, "_num_decks", 1),
+            "step_history": self.step_history,
         }
 
     def player_state(self, pid):
@@ -3292,3 +3311,6 @@ if __name__ == "__main__":
             print("GAME OVER")
             break
     print("\n✅ Engine v3.8 test passed")
+
+
+
