@@ -444,7 +444,7 @@ async def connection_handler(ws, path):
 
 async def _cleanup_loop():
     """Periodically delete abandoned rooms and force GC to prevent memory accumulation."""
-    EMPTY_TTL   = 600   # delete room 10 min after last socket leaves
+    EMPTY_TTL   = 1200  # delete room 20 min after last socket leaves
     GAMEOVER_TTL = 120  # delete game_over rooms after 2 min
     INTERVAL    = 300   # run every 5 minutes
     while True:
@@ -600,6 +600,5 @@ if __name__ == '__main__':
         log.critical(f"FATAL: Server crashed at top level: {e}", exc_info=True)
         import sys
         sys.exit(1)
-
 
 

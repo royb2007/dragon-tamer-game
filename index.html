@@ -743,6 +743,15 @@
         right: 5px;
         transform: rotate(180deg);
       }
+      .card-tr {
+        top: 4px;
+        right: 5px;
+      }
+      .card-bl {
+        bottom: 4px;
+        left: 5px;
+        transform: rotate(180deg);
+      }
       .corner-rank {
         font-family: "Cinzel", serif;
         font-size: 15px;
@@ -4001,7 +4010,7 @@
             {
               const choice = msg.choice;
               const icon = "\u23F3";
-              if (choice === "back") {
+              if (choice === "back" && msg.success) {
                 addLog(
                   `${icon} ${nameOf(msg.pid)} claims previous battle's cards!`,
                   "imp",
@@ -4011,9 +4020,12 @@
                 // accum lists, but doesn't include the card details in this
                 // event, so the client mirrors it using the same
                 // prev-step tracker used for the pile face-up/face-down
-                // display. Guard exactly like the server's own
-                // _can_time_dragon_go_back (won't have gotten this far
-                // otherwise, but keep the display logic self-consistent).
+                // display. Gated on msg.success (from the server) rather
+                // than re-deriving eligibility here — a client-side-only
+                // guard previously let this run even when the server had
+                // actually blocked the steal, causing a misleading
+                // "claims previous battle's cards!" log line right next to
+                // the server's own "cannot go back" message.
                 if (
                   _clientPrevStepWinner &&
                   _clientPrevStepWinner !== msg.pid &&
@@ -4036,10 +4048,13 @@
                   `${icon} ${nameOf(msg.pid)} leaps forward — skipping next round!`,
                   "imp",
                 );
-              else
+              else if (choice === "nothing")
                 addLog(
                   `${icon} ${nameOf(msg.pid)} lets the Time Dragon power fade.`,
                 );
+              // choice === "back" && !msg.success: intentionally no extra
+              // log line here — the server's own msg.msg below ("cannot go
+              // back...") is the single source of truth for that case.
               if (msg.msg) addLog(msg.msg, "imp");
             }
             break;
@@ -4826,10 +4841,16 @@
 
         const cornerHTML = card.is_joker
           ? `<span class="corner-rank">${cornerIcon}</span>`
-          : `<div style="display:flex;flex-direction:column;align-items:flex-start;gap:0;">
-        <div style="display:flex;flex-direction:row;align-items:center;gap:3px;">
-          <span class="corner-rank">${rankStr}</span><span class="corner-sym"${iconStyle}>${cornerIcon}</span>
-        </div>
+          : `<span class="corner-rank">${rankStr}</span>`;
+
+        // Element icon (water/fire/air/earth) now sits at the OPPOSITE
+        // corner from the rank number, not sharing the same corner with it
+        // — top-left has the rank, top-right has the element icon, and the
+        // same mirrored on the bottom (per AstRoy's request).
+        const elIconCornerHTML = card.is_joker
+          ? ""
+          : `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:0;">
+        <span class="corner-sym"${iconStyle}>${cornerIcon}</span>
         ${elNameHTML}
       </div>`;
 
@@ -4922,11 +4943,13 @@
 
         el.innerHTML = `
     <div class="card-corner card-tl">${cornerHTML}</div>
+    <div class="card-corner card-tr">${elIconCornerHTML}</div>
     <span class="card-orn t"></span>
     ${centerHTML}
     ${dominantBolt}
     <span class="card-orn b"></span>
     <div class="card-corner card-br">${cornerHTML}</div>
+    <div class="card-corner card-bl">${elIconCornerHTML}</div>
     ${orderBadge}`;
 
         return el;
