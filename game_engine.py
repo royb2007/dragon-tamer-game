@@ -394,6 +394,9 @@ def resolve_step(
 
     resolved_valid = []
     step_has_dragon = any(e["card"].is_dragon for e in valid)
+    # Suits of every Tamer actually present in this battle (any player) — used
+    # below to decide whether protecting a Wizard's identity is even relevant.
+    all_tamer_suits = {e["card"].suit for e in valid if e["card"].is_tamer}
 
     for pid, player_entries in pid_entries.items():
         if len(player_entries) == 1:
@@ -403,12 +406,18 @@ def resolve_step(
             wizard_entries = [e for e in player_entries if e["card"].is_wizard]
             if step_has_dragon and tamer_entries:
                 best_entry = tamer_entries[0]
-            elif step_has_dragon and wizard_entries:
-                # A Wizard's eligibility to inherit Tamer power against a
-                # Dragon depends on his OWN card being recognized as a
-                # Wizard — don't let a higher-raw-value stolen card (e.g. a
-                # Dragon/Joker he pulled via his own Portal) silently
-                # replace him as the representative and erase that identity.
+            elif (
+                step_has_dragon
+                and wizard_entries
+                and wizard_entries[0]["card"].suit in all_tamer_suits
+            ):
+                # Only protect the Wizard's identity when there's an actual
+                # same-suit Tamer somewhere in the battle for him to inherit
+                # from — otherwise this protection isn't relevant, and
+                # applying it anyway would wrongly hide a stolen Joker from
+                # the separate "Joker adopts the strongest dragon present"
+                # rule (a Wizard's own portal-stolen Dragon/Joker should
+                # still be recognized as such when no Tamer is in play).
                 best_entry = wizard_entries[0]
             else:
                 best_entry = max(
@@ -2670,6 +2679,15 @@ class DragonTamerGame:
                 "type": "time_dragon_applied",
                 "pid": pid,
                 "choice": choice,
+                # Safe to re-check here: a successful "back" claim only moves
+                # cards between accum piles, it never touches
+                # prev_step_winner/prev_step_cards, so this reflects the same
+                # outcome _apply_time_dragon just used — gives the client a
+                # reliable flag instead of it having to re-derive eligibility
+                # itself (which is exactly what caused the bug where the
+                # client logged "claims previous battle's cards!" even when
+                # the steal had actually been blocked).
+                "success": choice == "back" and self._can_time_dragon_go_back(pid),
                 "msg": dummy_result["special_events"][0]
                 if dummy_result["special_events"]
                 else "",
@@ -3328,7 +3346,6 @@ if __name__ == "__main__":
             print("GAME OVER")
             break
     print("\n✅ Engine v3.8 test passed")
-
 
 
 
