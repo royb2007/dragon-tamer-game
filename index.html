@@ -3249,6 +3249,12 @@
         const note = document.getElementById("deckNote");
         if (note)
           note.textContent = n === 2 ? "(recommended: 8–12 dragons)" : "";
+        // 8/10/12 dragon targets only make sense with 2 decks (more cards
+        // in play) — hide them when a single deck is selected.
+        [8, 10, 12].forEach((v) => {
+          const b = document.getElementById("wd" + v);
+          if (b) b.style.display = n === 2 ? "" : "none";
+        });
         // Auto-set default dragon target and player count
         setWinDragons(n === 2 ? 10 : 5);
         setAI(n === 2 ? 6 : 3);
@@ -4738,6 +4744,8 @@
       document.addEventListener("DOMContentLoaded", () => {
         const ld = document.getElementById("logoDragonImg");
         if (ld) ld.src = DRAGON_IMG_URL;
+        // New default lobby state: 2 decks, 6 players, 10 dragons to win
+        setDecks(2);
       });
 
       const DRAGON_URL =
