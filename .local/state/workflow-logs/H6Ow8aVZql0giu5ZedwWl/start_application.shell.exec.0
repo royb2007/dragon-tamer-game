@@ -1,0 +1,17 @@
+2026-07-23 17:04:47,445 WARNING Pre-loaded 11 static assets + HTML (324206 bytes)
+2026-07-23 17:04:47,446 WARNING Dragon Tamer Server starting on 0.0.0.0:5000 (HTTP + WS)
+2026-07-23 17:04:47,488 WARNING server listening on 0.0.0.0:5000
+2026-07-23 17:05:01,037 WARNING HTTP path type=str repr='/'
+2026-07-23 17:05:01,038 WARNING Connected: ('127.0.0.1', 58442)
+2026-07-23 17:55:44,673 WARNING HTTP path type=str repr='/'
+2026-07-23 17:55:45,214 WARNING HTTP path type=str repr='/qrcode.min.js'
+2026-07-23 17:55:45,216 WARNING HTTP path type=str repr='/fonts.css'
+2026-07-23 17:55:45,465 WARNING HTTP path type=str repr='/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-tbnTYo.ttf'
+2026-07-23 17:55:45,467 WARNING HTTP path type=str repr='/fonts/wlp2gwHKFkZgtmSR3NB0oRJvaA.ttf'
+2026-07-23 17:55:45,468 WARNING HTTP path type=str repr='/fonts/8vIU7ww63mVu7gtR-kwKxNvkNOjw-jHgTYo.ttf'
+2026-07-23 17:55:45,469 WARNING HTTP path type=str repr='/music/celestial-dawn.mp3'
+2026-07-23 17:55:45,605 WARNING HTTP path type=str repr='/music/battle-of-legends.mp3'
+2026-07-23 17:55:45,780 WARNING HTTP path type=str repr='/'
+2026-07-23 17:55:45,780 WARNING Connected: ('127.0.0.1', 36658)
+2026-07-23 18:15:08,219 WARNING Disconnected: unknown (player)
+2026-07-23 18:15:08,223 WARNING Disconnected: unknown (player)

@@ -1,0 +1,13 @@
+2026-07-23 19:10:09,611 WARNING Pre-loaded 11 static assets + HTML (324604 bytes)
+2026-07-23 19:10:09,612 WARNING Dragon Tamer Server starting on 0.0.0.0:5000 (HTTP + WS)
+2026-07-23 19:10:09,646 WARNING server listening on 0.0.0.0:5000
+2026-07-23 19:12:03,931 WARNING HTTP path type=str repr='/'
+2026-07-23 19:12:03,931 WARNING Connected: ('127.0.0.1', 46732)
+2026-07-23 19:48:27,382 WARNING Disconnected: unknown (player)
+2026-07-23 19:48:28,968 WARNING HTTP path type=str repr='/'
+2026-07-23 19:48:28,969 WARNING Connected: ('127.0.0.1', 44006)
+2026-07-23 20:53:34,023 WARNING HTTP path type=str repr='/'
+2026-07-23 20:53:35,020 WARNING HTTP path type=str repr='/'
+2026-07-23 20:53:35,021 WARNING Connected: ('127.0.0.1', 45490)
+2026-07-23 20:53:41,210 WARNING Disconnected: unknown (player)
+2026-07-23 20:53:41,213 WARNING Disconnected: unknown (player)
